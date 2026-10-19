@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>REA · 角色库查看器</title>
+  <link rel="icon" href="data:," />
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #2d3140; font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif; }
+    canvas { display: block; }
+    #hud { position: fixed; left: 12px; top: 10px; color: #fff; font: 12px/1.5 Menlo, monospace; text-shadow: 0 1px 2px #000; white-space: pre; pointer-events: none; background: rgba(0,0,0,.45); padding: 8px 10px; border-radius: 6px; }
+    #bar { position: fixed; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100vw - 24px); }
+    #bar button { font: 12px -apple-system, "PingFang SC", sans-serif; padding: 5px 10px; border: 1px solid rgba(255,255,255,.25); border-radius: 5px; background: rgba(0,0,0,.5); color: #fff; cursor: pointer; }
+    #bar button:hover { background: rgba(255,255,255,.18); }
+    #err { position: fixed; left: 50%; top: 40%; transform: translateX(-50%); color: #ff6b6b; font-size: 16px; background: rgba(0,0,0,.7); padding: 12px 18px; border-radius: 8px; display: none; }
+  </style>
+</head>
+<body>
+  <div id="hud">加载中…</div>
+  <div id="bar"></div>
+  <div id="err"></div>
+  <script type="module" src="../src/dev/charsViewer.ts"></script>
+</body>
+</html>

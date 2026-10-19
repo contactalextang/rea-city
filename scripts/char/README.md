@@ -49,7 +49,7 @@
 
 ## 预设
 
-14 个：四身份默认（`default_gang / default_gold / default_white / default_blue`）+ 行人 10 个。包里没有的东西用近似并在 `note` 里注明：没有头巾（`ped_malay_f` 用长发整体染成头巾色）、没有背包/外卖箱（`ped_rider` 只用绿卫衣 + 绿安全帽）、没有单独的衬衫部件（`default_white` 用 Punk 皮夹克 + 内衫都调白）。`default_gang` 的 `m_casual_legs` 是牛仔短裤（按简报原样）。
+14 个：四身份默认（`default_gang / default_gold / default_white / default_blue`）+ 行人 10 个。包里没有的东西用近似并在 `note` 里注明：没有头巾（`ped_malay_f` 用长发整体染成头巾色）、没有背包/外卖箱（`ped_rider` 只用绿卫衣 + 绿安全帽）、没有单独的衬衫部件（`default_white` 用 Punk 皮夹克 + 内衫都调白）。`default_gang` 用 `m_casual2_legs` 牛仔长裤（2026-10-20 由短裤改为长裤）。
 
 ## 验证
 

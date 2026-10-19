@@ -1,7 +1,7 @@
 {
   "version": 1,
   "file": "characters.glb",
-  "generatedAt": "2026-10-19T19:02:11.155Z",
+  "generatedAt": "2026-10-19T19:06:51.139Z",
   "attribution": {
     "author": "Quaternius",
     "packs": [
@@ -1441,7 +1441,7 @@
       "parts": {
         "head": "m_casual2_head",
         "body": "m_casual2_body",
-        "legs": "m_casual_legs",
+        "legs": "m_casual2_legs",
         "feet": "m_casual2_feet",
         "hat": "cap"
       },

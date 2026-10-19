@@ -198,7 +198,7 @@ export const PRESETS: Preset[] = [
     id: 'default_gang',
     label: '黑帮成员',
     body: 'm',
-    parts: { head: 'm_casual2_head', body: 'm_casual2_body', legs: 'm_casual_legs', feet: 'm_casual2_feet', hat: 'cap' },
+    parts: { head: 'm_casual2_head', body: 'm_casual2_body', legs: 'm_casual2_legs', feet: 'm_casual2_feet', hat: 'cap' },
     colors: { top: '#f2f2f2', bottom: '#2f3b5c', hat: '#c0392b', skin: SKIN_LIGHT, hair: '#2b1b10', shoes: '#333333', accent: '#e6e6e6' },
   },
   {
