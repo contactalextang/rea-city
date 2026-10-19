@@ -35,7 +35,7 @@ export class PoliceAI {
       if (!v.active || v.driver !== 'police' || v.wrecked) continue
       const s = v.ai as PoliceState
       const dist = Math.hypot(px - v.x, pz - v.z)
-      if (ctx.wantedStars === 0 && s.mode !== 'leave') { s.mode = 'leave'; s.leaveTimer = 0 }
+      if (Math.floor(ctx.pursuitLevel) === 0 && s.mode !== 'leave') { s.mode = 'leave'; s.leaveTimer = 0 }
       if (s.mode === 'leave') {
         s.leaveTimer += dt
         if (s.leaveTimer > 6 && dist > 90) { v.deactivate(); continue }

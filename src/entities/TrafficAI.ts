@@ -14,6 +14,7 @@ export interface TrafficState {
   v: number                    // 运动学当前速度
   token: RoadNode | null
   wait: number; forceGo: number
+  redWait: number              // 红灯等待累计（不计入强行通过，超 40 s 兜底）
   physTimer: number
   cruise: number
   dbg: string
@@ -124,7 +125,7 @@ export class TrafficAI {
     const cruise = Math.min(edge.speedLimit / 3.6 * 0.9, 10 + Math.random() * 3)
     v.ai = {
       mode: 'kin', edge, nextEdge: next, seg: 'edge', segT, turn: null,
-      v: 8, token: null, wait: 0, forceGo: 0, physTimer: 0, cruise, dbg: '',
+      v: 8, token: null, wait: 0, forceGo: 0, redWait: 0, physTimer: 0, cruise, dbg: '',
     } satisfies TrafficState
     ctx.graph.lanePoint(edge, segT, tmp)
     ctx.graph.dirAt(edge, segT, dirA)
@@ -217,16 +218,26 @@ export class TrafficAI {
     const endT = L - E.to.jr                     // 直线段终点弧长
     let targetSpeed = s.cruise
     const turning = isTurning(g, E, s.nextEdge)
+    let stoppedByRed = false
 
     if (s.seg === 'edge') {
-      const remaining = endT - s.segT            // 到路口边缘的距离
+      const remaining = endT - s.segT            // 到路口边缘（停止线）的距离
       if (turning && remaining < 10) targetSpeed = Math.min(targetSpeed, 5.5)
+      // 红绿灯：红灯停在停止线前；黄灯能停则停，已越线/刹不住则继续；等超 40 s 按原兜底规则
+      if (E.to.signal && remaining < 15 && s.redWait < 40) {
+        const phase = ctx.signals.phaseFor(E)
+        const mustStop = phase === 'red' || (phase === 'amber' && remaining > s.v * s.v / 24 + 1.5)
+        if (mustStop) {
+          targetSpeed = remaining > 1.5 ? Math.min(targetSpeed, (remaining - 1) * 2) : 0
+          stoppedByRed = true
+        }
+      }
       if (s.token && s.token !== E.to) {
         // 持有的是上一个路口的令牌：驶离路口后释放
         if (s.segT > E.from.jr + 5) releaseToken(v)
       }
       // 令牌只在真正的路口节点上申请；普通折点/端点直接通过
-      if (E.to.junction && (!s.token || s.token !== E.to)) {
+      if (E.to.junction && !stoppedByRed && (!s.token || s.token !== E.to)) {
         if (remaining < 6) {
           const node = E.to
           const stale = node.occupant && ctx.time - node.occupantSince > 7
@@ -254,7 +265,9 @@ export class TrafficAI {
 
     // 停等计时：等太久强行通过；更久且远离玩家则回收
     s.forceGo = Math.max(0, s.forceGo - dt)
-    if (targetSpeed <= 0.3 && s.v < 0.5) s.wait += dt; else s.wait = 0
+    if (targetSpeed <= 0.3 && s.v < 0.5) {
+      if (stoppedByRed) s.redWait += dt; else s.wait += dt
+    } else { s.wait = 0; s.redWait = 0 }
     if (s.wait > 8 && s.forceGo <= 0) s.forceGo = 4
     if (s.wait > 14 && Math.hypot(v.x - ctx.player.worldX, v.z - ctx.player.worldZ) > 80) { this.recycle(v); return }
 
@@ -293,6 +306,6 @@ export class TrafficAI {
     v.controls.steer = 0; v.controls.throttle = 0; v.controls.handbrake = false
 
     const E2 = s.edge
-    s.dbg = `kin ${s.seg} E${E2.id}(${E2.from.id}>${E2.to.id}) t${s.segT.toFixed(0)} v${s.v.toFixed(0)} tgt${targetSpeed.toFixed(0)} tok${s.token ? 1 : 0} obs${obs === Infinity ? '-' : obs.toFixed(0)} wait${s.wait.toFixed(0)}`
+    s.dbg = `kin ${s.seg} E${E2.id}(${E2.from.id}>${E2.to.id}) t${s.segT.toFixed(0)} v${s.v.toFixed(0)} tgt${targetSpeed.toFixed(0)} tok${s.token ? 1 : 0}${stoppedByRed ? ' RED' : ''} obs${obs === Infinity ? '-' : obs.toFixed(0)} wait${s.wait.toFixed(0)}`
   }
 }

@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { GRID, BLOCK, ROAD, SIDEWALK, PITCH, HALF, CITY_MIN, CITY_MAX, rand, randInt, pick } from '../config'
-import type { RoadGraph } from './RoadGraph'
+import type { RoadGraph, P2 } from './RoadGraph'
+import type { SignalLights } from '../systems/Signals'
 import { StaticWorld, type AABB } from './Colliders'
 
 export interface Building { box: AABB; h: number; color: THREE.Color }
@@ -15,13 +16,14 @@ export class CityGenerator {
   blocks: BlockInfo[] = []
   group = new THREE.Group()
 
-  constructor(private scene: THREE.Scene, _graph: RoadGraph, private world: StaticWorld) {}
+  constructor(private scene: THREE.Scene, private graph: RoadGraph, private world: StaticWorld) {}
 
   build() {
     this.ground()
     this.blocksAndBuildings()
     this.roadMarkings()
     this.lampsAndTrees()
+    this.signalLights()
     this.walls()
     this.scene.add(this.group)
   }
@@ -168,6 +170,33 @@ export class CityGenerator {
     // 路灯实例与灯头偏移暴露给 DayNight（夜间光晕）
     this.scene.userData.lamps = lamps
     this.scene.userData.lampHead = new THREE.Vector3(0, 5.45, 0.5)
+  }
+
+  /** 红绿灯灯柱：每个信号灯路口的每条入边在停止线旁（行驶侧人行道）放一根；灯头颜色由 Signals.applyToMesh 每帧刷新 */
+  private signalLights() {
+    const edgeIds: number[] = []
+    const mats: THREE.Matrix4[] = []
+    const p: P2 = { x: 0, z: 0 }
+    for (const e of this.graph.edges) {
+      if (!e.to.signal) continue
+      this.graph.sidewalkPoint(e, e.length - e.to.jr - 0.8, p)
+      edgeIds.push(e.id)
+      mats.push(new THREE.Matrix4().makeTranslation(p.x, 0.15, p.z))
+      this.world.add({ minX: p.x - 0.15, maxX: p.x + 0.15, minZ: p.z - 0.15, maxZ: p.z + 0.15 })
+    }
+    if (!mats.length) return
+    const poleGeo = mergeGeometries([
+      new THREE.CylinderGeometry(0.07, 0.09, 3.6, 6).translate(0, 1.8, 0),
+      new THREE.BoxGeometry(0.44, 1.3, 0.44).translate(0, 3.9, 0),
+    ], false)!
+    const poles = new THREE.InstancedMesh(poleGeo, new THREE.MeshLambertMaterial({ color: 0x2b2f36 }), mats.length)
+    // 灯头：自发光方块，instanceColor 表示当前相位（不受昼夜影响）
+    const heads = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.42, 0.5).translate(0, 3.9, 0), new THREE.MeshBasicMaterial({ color: 0xffffff }), mats.length)
+    heads.userData.castShadow = false
+    const red = new THREE.Color(0xff2b2b)
+    mats.forEach((mm, k) => { poles.setMatrixAt(k, mm); heads.setMatrixAt(k, mm); heads.setColorAt(k, red) })
+    this.group.add(poles, heads)
+    this.scene.userData.signalLights = { mesh: heads, edgeIds } satisfies SignalLights
   }
 
   private walls() {

@@ -15,7 +15,9 @@ import { Pedestrians } from '../entities/Pedestrians'
 import { TrafficAI, releaseToken } from '../entities/TrafficAI'
 import { PoliceAI } from '../entities/PoliceAI'
 import { Spawner, policeCountFor } from '../systems/Spawner'
-import { Wanted } from '../systems/Wanted'
+import { Law, type TrafficKind } from '../systems/Law'
+import { Signals, type Phase, type SignalLights } from '../systems/Signals'
+import { ROLES, type RoleDef } from '../data/roles'
 import { Missions } from '../systems/Missions'
 import { Audio } from '../systems/Audio'
 import { Weapon } from '../systems/Weapon'
@@ -47,7 +49,10 @@ export class Game {
   trafficAI: TrafficAI
   policeAI: PoliceAI
   spawner: Spawner
-  wanted = new Wanted()
+  law = new Law()
+  signals: Signals
+  role: RoleDef
+  private signalLights: SignalLights | null = null
   missions: Missions
   audio = new Audio()
   weapon: Weapon
@@ -88,21 +93,27 @@ export class Game {
     // 路网：sg 数据尚未就绪时回退方格城
     if (this.settings.world === 'sg') console.warn('[REA] 新加坡路网数据尚未就绪，回退到 grid')
     this.graph = new RoadGraph(buildGridGraphData())
+    this.signals = new Signals(this.graph)
+    this.role = ROLES[this.settings.role]
+    this.player.money = this.role.cash
+    this.hud.setGun(this.role.systems.gun)
     this.clock = new Clock(this.settings.timeSpeed)
     this.dayNight = new DayNight(this.scene, this.renderer, this.settings)   // 创建半球光/太阳光
 
     this.city = new CityGenerator(this.scene, this.graph, this.world)
     this.city.build()
     this.minimap = new Minimap(this.city)
+    this.signalLights = (this.scene.userData.signalLights as SignalLights | undefined) ?? null
 
     this.scene.add(this.player.group)
     this.peds = new Pedestrians(this.scene, this.events)
     this.trafficAI = new TrafficAI(this.peds)
     this.policeAI = new PoliceAI(this.peds)
-    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, wantedStars: 0, settings: this.settings, clock: this.clock }
+    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, pursuitLevel: 0, settings: this.settings, clock: this.clock, signals: this.signals, role: this.role }
     this.spawner = new Spawner(this.ctx, this.peds, this.trafficAI, this.policeAI)
     this.missions = new Missions(this.ctx, this.events)
     this.missions.setToast((s) => this.hud.toast(s))
+    this.law.setToast((s, sec) => this.hud.toast(s, sec))
     this.weapon = new Weapon(this.scene)
     this.weather = new Weather(this.scene, this.dayNight, this.audio)
     // 世界与实体都已挂到 scene：读取 userData 约定、设置阴影标记、生成路灯光晕
@@ -146,7 +157,7 @@ export class Game {
 
   private wireEvents() {
     this.events.on('vehicleHitPed', ({ v, speed }) => {
-      if (v.driver === 'player') this.wanted.addCrime(1, this.time)
+      if (v.driver === 'player') this.law.crime('hitPed', 1, this.ctx)
       this.audio.crash(Math.min(speed, 8))
     })
     this.events.on('vehicleHitVehicle', ({ a, b, impulse }) => {
@@ -154,15 +165,15 @@ export class Game {
       if (!mine) return
       const other = mine === a ? b : a
       other.lastHitByPlayer = this.time
-      if (other.kind === 'police') { if (impulse > 3) this.wanted.addCrime(1, this.time) }
-      else if (impulse > 4) this.wanted.addCrime(0.34, this.time)
+      if (other.kind === 'police') { if (impulse > 3) this.law.crime('hitPolice', 1, this.ctx) }
+      else if (impulse > 4) { this.law.crime('hitVehicle', 0.34, this.ctx); this.law.collision(this.ctx) }
       if (impulse > 12) this.player.damage((impulse - 12) * 0.8)
     })
     this.events.on('vehicleHitStatic', ({ v, impulse }) => {
       if (v.driver === 'player' && impulse > 14) this.player.damage((impulse - 14) * 0.8)
     })
-    this.events.on('vehicleWrecked', ({ byPlayer }) => { if (byPlayer) this.wanted.addCrime(0.5, this.time) })
-    this.events.on('carjack', ({ hadDriver }) => { if (hadDriver) this.wanted.addCrime(0.5, this.time) })
+    this.events.on('vehicleWrecked', ({ byPlayer }) => { if (byPlayer) this.law.crime('wreck', 0.5, this.ctx) })
+    this.events.on('carjack', ({ hadDriver }) => { if (hadDriver) this.law.crime('carjack', 0.5, this.ctx) })
     this.events.on('playerHitByVehicle', ({ v, impulse }) => {
       this.player.damage(impulse * 2.2)
       this.player.vx += v.vx * 0.8; this.player.vz += v.vz * 0.8; this.player.vy = 3
@@ -199,7 +210,8 @@ export class Game {
   private step(dt: number) {
     this.time += dt
     this.ctx.time = this.time
-    this.ctx.wantedStars = this.wanted.stars
+    this.ctx.pursuitLevel = this.law.chase ? this.law.pursuitLevel : 0
+    this.signals.update(dt)
     // 时钟/天气/昼夜在任何状态下都推进（含开场与死亡）
     this.clock.advance(dt)
     this.weather.update(dt, this.ctx)
@@ -223,10 +235,11 @@ export class Game {
     const playing = this.state === 'play'
 
     // 玩家输入与上下车
-    this.player.aiming = playing && (input.locked || this.forceAim) && !this.player.inVehicle
+    const gun = this.role.systems.gun
+    this.player.aiming = playing && gun && (input.locked || this.forceAim) && !this.player.inVehicle
     this.player.update(dt, input, this.cam.yaw, this.world, playing)
     this.weapon.update(dt)
-    if (playing && (input.mouseDown(0) || input.down('ControlLeft') || input.down('KeyE')) && this.weapon.ready) this.shoot()
+    if (playing && gun && (input.mouseDown(0) || input.down('ControlLeft') || input.down('KeyE')) && this.weapon.ready) this.shoot()
     if (playing && input.justPressed('KeyF')) this.toggleVehicle()
     if (playing && input.justPressed('KeyM')) this.hud.toast(`任务进度 ${this.missions.completed}/3 · 黄色标记开始任务`, 3)
     if (input.justPressed('Enter')) this.toggleFullscreen()
@@ -239,13 +252,14 @@ export class Game {
     this.peds.update(dt, this.ctx)
 
     // 系统
-    this.wanted.update(dt, this.ctx)
-    this.spawner.update(dt, this.ctx, policeCountFor(this.wanted.stars))
+    this.law.update(dt, this.ctx)
+    this.ctx.pursuitLevel = this.law.chase ? this.law.pursuitLevel : 0
+    this.spawner.update(dt, this.ctx, policeCountFor(this.law.policeStars))
     this.missions.update(dt)
 
     if (playing) {
       if (this.player.health <= 0) this.enterState('dead')
-      else if (this.wanted.stars > 0) {
+      else if (this.law.policeStars > 0) {
         const pl = this.player
         const near = this.vehicles.some((v) => v.active && v.driver === 'police' && !v.wrecked && v.absSpeed < 8 && Math.hypot(v.x - pl.worldX, v.z - pl.worldZ) < (pl.inVehicle ? 6.5 : 3.4))
         if (!pl.inVehicle && near) this.enterState('busted')
@@ -281,9 +295,11 @@ export class Game {
   private respawn() {
     if (this.player.vehicle) this.player.exit(this.world)
     this.player.health = 100
-    this.player.money = Math.floor(this.player.money * 0.9)
+    const fine = Math.ceil(Math.max(0, this.player.money) * 0.1)
+    if (this.state === 'busted') { this.law.fines += fine; this.law.arrests++ }
+    this.player.money -= fine
     this.player.place(this.hospital.x, this.hospital.z, Math.PI / 2)
-    this.wanted.reset()
+    this.law.reset()
     for (const v of this.vehicles) if (v.driver === 'police') { v.deactivate() }
     this.cam.snap(this.player.yaw)
     this.state = 'play'
@@ -298,16 +314,16 @@ export class Game {
     if (hit.kind === 'ped') {
       const dir = this.cam.camera.getWorldDirection(new THREE.Vector3())
       this.peds.knockDown(hit.ped, dir.x * 4, dir.z * 4)
-      this.wanted.addCrime(1, this.time)
+      this.law.crime('shoot', 1, this.ctx)
     } else if (hit.kind === 'vehicle') {
       const v = hit.vehicle
       v.lastHitByPlayer = this.time
       this.hitVehicle(v, this.weapon.vehicleDamage, true)
       if (v.driver === 'traffic') this.trafficAI.knock(v)
-      this.wanted.addCrime(v.kind === 'police' ? 0.6 : 0.2, this.time)
+      this.law.crime('shootVehicle', v.kind === 'police' ? 0.6 : 0.2, this.ctx)
     } else {
       // 当街开枪本身就是犯罪，但只小幅加热度
-      this.wanted.addCrime(0.05, this.time)
+      this.law.crime('shoot', 0.05, this.ctx)
     }
   }
 
@@ -418,6 +434,12 @@ export class Game {
     }
     this.hud.hint(hint)
     this.hud.aiming(this.state === 'play' && (this.input.locked || this.forceAim))
+    const law = this.law
+    const lawParts: string[] = []
+    if (law.licenseSuspended(this.clock.day)) lawParts.push(`驾照吊销至第${law.licenseSuspendedUntilDay}天`)
+    if (law.demerits > 0) lawParts.push(`扣分 ${law.demerits}/24`)
+    if (law.fines > 0) lawParts.push(`罚款 $${law.fines.toLocaleString()}`)
+    this.hud.law(lawParts.join(' · '))
     const police: P2[] = []
     let policeDist = Infinity
     for (const v of this.vehicles) if (v.active && v.driver === 'police') { police.push(v); policeDist = Math.min(policeDist, Math.hypot(v.x - pl.worldX, v.z - pl.worldZ)) }
@@ -426,8 +448,8 @@ export class Game {
     this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, this.missions.targetPoint, starts, police, gold, this.hospital)
     const speedKmh = pl.vehicle ? pl.vehicle.speed * 3.6 : null
     const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
-    this.hud.update(dt, pl.health, pl.money, this.wanted.stars, this.wanted.flash, speedKmh, this.missions.hudText(), dbg)
-    this.audio.update(this.time, pl.inVehicle, pl.vehicle?.speed ?? 0, pl.vehicle?.controls.throttle ?? 0, this.wanted.stars, policeDist)
+    this.hud.update(dt, pl.health, pl.money, this.law.stars, this.law.flash, speedKmh, this.missions.hudText(), dbg)
+    this.audio.update(this.time, pl.inVehicle, pl.vehicle?.speed ?? 0, pl.vehicle?.controls.throttle ?? 0, this.law.policeStars, policeDist)
   }
 
   private render(dt: number) {
@@ -435,6 +457,7 @@ export class Game {
     if (this.state === 'intro') {
       this.cam.update(dt, 'orbit', this.player, 0, performance.now() / 1000)
       // 开场时也让世界动起来
+      this.signals.update(dt)
       this.trafficAI.update(dt, this.ctx); this.policeAI.update(dt, this.ctx)
       for (const v of this.vehicles) if (v.active) { if (!v.kinematic) v.step(dt); v.sync(this.time) }
       this.resolveCollisions()
@@ -445,6 +468,7 @@ export class Game {
     }
     this.frames++; this.fpsTimer += dt
     if (this.fpsTimer >= 0.5) { this.fps = this.frames / this.fpsTimer; this.frames = 0; this.fpsTimer = 0 }
+    if (this.signalLights) this.signals.applyToMesh(this.signalLights.mesh, this.signalLights.edgeIds)
     this.renderer.render(this.scene, this.cam.camera)
   }
 
@@ -455,7 +479,28 @@ export class Game {
       get state() { return self.state },
       get stats() { return { fps: self.fps, peds: self.peds.activeCount, cars: self.vehicles.filter((v) => v.active).length, drawCalls: self.renderer.info.render.calls, time: self.time } },
       get player() { return { x: self.player.worldX, z: self.player.worldZ, health: self.player.health, money: self.player.money, inVehicle: self.player.inVehicle, speed: self.player.vehicle?.speed ?? 0 } },
-      get wanted() { return { stars: self.wanted.stars, heat: self.wanted.heat } },
+      get wanted() { return { stars: self.law.stars, heat: self.law.pursuitLevel, demerits: self.law.demerits, fines: self.law.fines } },
+      get role() { return self.role },
+      get weaponReady() { return self.weapon.ready },
+      law: {
+        traffic(kind: TrafficKind) { self.law.traffic(kind, self.ctx) },
+        crime(kind: Parameters<Law['crime']>[0], weight = 1) { self.law.crime(kind, weight, self.ctx) },
+        get pursuitLevel() { return self.law.pursuitLevel }, get stars() { return self.law.stars }, get chase() { return self.law.chase },
+        get policeStars() { return self.law.policeStars },
+        get demerits() { return self.law.demerits }, get fines() { return self.law.fines }, get arrests() { return self.law.arrests },
+        get licenseSuspendedUntilDay() { return self.law.licenseSuspendedUntilDay },
+      },
+      signals: {
+        stateOf(nodeId: number) { return self.signals.stateOf(nodeId) },
+        setPhase(nodeId: number, phase: Phase | null) { return self.signals.setPhase(nodeId, phase) },
+        phaseFor(edgeId: number) { return self.signals.phaseFor(self.graph.edges[edgeId]) },
+        get nodeIds() { return self.signals.nodeIds },
+        get time() { return self.signals.time }, get cycle() { return self.signals.cycle },
+        node(id: number) { const n = self.graph.nodes[id]; return { id: n.id, x: n.x, z: n.z, jr: n.jr, i: n.i, j: n.j, signal: n.signal, incoming: self.graph.edges.filter((e) => e.to === n).map((e) => ({ id: e.id, from: e.from.id, length: e.length, phase: self.signals.phaseFor(e) })) } },
+        /** 玩家车（或任意坐标）在某条边上的投影弧长，用于测试停止线 */
+        projectT(edgeId: number, x: number, z: number) { return self.graph.projectT(self.graph.edges[edgeId], x, z) },
+        lanePoint(edgeId: number, t: number) { return self.graph.lanePoint(self.graph.edges[edgeId], t, { x: 0, z: 0 }) },
+      },
       get missions() { return { active: self.missions.active?.id ?? null, completed: self.missions.completed, timer: self.missions.timer, progress: self.missions.progress } },
       get police() { return self.vehicles.filter((v) => v.active && v.driver === 'police').map((v) => ({ x: v.x, z: v.z, mode: (v.ai as { mode: string } | null)?.mode })) },
       get cars() { return self.vehicles.filter((v) => v.active).map((v) => ({ kind: v.kind, driver: v.driver, speed: +v.speed.toFixed(1), health: v.health, wrecked: v.wrecked, x: +v.x.toFixed(1), z: +v.z.toFixed(1), yaw: +v.yaw.toFixed(2), vx: +v.vx.toFixed(1), vz: +v.vz.toFixed(1), stuck: (v.ai as { stuck?: number } | null)?.stuck ?? 0, dbg: (v.ai as { dbg?: string } | null)?.dbg ?? '' })) },
@@ -469,12 +514,12 @@ export class Game {
       mouse(dx: number, dy: number) { self.cam.applyMouse(dx, dy) },
       get camYaw() { return self.cam.yaw },
       get locked() { return self.input.locked },
-      shoot() { if (self.weapon.ready) self.shoot() },
+      shoot() { if (self.role.systems.gun && self.weapon.ready) self.shoot() },
       aimAt(x: number, z: number) { self.cam.camera.lookAt(x, 1.0, z) },
       forceAim(on: boolean) { self.forceAim = on },
       // 测试辅助
       teleport(x: number, z: number) { if (self.player.vehicle) { self.player.vehicle.x = x; self.player.vehicle.z = z } else { self.player.x = x; self.player.z = z } },
-      addCrime(n: number) { self.wanted.addCrime(n, self.time) },
+      addCrime(n: number) { self.law.addCrime(n, self.time) },
       startPlay() { if (self.state === 'intro') self['beginPlay']() },
       get grid() { return { PITCH, HALF, DRIVE_SIDE } },
       get graphStats() { return self.graph.stats() },

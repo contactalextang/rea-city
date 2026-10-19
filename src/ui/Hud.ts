@@ -8,6 +8,8 @@ export class Hud {
   private overlay = $('overlay')
   private clockEl = $('clock')
   private clockText = ''
+  private lawText = ''
+  private gun = true
 
   update(dt: number, health: number, money: number, stars: number, flash: number, speedKmh: number | null,
     mission: { title: string; desc: string; timer: string } | null, debug: string) {
@@ -35,9 +37,19 @@ export class Hud {
     this.clockText = text; this.clockEl.textContent = text
   }
 
+  /** 右上角星级下方的执法信息：如 `扣分 4/24 · 罚款 $350`，空串隐藏 */
+  law(text: string) {
+    if (text === this.lawText) return
+    this.lawText = text
+    const el = $('law'); el.textContent = text; el.style.display = text ? '' : 'none'
+  }
+
+  /** 身份无枪时不显示武器栏与准星 */
+  setGun(on: boolean) { this.gun = on }
+
   aiming(on: boolean) {
-    $('crosshair').classList.toggle('show', on)
-    $('weapon').classList.toggle('show', on)
+    $('crosshair').classList.toggle('show', on && this.gun)
+    $('weapon').classList.toggle('show', on && this.gun)
   }
 
   hint(text: string | null) {

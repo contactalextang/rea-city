@@ -1,12 +1,13 @@
 import { GRID, PITCH, HALF, ROAD, LANE_OFFSET, SIDEWALK_OFFSET } from '../config'
 import type { GraphData } from './RoadGraph'
 
-/** 复刻原先硬编码的 (GRID+1)×(GRID+1) 方格路网：双向两点折线，所有节点都是无信号灯路口 */
+/** 复刻原先硬编码的 (GRID+1)×(GRID+1) 方格路网：双向两点折线；内部 (i+j) 为偶数的路口设红绿灯 */
 export function buildGridGraphData(): GraphData {
   const N = GRID + 1
   const data: GraphData = { nodes: [], edges: [] }
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    data.nodes.push({ id: j * N + i, x: i * PITCH - HALF, z: j * PITCH - HALF, junction: true, signal: false, jr: ROAD / 2, i, j })
+    const inner = i >= 1 && i <= GRID - 1 && j >= 1 && j <= GRID - 1
+    data.nodes.push({ id: j * N + i, x: i * PITCH - HALF, z: j * PITCH - HALF, junction: true, signal: inner && (i + j) % 2 === 0, jr: ROAD / 2, i, j })
   }
   const link = (a: number, b: number) => {
     const na = data.nodes[a], nb = data.nodes[b]

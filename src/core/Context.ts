@@ -6,6 +6,8 @@ import type { Player } from '../entities/Player'
 import type { ChaseCamera } from './Camera'
 import type { Settings } from './Settings'
 import type { Clock } from '../systems/Clock'
+import type { Signals } from '../systems/Signals'
+import type { RoleDef } from '../data/roles'
 
 /** 各系统共享的只读上下文（由 Game 构造并填充） */
 export interface Ctx {
@@ -16,9 +18,12 @@ export interface Ctx {
   player: Player
   cam: ChaseCamera
   time: number
-  wantedStars: number
+  /** 警方响应热度（Law.pursuitLevel；只发罚单不出警时为 0），floor 即星级 */
+  pursuitLevel: number
   settings: Settings
   clock: Clock
+  signals: Signals
+  role: RoleDef
 }
 
 export interface GameEvents {
