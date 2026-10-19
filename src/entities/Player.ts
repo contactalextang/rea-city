@@ -27,6 +27,10 @@ export class Player implements Body {
   private gun: THREE.Mesh
   private armR: THREE.Mesh
   aiming = false
+  /** 步行/奔跑速度倍率（Needs 低饥饿/低精力时 0.7） */
+  speedMul = 1
+  /** 本步是否在奔跑（Needs 额外耗精力） */
+  running = false
 
   constructor() {
     this.skinMat = new THREE.MeshLambertMaterial({ color: 0xf1c7a3 })
@@ -58,6 +62,7 @@ export class Player implements Body {
   update(dt: number, input: Input, camYaw: number, world: StaticWorld, enabled: boolean) {
     const live = input.locked   // 鼠标控制视角时，移动方向实时跟随相机
     this.hurtTimer = Math.max(0, this.hurtTimer - dt)
+    this.running = false
     if (this.vehicle) {
       const c = this.vehicle.controls
       if (enabled) {
@@ -78,8 +83,9 @@ export class Player implements Body {
     const sideIn = enabled ? input.axis('KeyA', 'KeyD') + input.axis('ArrowLeft', 'ArrowRight') : 0
     const keys = `${fwdIn},${sideIn}`
     if (keys !== this.lastKeys || live) { this.lastKeys = keys; this.latchYaw = camYaw }
-    const running = enabled && (input.down('ShiftLeft') || input.down('ShiftRight'))
-    const speed = running ? 7.5 : 3.6
+    const running = enabled && (input.down('ShiftLeft') || input.down('ShiftRight')) && (fwdIn !== 0 || sideIn !== 0)
+    this.running = running
+    const speed = (running ? 7.5 : 3.6) * this.speedMul
     let mx = 0, mz = 0
     if (fwdIn !== 0 || sideIn !== 0) {
       const fx = Math.sin(this.latchYaw), fz = Math.cos(this.latchYaw)

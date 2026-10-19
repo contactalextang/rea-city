@@ -81,8 +81,18 @@ export class Vehicle implements VehicleBody, Body {
       this.siren.position.set(0, 1.58, -0.2)
       this.group.add(stripe, this.siren)
     }
+    if (kind === 'taxi') {
+      // 车顶小方块顶灯（自发光，夜间可见）
+      const top = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 0.32), new THREE.MeshBasicMaterial({ color: 0xfff1b8 }))
+      top.position.set(0, 1.6, -0.2)
+      top.userData.castShadow = false
+      this.group.add(top)
+    }
     this.group.visible = false
   }
+
+  /** 更换涂装（的士随机 Comfort/CityCab 用） */
+  setColor(hex: number) { this.baseColor.setHex(hex); this.bodyMat.color.setHex(hex) }
 
   get speed() { return forwardSpeed(this) }
   get absSpeed() { return Math.hypot(this.vx, this.vz) }

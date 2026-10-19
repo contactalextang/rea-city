@@ -26,8 +26,15 @@ import { Minimap } from '../ui/Minimap'
 import { Clock } from '../systems/Clock'
 import { DayNight } from '../systems/DayNight'
 import { Weather, WEATHER_LABEL } from '../systems/Weather'
+import { PoiRegistry, gridPois, type Poi } from '../systems/Poi'
+import { Needs } from '../systems/Needs'
+import { Interactions } from '../systems/Interactions'
+import { Panels } from '../ui/Panels'
+import { Phone } from '../ui/Phone'
+import * as Save from '../systems/Save'
+import { saveSettings } from './Settings'
 
-type State = 'intro' | 'play' | 'dead' | 'busted' | 'won'
+type State = 'intro' | 'play' | 'dead' | 'busted' | 'won' | 'panel'
 const playingNow = (s: State) => s === 'play' || s === 'won'
 const tmpBoxes: AABB[] = []
 const c0 = { x: 0, z: 0 }, c1 = { x: 0, z: 0 }
@@ -62,6 +69,11 @@ export class Game {
   clock: Clock
   dayNight: DayNight
   weather: Weather
+  pois = new PoiRegistry()
+  needs: Needs
+  interactions: Interactions
+  panels = new Panels()
+  phone: Phone
   ctx: Ctx
   state: State = 'intro'
   stateTimer = 0
@@ -79,6 +91,9 @@ export class Game {
   private viewW = 0
   private viewH = 0
   private clockHudTimer = 1
+  private phoneTimer = 0
+  /** 自己家的门口（昏倒/开局传送点） */
+  private homeDoor = { x: 0, z: 0, yaw: Math.PI / 2 }
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
@@ -102,6 +117,10 @@ export class Game {
 
     this.city = new CityGenerator(this.scene, this.graph, this.world)
     this.city.build()
+    // 兴趣点：方格城用合成集；真实世界接入后改由其加载器提供
+    this.pois.load(gridPois(this.graph))
+    this.city.addPoiMarkers(this.pois.all)
+    this.needs = new Needs(this.clock, this.role.needsRate)
     this.minimap = new Minimap(this.city)
     this.signalLights = (this.scene.userData.signalLights as SignalLights | undefined) ?? null
 
@@ -109,8 +128,25 @@ export class Game {
     this.peds = new Pedestrians(this.scene, this.events)
     this.trafficAI = new TrafficAI(this.peds)
     this.policeAI = new PoliceAI(this.peds)
-    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, pursuitLevel: 0, settings: this.settings, clock: this.clock, signals: this.signals, role: this.role }
+    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, pursuitLevel: 0, settings: this.settings, clock: this.clock, signals: this.signals, role: this.role, pois: this.pois, needs: this.needs, law: this.law }
     this.spawner = new Spawner(this.ctx, this.peds, this.trafficAI, this.policeAI)
+    this.panels.onClose = () => this.closePanel()
+    this.interactions = new Interactions(this.ctx, this.panels, {
+      toast: (t, sec) => this.hud.toast(t, sec),
+      closePanel: () => this.closePanel(),
+      teleport: (x, z, yaw) => { this.player.place(x, z, yaw); this.cam.snap(yaw) },
+      save: () => this.saveGame(false),
+      parkTaxi: (x, z, yaw) => this.spawner.parkTaxiNear(this.ctx, x, z, yaw),
+    })
+    this.phone = new Phone({
+      setTimeSpeed: (v) => { this.settings.timeSpeed = v; this.clock.speed = v; saveSettings(this.settings); this.hud.toast(`时间流速 ${v}×`) },
+      setShadows: (on) => { this.settings.shadows = on; this.dayNight.setShadows(on); saveSettings(this.settings); this.hud.toast(on ? '阴影已开启' : '阴影已关闭') },
+      save: () => this.saveGame(true),
+      load: () => this.loadGame(),
+      restart: () => { Save.clear(); const q = new URLSearchParams(location.search); q.set('fresh', '1'); location.search = q.toString() },
+      drawMap: (c) => this.minimap.drawLarge(c, this.player.worldX, this.player.worldZ, this.cam.yaw, this.vehicles.filter((v) => v.active && v.driver === 'police'), this.pois.all),
+      toast: (t) => this.hud.toast(t),
+    })
     this.missions = new Missions(this.ctx, this.events)
     this.missions.setToast((s) => this.hud.toast(s))
     this.law.setToast((s, sec) => this.hud.toast(s, sec))
@@ -120,14 +156,24 @@ export class Game {
     this.dayNight.attachWorld()
     this.weather.attachWorld()
 
-    // 医院（重生点）：路口 (1,1) 东向路段行驶侧的人行道
-    const n = this.graph.node(1, 1)
-    const e = n.out.find((o) => o.to === this.graph.node(2, 1))!
-    this.hospital = this.graph.sidewalkPoint(e, 14, { x: 0, z: 0 })
-    this.player.place(this.hospital.x, this.hospital.z, Math.PI / 2)
-    const park = this.graph.lanePoint(e, 22, { x: 0, z: 0 })
-    const dir = this.graph.dirAt(e, 22, { x: 0, z: 0 })
-    this.spawner.parkCarNear(this.ctx, park.x, park.z, Math.atan2(dir.x, dir.z))
+    // 医院（重生点）：hospital POI 的门口；没有则回退到路口 (1,1) 东向路段的人行道
+    const hosp = this.pois.byType('hospital')[0]
+    if (hosp) this.hospital = { x: hosp.door.x, z: hosp.door.z }
+    else {
+      const n = this.graph.node(1, 1)
+      const e = n.out.find((o) => o.to === this.graph.node(2, 1))!
+      this.hospital = this.graph.sidewalkPoint(e, 14, { x: 0, z: 0 })
+    }
+    // 出生点：身份对应的家门口，门口车道上停一辆车
+    const home = this.pois.byId(this.role.home)
+    if (home) this.homeDoor = { ...home.door }
+    else this.homeDoor = { x: this.hospital.x, z: this.hospital.z, yaw: Math.PI / 2 }
+    this.player.place(this.homeDoor.x, this.homeDoor.z, this.homeDoor.yaw)
+    this.parkCarNearDoor(this.homeDoor.x, this.homeDoor.z)
+    // 存档：同身份且未带 ?fresh=1 则读档
+    const fresh = new URLSearchParams(location.search).has('fresh')
+    const saved = fresh ? null : Save.load()
+    if (saved && saved.role === this.role.id) { Save.apply(this.ctx, saved); console.info(`[REA] 读取存档：第${saved.day}天 $${saved.money}`) }
 
     this.wireEvents()
     window.addEventListener('resize', () => this.fitViewport())
@@ -204,7 +250,60 @@ export class Game {
     this.audio.unlock()
     this.cam.snap(this.player.yaw)
     this.cam.camera.position.set(this.player.x - Math.sin(this.player.yaw) * 6, 3, this.player.z - Math.cos(this.player.yaw) * 6)
-    this.hud.toast('去黄色标记接任务，按 F 上车', 4)
+    this.hud.toast('E 进入地点 · Tab 手机 · F 上车 · 黄色标记接任务', 4)
+  }
+
+  /** 在某个门口附近的车道上停一辆空车 */
+  private parkCarNearDoor(x: number, z: number) {
+    const g = this.graph
+    const lane = g.nearestLane(x, z)
+    const t = Math.max(6, Math.min(lane.edge.length - 6, lane.t + 8))
+    const p = g.lanePoint(lane.edge, t, { x: 0, z: 0 })
+    const d = g.dirAt(lane.edge, t, { x: 0, z: 0 })
+    this.spawner.parkCarNear(this.ctx, p.x, p.z, Math.atan2(d.x, d.z))
+  }
+
+  // ---------- 交互面板 / 手机 / 存档 ----------
+  openPanel(poi: Poi) {
+    if (this.state !== 'play') return
+    this.state = 'panel'
+    this.phone.set(false)
+    if (document.pointerLockElement) document.exitPointerLock()
+    this.interactions.open(poi)
+  }
+  closePanel() {
+    this.panels.hide()
+    this.interactions.current = null
+    if (this.state === 'panel') { this.state = 'play'; this.unlockHintAt = this.time }
+  }
+
+  saveGame(announce: boolean) {
+    const ok = Save.save(this.ctx)
+    if (announce) this.hud.toast(ok ? '已存档' : '存档失败（浏览器禁止本地存储）')
+    return ok !== null
+  }
+  loadGame() {
+    const d = Save.load()
+    if (!d) { this.hud.toast('没有存档'); return false }
+    if (d.role !== this.role.id) { this.hud.toast(`存档身份是 ${ROLES[d.role].title}，与当前不同`); return false }
+    Save.apply(this.ctx, d)
+    this.law.reset()
+    this.cam.snap(this.player.yaw)
+    this.hud.toast(`已读档 · 第${d.day}天 ${this.clock.hhmm}`)
+    return true
+  }
+
+  /** 精力归零：昏倒，次日 07:00 在家门口醒来 */
+  private faint() {
+    if (this.player.vehicle) this.player.exit(this.world)
+    this.hud.toast('体力透支，你昏倒了…', 4)
+    this.clock.set(7, this.clock.day + 1)
+    this.needs.sync()
+    this.needs.set(this.needs.hunger, 60)
+    this.player.place(this.homeDoor.x, this.homeDoor.z, this.homeDoor.yaw)
+    this.law.reset()
+    this.cam.snap(this.player.yaw)
+    this.closePanel()
   }
 
   private step(dt: number) {
@@ -212,8 +311,8 @@ export class Game {
     this.ctx.time = this.time
     this.ctx.pursuitLevel = this.law.chase ? this.law.pursuitLevel : 0
     this.signals.update(dt)
-    // 时钟/天气/昼夜在任何状态下都推进（含开场与死亡）
-    this.clock.advance(dt)
+    // 时钟/天气/昼夜在任何状态下都推进（含开场与死亡）；面板暂停时不走时钟
+    if (this.state !== 'panel') this.clock.advance(dt)
     this.weather.update(dt, this.ctx)
     this.dayNight.update(dt, this.ctx)
     this.clockHudTimer += dt
@@ -224,6 +323,14 @@ export class Game {
       if (input.anyKeyPressed || input.clicked) this.beginPlay()
       return
     }
+    if (this.state === 'panel') {
+      // 面板：世界暂停，只响应 Esc / 关闭按钮；数值变化仍刷新 HUD
+      if (input.justPressed('Escape')) this.closePanel()
+      input.takeMouse()
+      this.updateHud(dt)
+      return
+    }
+    if (input.justPressed('Tab') && (this.state === 'play' || this.state === 'won')) this.phone.toggle()
     if (this.state === 'won' && (input.anyKeyPressed || input.clicked) && this.stateTimer > 1) { this.state = 'play'; this.hud.hideOverlay() }
     const mouse = input.takeMouse()
     if (playingNow(this.state)) this.cam.applyMouse(mouse.dx, mouse.dy)
@@ -233,14 +340,24 @@ export class Game {
     }
     this.stateTimer += this.state === 'won' ? dt : 0
     const playing = this.state === 'play'
+    // 手机打开时屏蔽移动/射击/交互输入（游戏不暂停）
+    const control = playing && !this.phone.open
+
+    // 需求：按游戏小时推进；低需求减速 + 暗角；精力归零昏倒
+    const fainted = this.needs.update(this.player.running)
+    this.player.speedMul = this.needs.speedMul
+    this.hud.vignette(this.needs.low)
+    if (fainted && playing) { this.faint(); return }
 
     // 玩家输入与上下车
     const gun = this.role.systems.gun
-    this.player.aiming = playing && gun && (input.locked || this.forceAim) && !this.player.inVehicle
-    this.player.update(dt, input, this.cam.yaw, this.world, playing)
+    this.player.aiming = control && gun && (input.locked || this.forceAim) && !this.player.inVehicle
+    this.player.update(dt, input, this.cam.yaw, this.world, control)
     this.weapon.update(dt)
-    if (playing && gun && (input.mouseDown(0) || input.down('ControlLeft') || input.down('KeyE')) && this.weapon.ready) this.shoot()
-    if (playing && input.justPressed('KeyF')) this.toggleVehicle()
+    if (control && gun && (input.mouseDown(0) || input.down('ControlLeft')) && this.weapon.ready) this.shoot()
+    if (control && input.justPressed('KeyF')) this.toggleVehicle()
+    this.interactions.update()
+    if (control && input.justPressed('KeyE') && this.interactions.near) { this.openPanel(this.interactions.near); return }
     if (playing && input.justPressed('KeyM')) this.hud.toast(`任务进度 ${this.missions.completed}/3 · 黄色标记开始任务`, 3)
     if (input.justPressed('Enter')) this.toggleFullscreen()
 
@@ -427,7 +544,9 @@ export class Game {
     const pl = this.player
     let hint: string | null = null
     if (this.state === 'play') {
-      if (!this.input.locked && this.time - this.unlockHintAt < 4) hint = '点击画面锁定鼠标，转动视角（Esc 解锁）'
+      if (this.phone.open) hint = null
+      else if (!this.input.locked && this.time - this.unlockHintAt < 4) hint = '点击画面锁定鼠标，转动视角（Esc 解锁）'
+      else if (this.interactions.hint) hint = this.interactions.hint
       else if (!pl.inVehicle && pl.findNearbyVehicle(this.vehicles)) hint = '按 F 上车'
       else if (pl.vehicle?.wrecked) hint = '车已报废，按 F 下车'
       else if (this.bustTimer > 0.5) hint = '快开走！警察要把你拖下车了'
@@ -445,7 +564,12 @@ export class Game {
     for (const v of this.vehicles) if (v.active && v.driver === 'police') { police.push(v); policeDist = Math.min(policeDist, Math.hypot(v.x - pl.worldX, v.z - pl.worldZ)) }
     const starts = this.missions.active ? [] : this.missions.defs.filter((d) => !d.done).map((d) => d.start)
     const gold = this.missions.missionCar.active && pl.vehicle !== this.missions.missionCar ? { x: this.missions.missionCar.x, z: this.missions.missionCar.z } : null
-    this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, this.missions.targetPoint, starts, police, gold, this.hospital)
+    this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, this.missions.targetPoint, starts, police, gold, this.hospital, this.pois.all)
+    this.phoneTimer += dt
+    if (this.phone.open && this.phoneTimer >= 0.25) {
+      this.phoneTimer = 0
+      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows })
+    }
     const speedKmh = pl.vehicle ? pl.vehicle.speed * 3.6 : null
     const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
     this.hud.update(dt, pl.health, pl.money, this.law.stars, this.law.flash, speedKmh, this.missions.hudText(), dbg)
@@ -535,6 +659,23 @@ export class Game {
         set(s: 'clear' | 'cloudy' | 'storm') { self.weather.set(s) },
         get state() { return self.weather.state }, get gloom() { return self.weather.gloom }, get rain() { return self.weather.rainIntensity },
       },
+      needs: {
+        get hunger() { return self.needs.hunger }, get energy() { return self.needs.energy },
+        set(h: number, e: number) { self.needs.set(h, e) },
+      },
+      pois: {
+        list() { return self.pois.all.map((p) => ({ id: p.id, type: p.type, name: p.name, x: p.x, z: p.z, door: p.door })) },
+        get near() { return self.interactions.near?.id ?? null },
+      },
+      interact(poiId: string) { const p = self.pois.byId(poiId); if (!p) return false; if (self.state === 'intro') self['beginPlay'](); if (self.state === 'panel') self.closePanel(); self.openPanel(p); return self.state === 'panel' },
+      panel: {
+        get open() { return self.panels.open },
+        choose(index: number) { return self.panels.choose(index) },
+        close() { self.closePanel() },
+      },
+      phone: { get open() { return self.phone.open }, toggle() { self.phone.toggle() } },
+      save() { return self.saveGame(false) },
+      load() { return self.loadGame() },
       get dayNight() { const d = self.dayNight; return { sunIntensity: d.sun.intensity, hemiIntensity: d.hemi.intensity, lights: d.lights, gloom: d.gloom, shadows: self.renderer.shadowMap.enabled, sunDir: d.sun.position.clone().sub(d.sun.target.position).normalize().toArray().map((n) => +n.toFixed(2)) } },
     }
   }

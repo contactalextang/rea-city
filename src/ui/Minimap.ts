@@ -1,6 +1,7 @@
 import { CITY_MIN, CITY_MAX } from '../config'
 import type { CityGenerator } from '../world/CityGenerator'
 import type { P2 } from '../world/RoadGraph'
+import { POI_COLOR, type Poi } from '../systems/Poi'
 
 /** 右下角圆形小地图：静态城市底图 + 玩家箭头 + 任务/警车/任务车标记，随朝向旋转 */
 export class Minimap {
@@ -25,7 +26,7 @@ export class Minimap {
     }
   }
 
-  draw(px: number, pz: number, yaw: number, target: P2 | null, starts: P2[], police: P2[], gold: P2 | null, hospital: P2) {
+  draw(px: number, pz: number, yaw: number, target: P2 | null, starts: P2[], police: P2[], gold: P2 | null, hospital: P2, pois: Poi[] = []) {
     const g = this.ctx, S = this.size, R = S / 2
     g.clearRect(0, 0, S, S)
     g.save()
@@ -43,6 +44,7 @@ export class Minimap {
       g.fillStyle = color; g.fill()
       if (ring) { g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke() }
     }
+    for (const p of pois) dot(p, '#' + POI_COLOR[p.type].toString(16).padStart(6, '0'), 3, true)
     for (const s of starts) dot(s, '#ffd33d', 5, true)
     if (gold) dot(gold, '#f5b400', 4)
     if (target) dot(target, '#3ea6ff', 6, true)
@@ -51,6 +53,34 @@ export class Minimap {
     g.restore()
     // 玩家箭头（朝上）
     g.save(); g.translate(R, R)
+    g.beginPath(); g.moveTo(0, -8); g.lineTo(6, 7); g.lineTo(0, 4); g.lineTo(-6, 7); g.closePath()
+    g.fillStyle = '#ffffff'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#000'; g.stroke()
+    g.restore()
+  }
+
+  /** 手机里的大地图：整城不旋转，画 POI 图标 + 名字、警车、玩家箭头 */
+  drawLarge(canvas: HTMLCanvasElement, px: number, pz: number, yaw: number, police: P2[], pois: Poi[]) {
+    const g = canvas.getContext('2d')!
+    const S = canvas.width
+    const span = CITY_MAX - CITY_MIN
+    const k = S / span
+    g.clearRect(0, 0, S, S)
+    g.fillStyle = '#1a1f2e'; g.fillRect(0, 0, S, S)
+    g.drawImage(this.base, 0, 0, S, S)
+    const X = (x: number) => (x - CITY_MIN) * k, Z = (z: number) => (z - CITY_MIN) * k
+    g.font = '10px -apple-system, "PingFang SC", Arial, sans-serif'
+    g.textBaseline = 'middle'
+    for (const p of pois) {
+      const x = X(p.x), z = Z(p.z)
+      g.beginPath(); g.arc(x, z, 4, 0, Math.PI * 2)
+      g.fillStyle = '#' + POI_COLOR[p.type].toString(16).padStart(6, '0'); g.fill()
+      g.lineWidth = 1; g.strokeStyle = '#fff'; g.stroke()
+      g.fillStyle = '#fff'; g.shadowColor = '#000'; g.shadowBlur = 3
+      g.fillText(p.name, x + 6, z)
+      g.shadowBlur = 0
+    }
+    for (const p of police) { g.beginPath(); g.arc(X(p.x), Z(p.z), 3.5, 0, Math.PI * 2); g.fillStyle = '#ff3b3b'; g.fill() }
+    g.save(); g.translate(X(px), Z(pz)); g.rotate(-yaw + Math.PI)
     g.beginPath(); g.moveTo(0, -8); g.lineTo(6, 7); g.lineTo(0, 4); g.lineTo(-6, 7); g.closePath()
     g.fillStyle = '#ffffff'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#000'; g.stroke()
     g.restore()

@@ -30,7 +30,10 @@ export const VEHICLE_PARAMS = {
   civil:   { accel: 9,  brake: 20, maxFwd: 30, maxRev: 8, drag: 0.10, rolling: 1.2, maxSteer: 3.0, grip: 0.80, gripDrift: 0.955 },
   police:  { accel: 11, brake: 22, maxFwd: 34, maxRev: 9, drag: 0.09, rolling: 1.2, maxSteer: 3.0, grip: 0.82, gripDrift: 0.955 },
   mission: { accel: 10, brake: 20, maxFwd: 32, maxRev: 8, drag: 0.10, rolling: 1.2, maxSteer: 3.0, grip: 0.80, gripDrift: 0.955 },
+  taxi:    { accel: 9,  brake: 20, maxFwd: 30, maxRev: 8, drag: 0.10, rolling: 1.2, maxSteer: 3.0, grip: 0.80, gripDrift: 0.955 },
 }
+/** 的士涂装：Comfort 蓝 / CityCab 黄 */
+export const TAXI_COLORS = [0x1f5fbf, 0xf2c516] as const
 export type VehicleKind = keyof typeof VEHICLE_PARAMS
 
 export const CAR_LEN = 4.6

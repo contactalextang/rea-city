@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { MAX_PEDS, MAX_TRAFFIC, MAX_POLICE, SPAWN_MIN, SPAWN_MAX, DESPAWN_DIST, pick, rand } from '../config'
+import { MAX_PEDS, MAX_TRAFFIC, MAX_POLICE, SPAWN_MIN, SPAWN_MAX, DESPAWN_DIST, TAXI_COLORS, pick, rand } from '../config'
 import type { Ctx } from '../core/Context'
 import type { RoadEdge, P2 } from '../world/RoadGraph'
 import { Vehicle } from '../entities/Vehicle'
@@ -16,6 +16,8 @@ const camDir = new THREE.Vector3()
 export class Spawner {
   traffic: Vehicle[] = []
   police: Vehicle[] = []
+  /** 租用的士池（不参与自动回收） */
+  taxis: Vehicle[] = []
   private timer = 0
 
   constructor(ctx: Ctx, private peds: Pedestrians, private trafficAI: TrafficAI, private policeAI: PoliceAI) {
@@ -24,6 +26,9 @@ export class Spawner {
     }
     for (let i = 0; i < MAX_POLICE; i++) {
       const v = new Vehicle('police', 0xf4f4f4); ctx.scene.add(v.group); ctx.vehicles.push(v); this.police.push(v)
+    }
+    for (let i = 0; i < 2; i++) {
+      const v = new Vehicle('taxi', TAXI_COLORS[i]); ctx.scene.add(v.group); ctx.vehicles.push(v); this.taxis.push(v)
     }
   }
 
@@ -105,6 +110,15 @@ export class Spawner {
   /** 确保指定位置附近存在一辆可用的空车（开局/重生用） */
   parkCarNear(ctx: Ctx, x: number, z: number, yaw: number): Vehicle | null {
     const v = this.traffic.find((q) => !q.active); if (!v) return null
+    v.activate(x, z, yaw); v.driver = 'none'; v.controls.handbrake = true
+    return v
+  }
+
+  /** 在指定位置停一辆的士（涂装随机 Comfort 蓝 / CityCab 黄）；池满则复用最旧的一辆 */
+  parkTaxiNear(ctx: Ctx, x: number, z: number, yaw: number): Vehicle | null {
+    const v = this.taxis.find((q) => !q.active) ?? this.taxis.find((q) => q.driver !== 'player') ?? null
+    if (!v) return null
+    v.setColor(pick(TAXI_COLORS))
     v.activate(x, z, yaw); v.driver = 'none'; v.controls.handbrake = true
     return v
   }

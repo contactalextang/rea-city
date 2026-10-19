@@ -10,6 +10,7 @@ export class Hud {
   private clockText = ''
   private lawText = ''
   private gun = true
+  private vignetteOn = false
 
   update(dt: number, health: number, money: number, stars: number, flash: number, speedKmh: number | null,
     mission: { title: string; desc: string; timer: string } | null, debug: string) {
@@ -42,6 +43,13 @@ export class Hud {
     if (text === this.lawText) return
     this.lawText = text
     const el = $('law'); el.textContent = text; el.style.display = text ? '' : 'none'
+  }
+
+  /** 低饥饿/低精力暗角 */
+  vignette(on: boolean) {
+    if (on === this.vignetteOn) return
+    this.vignetteOn = on
+    $('vignette').classList.toggle('show', on)
   }
 
   /** 身份无枪时不显示武器栏与准星 */

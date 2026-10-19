@@ -99,6 +99,20 @@ export class DayNight {
     if (lamps) this.buildLampGlow(lamps, (ud.lampHead as THREE.Vector3 | undefined) ?? new THREE.Vector3(0, 5, 0))
   }
 
+  /** 运行时开关阴影（设置面板用）：切换 shadowMap 后材质需重新编译 */
+  setShadows(on: boolean) {
+    if (on === this.shadowsOn) return
+    this.shadowsOn = on
+    this.renderer.shadowMap.enabled = on
+    this.sun.castShadow = on
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh
+      if (!m.isMesh) return
+      const mats = Array.isArray(m.material) ? m.material : [m.material]
+      for (const mat of mats) mat.needsUpdate = true
+    })
+  }
+
   /** 递归设置阴影标记：不透明 Lambert 网格投影+接收；userData.castShadow=false 可排除（地面等） */
   applyShadowFlags(root: THREE.Object3D) {
     root.traverse((o) => {

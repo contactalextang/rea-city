@@ -8,6 +8,9 @@ import type { Settings } from './Settings'
 import type { Clock } from '../systems/Clock'
 import type { Signals } from '../systems/Signals'
 import type { RoleDef } from '../data/roles'
+import type { PoiRegistry } from '../systems/Poi'
+import type { Needs } from '../systems/Needs'
+import type { Law } from '../systems/Law'
 
 /** 各系统共享的只读上下文（由 Game 构造并填充） */
 export interface Ctx {
@@ -24,6 +27,10 @@ export interface Ctx {
   clock: Clock
   signals: Signals
   role: RoleDef
+  /** 兴趣点注册表（世界实现提供） */
+  pois: PoiRegistry
+  needs: Needs
+  law: Law
 }
 
 export interface GameEvents {
