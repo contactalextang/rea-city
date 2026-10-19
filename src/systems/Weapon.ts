@@ -3,6 +3,8 @@ import type { Ctx } from '../core/Context'
 import type { Vehicle } from '../entities/Vehicle'
 import type { Ped, Pedestrians } from '../entities/Pedestrians'
 import { CAR_CIRCLE_R } from '../config'
+import { rayBody } from '../physics/Collision'
+import type { StaticBody } from '../world/Colliders'
 
 export type ShotHit =
   | { kind: 'ped'; ped: Ped; point: THREE.Vector3 }
@@ -12,6 +14,7 @@ export type ShotHit =
 
 const RANGE = 120
 const o2 = new THREE.Vector2(), d2 = new THREE.Vector2(), f2 = new THREE.Vector2()
+const tmpBodies: StaticBody[] = []
 
 /** 手枪：从相机准星发出的即时射线，命中行人/车辆/建筑；带曳光、枪口焰、击中火花 */
 export class Weapon {
@@ -59,10 +62,11 @@ export class Weapon {
     if (dir.y < -1e-4) best = Math.min(best, -o.y / dir.y)   // 打到地面
     let hit: ShotHit = { kind: 'none', point: new THREE.Vector3() }
 
-    // 建筑/围墙（AABB，视为无限高但不超过 80m）
-    for (const b of ctx.world.boxes) {
-      const t = rayAABB(o, dir, b.minX, b.maxX, b.minZ, b.maxZ)
-      if (t !== null && t > tMin && t < best && o.y + dir.y * t < 80 && o.y + dir.y * t > -0.1) { best = t; hit = { kind: 'world', point: o.clone().addScaledVector(dir, t) } }
+    // 建筑/围墙：用 xz 分量在空间哈希上走格粗筛，再按 AABB/多边形足迹精确求交；
+    // 2D 的 t 与 3D 射线参数一致，命中点高度 o.y + dir.y*t 需落在 [-0.1, body.h) 内
+    for (const b of ctx.world.queryRay(o.x, o.z, dir.x, dir.z, best, tmpBodies)) {
+      const t = rayBody(o.x, o.z, dir.x, dir.z, b)
+      if (t !== null && t > tMin && t < best && o.y + dir.y * t < b.h && o.y + dir.y * t > -0.1) { best = t; hit = { kind: 'world', point: o.clone().addScaledVector(dir, t) } }
     }
     // 车辆：两个圆柱
     const c = { x: 0, z: 0 }
@@ -111,14 +115,4 @@ function rayCircle(o: THREE.Vector3, dir: THREE.Vector3, cx: number, cz: number,
   if (dd > r * r) return null
   const t2 = tca - Math.sqrt(r * r - dd)
   return t2 / L   // 换算回 3D 射线参数
-}
-
-function rayAABB(o: THREE.Vector3, dir: THREE.Vector3, minX: number, maxX: number, minZ: number, maxZ: number): number | null {
-  const ix = 1 / (dir.x || 1e-9), iz = 1 / (dir.z || 1e-9)
-  let t1 = (minX - o.x) * ix, t2 = (maxX - o.x) * ix
-  let tmin = Math.min(t1, t2), tmax = Math.max(t1, t2)
-  t1 = (minZ - o.z) * iz; t2 = (maxZ - o.z) * iz
-  tmin = Math.max(tmin, Math.min(t1, t2)); tmax = Math.min(tmax, Math.max(t1, t2))
-  if (tmax < 0 || tmin > tmax) return null
-  return Math.max(0, tmin)
 }

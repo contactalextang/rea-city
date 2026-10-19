@@ -1,4 +1,4 @@
-import type { AABB } from '../world/Colliders'
+import type { AABB, StaticBody } from '../world/Colliders'
 
 /** 具有 XZ 平面圆形碰撞体的运动物体 */
 export interface Body {
@@ -65,4 +65,108 @@ export function circleCircle(a: Body, ar: number, am: number, b: Body, br: numbe
   a.vx -= (jImp / am) * nx; a.vz -= (jImp / am) * nz
   b.vx += (jImp / bm) * nx; b.vz += (jImp / bm) * nz
   return -rvn
+}
+
+/** 射线法判断点是否在多边形内（poly 为 [x0,z0,x1,z1,...]，闭合、不重复首点） */
+export function pointInPoly(x: number, z: number, poly: Float32Array): boolean {
+  const n = poly.length >> 1
+  let inside = false
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = poly[i * 2], zi = poly[i * 2 + 1], xj = poly[j * 2], zj = poly[j * 2 + 1]
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside
+  }
+  return inside
+}
+
+/**
+ * 圆与任意多边形（可凹）的接触：返回把圆推到多边形外的法线与穿透深度，不相交返回 null。
+ * 圆心在内：法线指向最近边外侧，depth = 到最近边距离 + r；圆心在外：对每条边取最近点，距离 < r 时 depth = r − dist
+ */
+export function circlePoly(cx: number, cz: number, r: number, poly: Float32Array): Contact | null {
+  const n = poly.length >> 1
+  if (n < 3) return null
+  // 找最近边上的最近点
+  let bestD2 = Infinity, qx = 0, qz = 0, bi = 0
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const ax = poly[j * 2], az = poly[j * 2 + 1], bx = poly[i * 2], bz = poly[i * 2 + 1]
+    const ex = bx - ax, ez = bz - az
+    const len2 = ex * ex + ez * ez
+    let t = len2 > 1e-12 ? ((cx - ax) * ex + (cz - az) * ez) / len2 : 0
+    t = t < 0 ? 0 : t > 1 ? 1 : t
+    const px = ax + ex * t, pz = az + ez * t
+    const dx = cx - px, dz = cz - pz
+    const d2 = dx * dx + dz * dz
+    if (d2 < bestD2) { bestD2 = d2; qx = px; qz = pz; bi = i }
+  }
+  const inside = pointInPoly(cx, cz, poly)
+  if (!inside && bestD2 >= r * r) return null
+  const d = Math.sqrt(bestD2)
+  if (d < 1e-6) {
+    // 圆心恰在边上：用该边的垂线作法线，朝多边形外侧
+    const j = bi === 0 ? n - 1 : bi - 1
+    const ex = poly[bi * 2] - poly[j * 2], ez = poly[bi * 2 + 1] - poly[j * 2 + 1]
+    const L = Math.hypot(ex, ez) || 1
+    let nx = -ez / L, nz = ex / L
+    if (pointInPoly(cx + nx * 1e-3, cz + nz * 1e-3, poly)) { nx = -nx; nz = -nz }
+    tmp.nx = nx; tmp.nz = nz; tmp.depth = r
+    return tmp
+  }
+  // 圆心在内：从圆心指向最近点即朝外；圆心在外：从最近点指向圆心即朝外
+  const sx = inside ? qx - cx : cx - qx, sz = inside ? qz - cz : cz - qz
+  tmp.nx = sx / d; tmp.nz = sz / d
+  tmp.depth = inside ? d + r : r - d
+  return tmp
+}
+
+/** 圆与静态体：有多边形足迹走 circlePoly，否则走 circleAABB */
+export function circleBody(cx: number, cz: number, r: number, b: StaticBody): Contact | null {
+  return b.poly ? circlePoly(cx, cz, r, b.poly) : circleAABB(cx, cz, r, b)
+}
+
+/**
+ * 2D 射线 o + d·t 与 AABB 求交，返回最近的 t（原点在盒内返回 0），不相交返回 null。
+ * d 不要求归一化，t 与调用方的参数化一致
+ */
+export function rayAABB(ox: number, oz: number, dx: number, dz: number, b: AABB): number | null {
+  let tmin = -Infinity, tmax = Infinity
+  if (Math.abs(dx) < 1e-12) { if (ox < b.minX || ox > b.maxX) return null }
+  else {
+    const ix = 1 / dx
+    const t1 = (b.minX - ox) * ix, t2 = (b.maxX - ox) * ix
+    tmin = Math.min(t1, t2); tmax = Math.max(t1, t2)
+  }
+  if (Math.abs(dz) < 1e-12) { if (oz < b.minZ || oz > b.maxZ) return null }
+  else {
+    const iz = 1 / dz
+    const t1 = (b.minZ - oz) * iz, t2 = (b.maxZ - oz) * iz
+    tmin = Math.max(tmin, Math.min(t1, t2)); tmax = Math.min(tmax, Math.max(t1, t2))
+  }
+  if (tmax < 0 || tmin > tmax) return null
+  return Math.max(0, tmin)
+}
+
+/** 2D 射线与多边形求交：逐边做线段求交取最小 t（原点在多边形内返回 0），不相交返回 null */
+export function rayPoly(ox: number, oz: number, dx: number, dz: number, poly: Float32Array): number | null {
+  const n = poly.length >> 1
+  if (n < 3) return null
+  if (pointInPoly(ox, oz, poly)) return 0
+  let best: number | null = null
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const ax = poly[j * 2], az = poly[j * 2 + 1]
+    const ex = poly[i * 2] - ax, ez = poly[i * 2 + 1] - az
+    // 解 o + d t = a + e s
+    const den = dx * ez - dz * ex
+    if (Math.abs(den) < 1e-12) continue   // 平行
+    const wx = ax - ox, wz = az - oz
+    const t = (wx * ez - wz * ex) / den
+    const s = (wx * dz - wz * dx) / den
+    if (t < 0 || s < 0 || s > 1) continue
+    if (best === null || t < best) best = t
+  }
+  return best
+}
+
+/** 2D 射线与静态体求交：有多边形足迹走 rayPoly，否则走 rayAABB */
+export function rayBody(ox: number, oz: number, dx: number, dz: number, b: StaticBody): number | null {
+  return b.poly ? rayPoly(ox, oz, dx, dz, b.poly) : rayAABB(ox, oz, dx, dz, b)
 }
