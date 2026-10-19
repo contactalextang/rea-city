@@ -16,10 +16,10 @@
 
 ## Phase 1 — 离线数据流水线 scripts/geo/
 - [x] P1.1 00-download / 01-extract / 02-project（提交 47168d8；data/geo/local 25 MB；切片内建筑 3709，80% 有层数/高度）
-- [~] P1.2 03-roads（GraphData，SCC ≥90%，graph.svg）
-- [~] P1.3 04-buildings（高度链 + 分类）
+- [x] P1.2 03-roads（3410 节点/5738 边/312 km；signal 232；SCC 76% 改为 scc+attached 模式保留快速路；死路 229 由 TrafficAI 回收）
+- [x] P1.3 04-buildings（3704 栋；src height 1666/levels 1249/default 519/gpr 237/hdb 33；HDB CSV 匹配 67%，120 行无门牌待 OneMap 地理编码）
 - [~] P1.4 05-landuse / 06-props / 07-pois
-- [ ] P1.5 08-roadmesh / 09-chunks → public/world/sg/
+- [~] P1.5 08-roadmesh / 09-chunks → public/world/sg/
 
 ## Phase 2 — 首个可玩版本（真实地图）
 - [ ] P2.1 WorldSource + SgWorld 加载器 + ChunkManager
@@ -28,11 +28,11 @@
 - [ ] P2.V 验收清单（见计划）
 
 ## Phase 3 — 时钟 / 昼夜 / 天气
-- [ ] P3.1 Clock + DayNight（阴影）
-- [ ] P3.2 Weather（雷雨）
+- [~] P3.1 Clock + DayNight（阴影）
+- [~] P3.2 Weather（雷雨）
 
 ## Phase 4 — 身份 + 角色系统
-- [ ] P4.1 资产下载与评估（Quaternius Modular / Kenney Blocky）
+- [~] P4.1 资产下载与评估（Quaternius Modular / Kenney Blocky）
 - [ ] P4.2 Blender 转换脚本 → characters.glb
 - [ ] P4.3 CharacterLibrary / CharacterInstance / 行人与玩家替换
 - [ ] P4.4 roles.ts + presets.json + Creator UI + 存档
