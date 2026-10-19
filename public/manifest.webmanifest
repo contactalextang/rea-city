@@ -1,0 +1,14 @@
+{
+  "name": "REA City",
+  "short_name": "REA City",
+  "description": "程序生成的开放城市：偷车、飙车、躲警察、做任务",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

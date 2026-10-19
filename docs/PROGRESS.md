@@ -1,0 +1,49 @@
+# REA City → 新加坡现实世界生活模拟 · 任务看板
+
+> 跨会话接力用。主控每完成一项就更新；新会话先读本文件，再读计划 `~/.claude/plans/agile-booping-parrot.md`，再 `git log`。
+> 状态：`[ ]` 未开始 · `[~]` 进行中 · `[x]` 完成并验收
+
+## 执行约定
+- 主控（Claude 主会话）拆任务、写简报、验收、提交；代码由子代理写。
+- 子代理不 commit；文件所有权按任务划分，不碰别人的文件。
+- 每项验收：`npm run check` + 相关 Playwright/脚本检查；通过后主控提交一次。
+
+## Phase 0 — 基建 + 路网通用化
+- [x] P0.0 git init、.gitignore（data/）、本看板、首次提交
+- [ ] P0.A RoadGraph 数据驱动 + GridGraph + Pathfinder + TrafficAI/PoliceAI/Spawner 适配 + DRIVE_SIDE + Settings.ts + Player 右侧下车
+- [ ] P0.B Colliders 多边形体 + circlePoly + addChunk/removeChunk + queryRay + Weapon 改用 queryRay
+- [ ] P0.V 验收：`?world=grid` 下旧玩法无回归（交通不卡死、警车能追上、射击命中楼房）
+
+## Phase 1 — 离线数据流水线 scripts/geo/
+- [ ] P1.1 00-download / 01-extract / 02-project（原始数据到 data/geo/raw，提取到 data/geo/）
+- [ ] P1.2 03-roads（GraphData，SCC ≥90%，graph.svg）
+- [ ] P1.3 04-buildings（高度链 + 分类）
+- [ ] P1.4 05-landuse / 06-props / 07-pois
+- [ ] P1.5 08-roadmesh / 09-chunks → public/world/sg/
+
+## Phase 2 — 首个可玩版本（真实地图）
+- [ ] P2.1 WorldSource + SgWorld 加载器 + ChunkManager
+- [ ] P2.2 RoadMarkings + 建筑分类着色 + 天际线 + 小地图 PNG
+- [ ] P2.3 Game 接入、出生点、__game 新钩子
+- [ ] P2.V 验收清单（见计划）
+
+## Phase 3 — 时钟 / 昼夜 / 天气
+- [ ] P3.1 Clock + DayNight（阴影）
+- [ ] P3.2 Weather（雷雨）
+
+## Phase 4 — 身份 + 角色系统
+- [ ] P4.1 资产下载与评估（Quaternius Modular / Kenney Blocky）
+- [ ] P4.2 Blender 转换脚本 → characters.glb
+- [ ] P4.3 CharacterLibrary / CharacterInstance / 行人与玩家替换
+- [ ] P4.4 roles.ts + presets.json + Creator UI + 存档
+
+## Phase 5 — 生活模拟
+- [ ] P5.1 Needs + Poi/Interactions（小贩中心、MRT、家、办公楼、工地、的士站）
+- [ ] P5.2 Signals + Law（合并 Wanted）
+- [ ] P5.3 Jobs（四身份工作线）+ Quests + 手机 HUD + 署名
+
+## Phase 6 — 打磨
+- [ ] 步行道/天桥、桥梁抬高、地标、招牌贴图、音效、性能、README、启动器
+
+## 日志
+- 2026-10-19 计划批准；git init；看板建立。

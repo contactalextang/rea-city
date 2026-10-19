@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>REA City</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0b1020" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b1020; font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif; }
+    #app { position: fixed; inset: 0; }
+    canvas.game { display: block; width: 100%; height: 100%; }
+    #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8); user-select: none; }
+    .hud-tl { position: absolute; left: 16px; top: 14px; font-size: 14px; line-height: 1.5; }
+    .hud-tr { position: absolute; right: 16px; top: 14px; text-align: right; }
+    .money { font-size: 24px; font-weight: 700; color: #7ee787; letter-spacing: 1px; }
+    .stars { font-size: 22px; letter-spacing: 3px; margin-top: 2px; }
+    .stars .on { color: #ffd33d; }
+    .stars .off { color: rgba(255,255,255,.25); }
+    .health { width: 180px; height: 10px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.5); border-radius: 5px; overflow: hidden; margin-top: 6px; }
+    .health > div { height: 100%; width: 100%; background: #ff5f5f; transition: width .15s; }
+    .speed { margin-top: 8px; font-size: 13px; opacity: .85; }
+    .hud-bc { position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%); text-align: center; font-size: 16px; }
+    .mission { background: rgba(0,0,0,.45); padding: 8px 16px; border-radius: 8px; display: inline-block; min-width: 260px; }
+    .mission .title { font-weight: 700; color: #ffd33d; }
+    .mission .timer { font-size: 20px; font-weight: 700; margin-top: 2px; }
+    .hint { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-size: 18px; font-weight: 600; padding: 6px 14px; background: rgba(0,0,0,.5); border-radius: 6px; opacity: 0; transition: opacity .2s; }
+    .hint.show { opacity: 1; }
+    #minimap { position: absolute; right: 16px; bottom: 16px; width: 200px; height: 200px; border-radius: 50%; border: 3px solid rgba(255,255,255,.7); background: #1a1f2e; box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+    .toast { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 28px; font-weight: 800; color: #ffd33d; opacity: 0; transition: opacity .3s; text-align: center; }
+    .toast.show { opacity: 1; }
+    .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: rgba(5,8,20,.82); color: #fff; pointer-events: auto; transition: opacity .3s; }
+    .overlay.hidden { opacity: 0; pointer-events: none; }
+    .overlay h1 { font-size: 56px; margin: 0 0 8px; letter-spacing: 4px; }
+    .overlay h1.red { color: #ff5f5f; } .overlay h1.gold { color: #ffd33d; }
+    .overlay p { margin: 4px 0; font-size: 16px; opacity: .9; }
+    .overlay .keys { margin-top: 18px; display: grid; grid-template-columns: auto auto; gap: 6px 18px; font-size: 15px; text-align: left; background: rgba(255,255,255,.06); padding: 16px 24px; border-radius: 10px; }
+    .overlay kbd { display: inline-block; min-width: 18px; text-align: center; padding: 2px 7px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; background: rgba(0,0,0,.4); font-family: inherit; font-size: 13px; }
+    .overlay .go { margin-top: 24px; font-size: 18px; color: #7ee787; animation: blink 1.2s infinite; }
+    @keyframes blink { 50% { opacity: .35; } }
+    .crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; display: none; }
+    .crosshair::before, .crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,.9); box-shadow: 0 0 2px #000; }
+    .crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+    .crosshair::after { top: 8px; left: 0; width: 18px; height: 2px; }
+    .crosshair.show { display: block; }
+    .weapon { position: absolute; left: 16px; bottom: 34px; font-size: 13px; opacity: .85; display: none; }
+    .weapon.show { display: block; }
+    .debug { position: absolute; left: 16px; bottom: 14px; font-size: 11px; opacity: .55; font-family: Menlo, monospace; white-space: pre; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="hud">
+    <div class="hud-tl">
+      <div class="health"><div id="health"></div></div>
+      <div class="speed" id="speed"></div>
+    </div>
+    <div class="hud-tr">
+      <div class="money" id="money">$0</div>
+      <div class="stars" id="stars"></div>
+    </div>
+    <div class="hud-bc"><div class="mission" id="mission" style="display:none"><div class="title" id="mission-title"></div><div id="mission-desc"></div><div class="timer" id="mission-timer"></div></div></div>
+    <div class="hint" id="hint"></div>
+    <div class="toast" id="toast"></div>
+    <canvas id="minimap" width="200" height="200"></canvas>
+    <div class="debug" id="debug"></div>
+    <div class="crosshair" id="crosshair"></div>
+    <div class="weapon" id="weapon">手枪 · 左键射击</div>
+  </div>
+  <div class="overlay" id="overlay">
+    <h1 id="ov-title">REA CITY</h1>
+    <p id="ov-sub">程序生成的开放城市 · 偷车、飙车、躲警察、做任务</p>
+    <div class="keys" id="ov-keys">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>移动 / 驾驶</span>
+      <span><kbd>Shift</kbd></span><span>奔跑</span>
+      <span><kbd>Space</kbd></span><span>跳跃 / 手刹漂移</span>
+      <span><kbd>F</kbd></span><span>上车 / 下车</span>
+      <span><kbd>M</kbd></span><span>任务提示</span>
+      <span><kbd>Enter</kbd></span><span>切换全屏</span>
+      <span><kbd>鼠标</kbd></span><span>转动视角（点击画面锁定，Esc 解锁）</span>
+    </div>
+    <div class="go" id="ov-go">按任意键或点击开始</div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
