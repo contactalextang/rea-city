@@ -22,8 +22,8 @@
 - [x] P1.5 08-roadmesh / 09-chunks → public/world/sg（209 块 7.4 MB + png；ChunkFormat 共用；6/6 单测；提交 09e13cc）
 
 ## Phase 2 — 首个可玩版本（真实地图）
-- [~] P2.1 WorldSource + SgWorld 加载器 + ChunkManager
-- [ ] P2.2 RoadMarkings + 建筑分类着色 + 天际线 + 小地图 PNG
+- [x] P2.1 SgWorld + ChunkManager + 查看页（牛车水首屏 0.8 s，draw ~60，fps 120；接入提示：灯柱光晕需在块变化后重建、雾 far 放远看天际线、MBS 是单盒子待地标精做）
+- [x] P2.2 RoadMarkings + 建筑分类着色 + 天际线 + 小地图 PNG（并入 P2.1）
 - [ ] P2.3 Game 接入、出生点、__game 新钩子
 - [ ] P2.V 验收清单（见计划）
 
@@ -34,7 +34,7 @@
 ## Phase 4 — 身份 + 角色系统
 - [x] P4.1 资产评估：选定 Quaternius Ultimate Modular Men/Women（CC0，62 骨男女同序，纯色材质，24 clip 含 Aim/Shoot，无 Jump/Sit）；详见 data/assets-eval/REPORT.md（gitignored）
 - [x] P4.2 scripts/char/build.ts → public/assets/characters（glb 3.75 MB，46 部件，24 clip，14 预设；女包重蒙皮到男包绑定姿态；无 Jump/Sit/Drive 动画；three 会去掉节点名中的 : 用 userData.part 查找）
-- [ ] P4.3 CharacterLibrary / CharacterInstance / 行人与玩家替换
+- [~] P4.3 CharacterLibrary / CharacterInstance / 行人与玩家替换
 - [ ] P4.4 roles.ts + presets.json + Creator UI + 存档
 
 ## Phase 5 — 生活模拟
