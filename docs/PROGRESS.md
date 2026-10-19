@@ -38,7 +38,7 @@
 - [ ] P4.4 roles.ts + presets.json + Creator UI + 存档
 
 ## Phase 5 — 生活模拟
-- [~] P5.1 Needs + Poi/Interactions（小贩中心、MRT、家、办公楼、工地、的士站）
+- [x] P5.1 Needs + Poi/Interactions/Panels/Phone/Save（方格城合成 POI 验证通过；真实世界只需 pois.load；遗留：的士与车辆不进存档）
 - [x] P5.2 Signals + Law（Wanted 已删；roles.ts 四身份；?role= 切换；吊销仅提示不阻止）
 - [ ] P5.3 Jobs（四身份工作线）+ Quests + 手机 HUD + 署名
 
