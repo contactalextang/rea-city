@@ -19,10 +19,10 @@
 - [x] P1.2 03-roads（3410 节点/5738 边/312 km；signal 232；SCC 76% 改为 scc+attached 模式保留快速路；死路 229 由 TrafficAI 回收）
 - [x] P1.3 04-buildings（3704 栋；src height 1666/levels 1249/default 519/gpr 237/hdb 33；HDB CSV 匹配 67%，120 行无门牌待 OneMap 地理编码）
 - [x] P1.4 05-landuse / 06-props / 07-pois（ground.png 2 m/px；道具 13810；POI 369：home×4、office×5、hawker 55、mrt 24、police、hospital、landmark 8）
-- [~] P1.5 08-roadmesh / 09-chunks → public/world/sg/
+- [x] P1.5 08-roadmesh / 09-chunks → public/world/sg（209 块 7.4 MB + png；ChunkFormat 共用；6/6 单测；提交 09e13cc）
 
 ## Phase 2 — 首个可玩版本（真实地图）
-- [ ] P2.1 WorldSource + SgWorld 加载器 + ChunkManager
+- [~] P2.1 WorldSource + SgWorld 加载器 + ChunkManager
 - [ ] P2.2 RoadMarkings + 建筑分类着色 + 天际线 + 小地图 PNG
 - [ ] P2.3 Game 接入、出生点、__game 新钩子
 - [ ] P2.V 验收清单（见计划）
@@ -38,7 +38,7 @@
 - [ ] P4.4 roles.ts + presets.json + Creator UI + 存档
 
 ## Phase 5 — 生活模拟
-- [ ] P5.1 Needs + Poi/Interactions（小贩中心、MRT、家、办公楼、工地、的士站）
+- [~] P5.1 Needs + Poi/Interactions（小贩中心、MRT、家、办公楼、工地、的士站）
 - [x] P5.2 Signals + Law（Wanted 已删；roles.ts 四身份；?role= 切换；吊销仅提示不阻止）
 - [ ] P5.3 Jobs（四身份工作线）+ Quests + 手机 HUD + 署名
 
