@@ -4,6 +4,7 @@ import type { StaticWorld } from '../world/Colliders'
 import type { Vehicle } from '../entities/Vehicle'
 import type { Player } from '../entities/Player'
 import type { ChaseCamera } from './Camera'
+import type { Settings } from './Settings'
 
 /** 各系统共享的只读上下文（由 Game 构造并填充） */
 export interface Ctx {
@@ -15,6 +16,7 @@ export interface Ctx {
   cam: ChaseCamera
   time: number
   wantedStars: number
+  settings: Settings
 }
 
 export interface GameEvents {

@@ -1,9 +1,11 @@
 import * as THREE from 'three'
-import { FIXED_DT, PITCH, HALF, SIDEWALK_OFFSET } from '../config'
+import { FIXED_DT, PITCH, HALF, DRIVE_SIDE } from '../config'
 import { Input } from './Input'
 import { ChaseCamera } from './Camera'
 import { EventBus, type Ctx } from './Context'
 import { RoadGraph, type P2 } from '../world/RoadGraph'
+import { buildGridGraphData } from '../world/GridGraph'
+import { loadSettings, type Settings } from './Settings'
 import { StaticWorld, type AABB } from '../world/Colliders'
 import { CityGenerator } from '../world/CityGenerator'
 import { circleAABB, circleCircle, pushOut } from '../physics/Collision'
@@ -32,7 +34,8 @@ export class Game {
   cam: ChaseCamera
   input = new Input()
   events = new EventBus()
-  graph = new RoadGraph()
+  settings: Settings = loadSettings()
+  graph: RoadGraph
   world = new StaticWorld()
   city: CityGenerator
   player = new Player()
@@ -76,6 +79,9 @@ export class Game {
     this.scene.background = new THREE.Color(sky)
     this.scene.fog = new THREE.Fog(sky, 150, 380)
     this.cam = new ChaseCamera(window.innerWidth / window.innerHeight)
+    // 路网：sg 数据尚未就绪时回退方格城
+    if (this.settings.world === 'sg') console.warn('[REA] 新加坡路网数据尚未就绪，回退到 grid')
+    this.graph = new RoadGraph(buildGridGraphData())
     this.scene.add(new THREE.HemisphereLight(0xdfefff, 0x6b6b60, 1.1))
     const sun = new THREE.DirectionalLight(0xfff2dd, 1.6); sun.position.set(120, 200, 80)
     this.scene.add(sun)
@@ -88,19 +94,20 @@ export class Game {
     this.peds = new Pedestrians(this.scene, this.events)
     this.trafficAI = new TrafficAI(this.peds)
     this.policeAI = new PoliceAI(this.peds)
-    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, wantedStars: 0 }
+    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, wantedStars: 0, settings: this.settings }
     this.spawner = new Spawner(this.ctx, this.peds, this.trafficAI, this.policeAI)
     this.missions = new Missions(this.ctx, this.events)
     this.missions.setToast((s) => this.hud.toast(s))
     this.weapon = new Weapon(this.scene)
 
-    // 医院（重生点）：路口 (1,1) 东侧人行道
+    // 医院（重生点）：路口 (1,1) 东向路段行驶侧的人行道
     const n = this.graph.node(1, 1)
-    this.hospital = { x: n.x + 14, z: n.z + SIDEWALK_OFFSET }
-    this.player.place(this.hospital.x, this.hospital.z, Math.PI / 2)
     const e = n.out.find((o) => o.to === this.graph.node(2, 1))!
+    this.hospital = this.graph.sidewalkPoint(e, 14, { x: 0, z: 0 })
+    this.player.place(this.hospital.x, this.hospital.z, Math.PI / 2)
     const park = this.graph.lanePoint(e, 22, { x: 0, z: 0 })
-    this.spawner.parkCarNear(this.ctx, park.x, park.z, Math.atan2(e.dx, e.dz))
+    const dir = this.graph.dirAt(e, 22, { x: 0, z: 0 })
+    this.spawner.parkCarNear(this.ctx, park.x, park.z, Math.atan2(dir.x, dir.z))
 
     this.wireEvents()
     window.addEventListener('resize', () => this.fitViewport())
@@ -257,7 +264,7 @@ export class Game {
   }
 
   private respawn() {
-    if (this.player.vehicle) this.player.exit()
+    if (this.player.vehicle) this.player.exit(this.world)
     this.player.health = 100
     this.player.money = Math.floor(this.player.money * 0.9)
     this.player.place(this.hospital.x, this.hospital.z, Math.PI / 2)
@@ -291,7 +298,7 @@ export class Game {
 
   private toggleVehicle() {
     const pl = this.player
-    if (pl.vehicle) { pl.exit(); return }
+    if (pl.vehicle) { pl.exit(this.world); return }
     const v = pl.findNearbyVehicle(this.vehicles)
     if (!v) return
     const hadDriver = v.driver === 'traffic'
@@ -454,7 +461,9 @@ export class Game {
       teleport(x: number, z: number) { if (self.player.vehicle) { self.player.vehicle.x = x; self.player.vehicle.z = z } else { self.player.x = x; self.player.z = z } },
       addCrime(n: number) { self.wanted.addCrime(n, self.time) },
       startPlay() { if (self.state === 'intro') self['beginPlay']() },
-      get grid() { return { PITCH, HALF } },
+      get grid() { return { PITCH, HALF, DRIVE_SIDE } },
+      get graphStats() { return self.graph.stats() },
+      get settings() { return self.settings },
     }
   }
 }

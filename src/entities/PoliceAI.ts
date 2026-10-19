@@ -2,7 +2,7 @@ import { clamp } from '../config'
 import type { RoadEdge, P2 } from '../world/RoadGraph'
 import type { Ctx } from '../core/Context'
 import type { Vehicle } from './Vehicle'
-import { projectT, steerTowards, throttleFor, obstacleAhead } from './TrafficAI'
+import { steerTowards, throttleFor, obstacleAhead } from './TrafficAI'
 import type { Pedestrians } from './Pedestrians'
 
 export interface PoliceState {
@@ -13,6 +13,8 @@ export interface PoliceState {
   stuck: number
 }
 const tmp: P2 = { x: 0, z: 0 }
+const dirA: P2 = { x: 0, z: 0 }
+const dirB: P2 = { x: 0, z: 0 }
 
 /** 警车：沿路网向玩家所在路口寻路，接近后直线追撞；通缉清零后离开 */
 export class PoliceAI {
@@ -39,7 +41,7 @@ export class PoliceAI {
         if (s.leaveTimer > 6 && dist > 90) { v.deactivate(); continue }
       } else {
         // 与玩家同一条路（任一方向）且 120m 内，或 40m 内 → 直接追撞
-        const sameRoad = s.edge === playerEdge || s.edge === playerEdge.reverse
+        const sameRoad = s.edge === playerEdge || (playerEdge.reverse !== null && s.edge === playerEdge.reverse)
         const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw)
         const behind = ((px - v.x) * fx + (pz - v.z) * fz) < 0
         s.mode = dist < 40 || (sameRoad && dist < 120) || (behind && dist < 70) ? 'ram' : 'path'
@@ -66,28 +68,35 @@ export class PoliceAI {
         v.controls.throttle = throttleFor(v, targetSpeed)
         if (!pl.inVehicle && dist < 7) v.controls.throttle = clamp(v.controls.throttle, -1, 0.3)
       } else {
-        // 沿路网朝玩家所在路口
-        let t = projectT(v, s.edge)
-        ctx.graph.lanePoint(s.edge, clamp(t, 0, s.edge.length), tmp)
+        // 沿路网（Dijkstra 最短路）朝玩家所在路口
+        const g = ctx.graph
+        let t = g.projectT(s.edge, v.x, v.z)
+        g.lanePoint(s.edge, clamp(t, 0, s.edge.length), tmp)
         if (Math.hypot(tmp.x - v.x, tmp.z - v.z) > 6) {
-          const n = ctx.graph.nearestLane(v.x, v.z, Math.sin(v.yaw), Math.cos(v.yaw))
+          const n = g.nearestLane(v.x, v.z, Math.sin(v.yaw), Math.cos(v.yaw))
           s.edge = n.edge; s.nextEdge = null; t = n.t
         }
-        const L = s.edge.length
-        if (t >= L - 0.3) { s.edge = s.nextEdge ?? ctx.graph.nextTowards(s.edge, playerNode); s.nextEdge = null; t = projectT(v, s.edge) }
+        let L = s.edge.length
+        if (t >= L - 0.3) {
+          const nx = s.nextEdge ?? g.nextTowards(s.edge, playerNode)
+          if (!nx) { v.deactivate(); continue }   // 孤立死路：撤回
+          s.edge = nx; s.nextEdge = null; t = g.projectT(s.edge, v.x, v.z); L = s.edge.length
+        }
         if (!s.nextEdge) {
-          if (s.mode === 'leave') s.nextEdge = ctx.graph.randomNext(s.edge)
+          if (s.mode === 'leave') s.nextEdge = g.randomNext(s.edge)
           else {
             // 若下一条边就是玩家所在的路，优先选它
-            const direct = ctx.graph.nextEdges(s.edge).find((o) => o === playerEdge || o === playerEdge.reverse)
-            s.nextEdge = direct ?? ctx.graph.nextTowards(s.edge, playerNode)
+            const direct = g.nextEdges(s.edge).find((o) => o === playerEdge || (playerEdge.reverse !== null && o === playerEdge.reverse))
+            s.nextEdge = direct ?? g.nextTowards(s.edge, playerNode)
           }
+          if (!s.nextEdge) { v.deactivate(); continue }
         }
         const look = t + 9
-        if (look <= L) ctx.graph.lanePoint(s.edge, look, tmp)
-        else ctx.graph.lanePoint(s.nextEdge, look - L, tmp)
+        if (look <= L) g.lanePoint(s.edge, look, tmp)
+        else g.lanePoint(s.nextEdge, look - L, tmp)
         v.controls.steer = steerTowards(v, tmp.x, tmp.z, 2.4)
-        const turning = s.nextEdge.dx !== s.edge.dx || s.nextEdge.dz !== s.edge.dz
+        g.dirAt(s.edge, L, dirA); g.dirAt(s.nextEdge, 0, dirB)
+        const turning = dirA.x * dirB.x + dirA.z * dirB.z < 0.999
         targetSpeed = s.mode === 'leave' ? 12 : 24
         if (turning && L - t < 14) targetSpeed = Math.min(targetSpeed, 9)
         const obs = obstacleAhead(v, ctx, this.peds, 14, 2.4)

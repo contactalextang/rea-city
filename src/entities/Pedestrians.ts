@@ -17,10 +17,17 @@ export interface Ped {
 
 const SHIRTS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6, 0xecf0f1, 0x34495e, 0xe67e22, 0x1abc9c, 0xff8fab]
 const tmpP: P2 = { x: 0, z: 0 }
+const tmpDir: P2 = { x: 0, z: 0 }
 const tmpBoxes: AABB[] = []
 const circ = { x: 0, z: 0 }
 const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(1, 1, 1)
 const AX = new THREE.Vector3(1, 0, 0)
+
+/** 行人继续前进的下一条人行道：避开快速路；孤立死路返回 null */
+function nextWalkEdge(ctx: Ctx, e: RoadEdge): RoadEdge | null {
+  const opts = ctx.graph.nextEdges(e).filter((o) => o.kind !== 'expressway')
+  return opts.length ? pick(opts) : ctx.graph.randomNext(e)
+}
 
 /** 行人群：InstancedMesh 渲染（头/身/腿三批），沿人行道巡走，受惊逃跑，被撞倒地 */
 export class Pedestrians {
@@ -51,7 +58,8 @@ export class Pedestrians {
     const p = this.peds.find((q) => !q.active); if (!p) return null
     ctx.graph.sidewalkPoint(edge, t, tmpP)
     this.init(p, tmpP.x, tmpP.z, 'walk')
-    p.edge = edge; p.t = t; p.yaw = Math.atan2(edge.dx, edge.dz)
+    ctx.graph.dirAt(edge, t, tmpDir)
+    p.edge = edge; p.t = t; p.yaw = Math.atan2(tmpDir.x, tmpDir.z)
     return p
   }
 
@@ -101,7 +109,8 @@ export class Pedestrians {
         let dx = tmpP.x - p.x, dz = tmpP.z - p.z, d = Math.hypot(dx, dz)
         if (d < 0.8) {
           p.t += p.speed * dt
-          if (p.t >= p.edge.length) { p.t -= p.edge.length; p.edge = ctx.graph.randomNext(p.edge) }
+          if (p.t >= p.edge.length) { p.t -= p.edge.length; p.edge = nextWalkEdge(ctx, p.edge) }
+          if (!p.edge) continue   // 死路：下一帧重新就近选边
           ctx.graph.sidewalkPoint(p.edge, p.t, tmpP)
           dx = tmpP.x - p.x; dz = tmpP.z - p.z; d = Math.hypot(dx, dz) || 0.001
         }

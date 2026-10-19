@@ -1,10 +1,8 @@
-import { clamp, wrapAngle, dampAngle, LANE_OFFSET, ROAD } from '../config'
+import { clamp, wrapAngle, dampAngle } from '../config'
 import type { RoadEdge, RoadNode, P2 } from '../world/RoadGraph'
 import type { Ctx } from '../core/Context'
 import type { Vehicle } from './Vehicle'
 import type { Pedestrians } from './Pedestrians'
-
-const JUNC = ROAD / 2          // 路口半径：边的直线段为 [JUNC, L-JUNC]
 
 interface Turn { p0: P2; p1: P2; p2: P2; len: number }
 
@@ -22,12 +20,8 @@ export interface TrafficState {
 }
 const tmp: P2 = { x: 0, z: 0 }
 const tmp2: P2 = { x: 0, z: 0 }
-
-/** 把车辆位置投影到边的车道线上得到沿边距离 t */
-export function projectT(v: { x: number; z: number }, e: RoadEdge) {
-  const px = v.x - e.from.x - e.rx * LANE_OFFSET, pz = v.z - e.from.z - e.rz * LANE_OFFSET
-  return px * e.dx + pz * e.dz
-}
+const dirA: P2 = { x: 0, z: 0 }
+const dirB: P2 = { x: 0, z: 0 }
 
 /** 朝目标点转向：返回 steer ∈ [-1,1]（正 = 右转） */
 export function steerTowards(v: Vehicle, tx: number, tz: number, gain = 2.2) {
@@ -77,22 +71,34 @@ export function releaseToken(v: Vehicle) {
   if (s) s.token = null
 }
 
-/** 两条车道线（A 的出口方向、B 的入口方向）的交点作为贝塞尔控制点；平行则取中点 */
+/** 两条边在路口处是否改变方向（用于判断是否需要减速过弯） */
+function isTurning(g: Ctx['graph'], a: RoadEdge, b: RoadEdge) {
+  g.dirAt(a, a.length, dirA); g.dirAt(b, 0, dirB)
+  return dirA.x * dirB.x + dirA.z * dirB.z < 0.999
+}
+
+/**
+ * 路口转弯曲线：p0 = A 直线段末端，p2 = B 直线段起点，控制点 p1 取两方向射线交点；
+ * 交点不存在 / 在反方向 / 过远（> 3·jr）则退化为中点
+ */
 function makeTurn(g: Ctx['graph'], a: RoadEdge, b: RoadEdge): Turn {
-  const p0 = g.lanePoint(a, a.length - JUNC, { x: 0, z: 0 })
-  const p2 = g.lanePoint(b, JUNC, { x: 0, z: 0 })
-  const cross = a.dx * b.dz - a.dz * b.dx
-  let p1: P2
-  if (Math.abs(cross) < 1e-3) p1 = { x: (p0.x + p2.x) / 2, z: (p0.z + p2.z) / 2 }
-  else {
-    // p0 + a.dir*s = p2 - b.dir*u  →  解 s
+  const jr = a.to.jr
+  const p0 = g.lanePoint(a, a.length - jr, { x: 0, z: 0 })
+  const p2 = g.lanePoint(b, b.from.jr, { x: 0, z: 0 })
+  g.dirAt(a, a.length, dirA); g.dirAt(b, 0, dirB)
+  const cross = dirA.x * dirB.z - dirA.z * dirB.x
+  let p1: P2 | null = null
+  if (Math.abs(cross) > 1e-3) {
+    // p0 + dirA*s = p2 - dirB*u  →  解 s、u
     const rx = p2.x - p0.x, rz = p2.z - p0.z
-    const s = (rx * b.dz - rz * b.dx) / cross
-    p1 = { x: p0.x + a.dx * s, z: p0.z + a.dz * s }
+    const s = (rx * dirB.z - rz * dirB.x) / cross
+    const u = (rx * dirA.z - rz * dirA.x) / cross
+    if (s > 0 && u > 0 && s < 3 * jr && u < 3 * jr) p1 = { x: p0.x + dirA.x * s, z: p0.z + dirA.z * s }
   }
+  if (!p1) p1 = { x: (p0.x + p2.x) / 2, z: (p0.z + p2.z) / 2 }
   let len = 0, lx = p0.x, lz = p0.z
   for (let i = 1; i <= 8; i++) { bez(p0, p1, p2, i / 8, tmp); len += Math.hypot(tmp.x - lx, tmp.z - lz); lx = tmp.x; lz = tmp.z }
-  return { p0, p1, p2, len }
+  return { p0, p1, p2, len: Math.max(len, 0.5) }
 }
 function bez(p0: P2, p1: P2, p2: P2, u: number, out: P2) {
   const a = (1 - u) * (1 - u), b = 2 * (1 - u) * u, c = u * u
@@ -102,23 +108,29 @@ function bez(p0: P2, p1: P2, p2: P2, u: number, out: P2) {
 }
 
 /**
- * 交通 NPC：运动学沿车道直线 + 路口贝塞尔弧线行驶，路口令牌放行，前方避让；
+ * 交通 NPC：运动学沿车道折线 + 路口贝塞尔弧线行驶，路口令牌放行，前方避让；
  * 被撞后进入物理模式滑行，再用物理转向归队。
  */
 export class TrafficAI {
   constructor(private peds: Pedestrians) {}
 
-  start(v: Vehicle, edge: RoadEdge, t: number, ctx: Ctx) {
+  /** 开始沿 edge 行驶；该边无后继（孤立死路）则返回 false */
+  start(v: Vehicle, edge: RoadEdge, t: number, ctx: Ctx): boolean {
+    const next = ctx.graph.randomNext(edge)
+    if (!next) return false
     v.driver = 'traffic'
     v.kinematic = true
-    const segT = clamp(t, JUNC, edge.length - JUNC)
+    const segT = clamp(t, edge.from.jr, edge.length - edge.to.jr)
+    const cruise = Math.min(edge.speedLimit / 3.6 * 0.9, 10 + Math.random() * 3)
     v.ai = {
-      mode: 'kin', edge, nextEdge: ctx.graph.randomNext(edge), seg: 'edge', segT, turn: null,
-      v: 8, token: null, wait: 0, forceGo: 0, physTimer: 0, cruise: 10 + Math.random() * 3, dbg: '',
+      mode: 'kin', edge, nextEdge: next, seg: 'edge', segT, turn: null,
+      v: 8, token: null, wait: 0, forceGo: 0, physTimer: 0, cruise, dbg: '',
     } satisfies TrafficState
     ctx.graph.lanePoint(edge, segT, tmp)
-    v.x = tmp.x; v.z = tmp.z; v.yaw = Math.atan2(edge.dx, edge.dz)
-    v.vx = edge.dx * 8; v.vz = edge.dz * 8
+    ctx.graph.dirAt(edge, segT, dirA)
+    v.x = tmp.x; v.z = tmp.z; v.yaw = Math.atan2(dirA.x, dirA.z)
+    v.vx = dirA.x * 8; v.vz = dirA.z * 8
+    return true
   }
 
   /** 被明显撞击时由 Game 调用：切换为物理滑行 */
@@ -140,35 +152,48 @@ export class TrafficAI {
     }
   }
 
+  /** 回收：释放令牌并停用（死路 / 等待过久） */
+  private recycle(v: Vehicle) { releaseToken(v); v.deactivate() }
+
+  /** 重新定位到最近车道；无后继边则回收，返回 false */
+  private relocate(v: Vehicle, s: TrafficState, ctx: Ctx): boolean {
+    const n = ctx.graph.nearestLane(v.x, v.z, Math.sin(v.yaw), Math.cos(v.yaw))
+    const next = ctx.graph.randomNext(n.edge)
+    if (!next) { this.recycle(v); return false }
+    s.edge = n.edge; s.nextEdge = next
+    return true
+  }
+
   private updatePhys(v: Vehicle, s: TrafficState, dt: number, ctx: Ctx) {
     s.physTimer -= dt
     v.controls.throttle = 0; v.controls.steer = 0; v.controls.handbrake = true
     if (s.physTimer <= 0 && v.absSpeed < 3) {
-      const n = ctx.graph.nearestLane(v.x, v.z, Math.sin(v.yaw), Math.cos(v.yaw))
-      s.edge = n.edge; s.nextEdge = ctx.graph.randomNext(n.edge)
+      if (!this.relocate(v, s, ctx)) return
       s.mode = 'return'
     }
     s.dbg = `phys ${s.physTimer.toFixed(1)}`
   }
 
   private updateReturn(v: Vehicle, s: TrafficState, dt: number, ctx: Ctx) {
+    const g = ctx.graph
     // 物理转向开回车道：接近且对齐后切回运动学
-    const t = projectT(v, s.edge)
-    const L = s.edge.length
-    if (t > L - JUNC - 2 || t < 0) {
+    let t = g.projectT(s.edge, v.x, v.z)
+    if (t > s.edge.length - s.edge.to.jr - 2 || t < 0) {
       // 投影越界：重新选边
-      const n = ctx.graph.nearestLane(v.x, v.z, Math.sin(v.yaw), Math.cos(v.yaw))
-      s.edge = n.edge; s.nextEdge = ctx.graph.randomNext(n.edge)
+      if (!this.relocate(v, s, ctx)) return
+      t = g.projectT(s.edge, v.x, v.z)
     }
-    ctx.graph.lanePoint(s.edge, clamp(t, 0, L), tmp)
+    const L = s.edge.length
+    g.lanePoint(s.edge, clamp(t, 0, L), tmp)
+    g.dirAt(s.edge, t, dirA)
     const dist = Math.hypot(tmp.x - v.x, tmp.z - v.z)
-    const align = Math.sin(v.yaw) * s.edge.dx + Math.cos(v.yaw) * s.edge.dz
+    const align = Math.sin(v.yaw) * dirA.x + Math.cos(v.yaw) * dirA.z
     if (dist < 1.2 && align > 0.95) {
-      s.mode = 'kin'; s.seg = 'edge'; s.segT = clamp(t, JUNC, L - JUNC); s.turn = null
+      s.mode = 'kin'; s.seg = 'edge'; s.segT = clamp(t, s.edge.from.jr, L - s.edge.to.jr); s.turn = null
       s.v = Math.max(0, v.speed); v.kinematic = true
       return
     }
-    ctx.graph.lanePoint(s.edge, clamp(t + 6, 0, L), tmp2)
+    g.lanePoint(s.edge, clamp(t + 6, 0, L), tmp2)
     v.controls.steer = steerTowards(v, tmp2.x, tmp2.z, 2.5)
     const obs = obstacleAhead(v, ctx, this.peds, 10, 2.2)
     let target = align < 0 ? 3 : 6
@@ -179,8 +204,9 @@ export class TrafficAI {
     s.wait = v.absSpeed < 0.5 ? s.wait + dt : 0
     if (s.wait > 6) {
       s.wait = 0
-      ctx.graph.lanePoint(s.edge, clamp(t, JUNC, L - JUNC), tmp)
-      v.x = tmp.x; v.z = tmp.z; v.yaw = Math.atan2(s.edge.dx, s.edge.dz); v.vx = v.vz = 0
+      const tt = clamp(t, s.edge.from.jr, L - s.edge.to.jr)
+      g.lanePoint(s.edge, tt, tmp); g.dirAt(s.edge, tt, dirA)
+      v.x = tmp.x; v.z = tmp.z; v.yaw = Math.atan2(dirA.x, dirA.z); v.vx = v.vz = 0
     }
     s.dbg = `return d${dist.toFixed(1)} al${align.toFixed(2)}`
   }
@@ -188,22 +214,24 @@ export class TrafficAI {
   private updateKin(v: Vehicle, s: TrafficState, dt: number, ctx: Ctx) {
     const g = ctx.graph
     const E = s.edge, L = E.length
+    const endT = L - E.to.jr                     // 直线段终点弧长
     let targetSpeed = s.cruise
-    const turning = s.nextEdge.dx !== E.dx || s.nextEdge.dz !== E.dz
+    const turning = isTurning(g, E, s.nextEdge)
 
     if (s.seg === 'edge') {
-      const remaining = L - JUNC - s.segT          // 到路口边缘的距离
+      const remaining = endT - s.segT            // 到路口边缘的距离
       if (turning && remaining < 10) targetSpeed = Math.min(targetSpeed, 5.5)
       if (s.token && s.token !== E.to) {
         // 持有的是上一个路口的令牌：驶离路口后释放
-        if (s.segT > JUNC + 5) releaseToken(v)
+        if (s.segT > E.from.jr + 5) releaseToken(v)
       }
-      if (!s.token || s.token !== E.to) {
+      // 令牌只在真正的路口节点上申请；普通折点/端点直接通过
+      if (E.to.junction && (!s.token || s.token !== E.to)) {
         if (remaining < 6) {
           const node = E.to
           const stale = node.occupant && ctx.time - node.occupantSince > 7
           const exitBlocked = [10, 15].some((d) => {
-            g.lanePoint(s.nextEdge, d, tmp)
+            g.lanePoint(s.nextEdge, Math.min(d, s.nextEdge.length), tmp)
             return ctx.vehicles.some((o) => o !== v && o.active && o.absSpeed < 2 && Math.hypot(o.x - tmp.x, o.z - tmp.z) < 3.2)
           })
           if (s.forceGo > 0 || (!exitBlocked && (!node.occupant || stale || node.occupant === v))) {
@@ -228,7 +256,7 @@ export class TrafficAI {
     s.forceGo = Math.max(0, s.forceGo - dt)
     if (targetSpeed <= 0.3 && s.v < 0.5) s.wait += dt; else s.wait = 0
     if (s.wait > 8 && s.forceGo <= 0) s.forceGo = 4
-    if (s.wait > 14 && Math.hypot(v.x - ctx.player.worldX, v.z - ctx.player.worldZ) > 80) { releaseToken(v); v.deactivate(); return }
+    if (s.wait > 14 && Math.hypot(v.x - ctx.player.worldX, v.z - ctx.player.worldZ) > 80) { this.recycle(v); return }
 
     // 速度逼近目标
     const rate = targetSpeed > s.v ? 5 : 12
@@ -236,19 +264,22 @@ export class TrafficAI {
     s.segT += s.v * dt
 
     // 段推进
-    if (s.seg === 'edge' && s.segT >= L - JUNC) {
-      s.turn = makeTurn(g, E, s.nextEdge); s.seg = 'turn'; s.segT -= L - JUNC
+    if (s.seg === 'edge' && s.segT >= endT) {
+      s.turn = makeTurn(g, E, s.nextEdge); s.seg = 'turn'; s.segT -= endT
     }
     if (s.seg === 'turn' && s.segT >= s.turn!.len) {
-      s.segT = JUNC + (s.segT - s.turn!.len)
-      s.edge = s.nextEdge; s.nextEdge = g.randomNext(s.edge); s.seg = 'edge'; s.turn = null
+      const next = g.randomNext(s.nextEdge)
+      if (!next) { this.recycle(v); return }   // 下一条边是孤立死路：回收
+      s.segT = s.nextEdge.from.jr + (s.segT - s.turn!.len)
+      s.edge = s.nextEdge; s.nextEdge = next; s.seg = 'edge'; s.turn = null
     }
 
     // 采样位置与朝向
     const ox = v.x, oz = v.z
     if (s.seg === 'edge') {
       g.lanePoint(s.edge, s.segT, tmp)
-      v.yaw = dampAngle(v.yaw, Math.atan2(s.edge.dx, s.edge.dz), 10, dt)
+      g.dirAt(s.edge, s.segT, dirA)
+      v.yaw = dampAngle(v.yaw, Math.atan2(dirA.x, dirA.z), 10, dt)
     } else {
       const u = clamp(s.segT / s.turn!.len, 0, 1)
       bez(s.turn!.p0, s.turn!.p1, s.turn!.p2, u, tmp)
@@ -262,6 +293,6 @@ export class TrafficAI {
     v.controls.steer = 0; v.controls.throttle = 0; v.controls.handbrake = false
 
     const E2 = s.edge
-    s.dbg = `kin ${s.seg} E(${E2.from.i},${E2.from.j}>${E2.to.i},${E2.to.j}) t${s.segT.toFixed(0)} v${s.v.toFixed(0)} tgt${targetSpeed.toFixed(0)} tok${s.token ? 1 : 0} obs${obs === Infinity ? '-' : obs.toFixed(0)} wait${s.wait.toFixed(0)}`
+    s.dbg = `kin ${s.seg} E${E2.id}(${E2.from.id}>${E2.to.id}) t${s.segT.toFixed(0)} v${s.v.toFixed(0)} tgt${targetSpeed.toFixed(0)} tok${s.token ? 1 : 0} obs${obs === Infinity ? '-' : obs.toFixed(0)} wait${s.wait.toFixed(0)}`
   }
 }

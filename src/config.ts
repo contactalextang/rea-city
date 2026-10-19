@@ -10,6 +10,13 @@ export const SIDEWALK_OFFSET = 6.5
 export const CITY_MIN = -HALF - ROAD / 2
 export const CITY_MAX = HALF + ROAD / 2
 
+// 通用路网参数（真实路网 / OSM 切片用；方格城仍沿用上面的 GRID/ROAD 系列常量）
+export const SCALE = 1             // 世界单位 / 米
+export const DRIVE_SIDE = -1       // 行驶方向：-1 靠左（新加坡），+1 靠右
+export const LANE_W = 3.3          // 标准车道宽 (m)
+export const SIDEWALK_W = 2        // 人行道宽 (m)
+export const GAME_HOUR_SEC = 180   // 游戏内 1 小时 = 现实 180 秒
+
 export const MAX_PEDS = 60
 export const MAX_TRAFFIC = 20
 export const MAX_POLICE = 6

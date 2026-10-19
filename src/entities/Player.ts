@@ -124,12 +124,15 @@ export class Player implements Body {
     this.group.visible = false
   }
 
-  exit() {
+  /** 下车：驾驶座在右（靠左行驶），优先从右侧下；右侧被静态体挡住则改左侧 */
+  exit(world: StaticWorld) {
     const v = this.vehicle; if (!v) return
-    // 从左侧下车
     const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw)
-    const lx = fz, lz = -fx
-    this.place(v.x + lx * 2.3, v.z + lz * 2.3, v.yaw)
+    const rx = -fz, rz = fx            // 右侧单位向量
+    let ex = v.x + rx * 2.3, ez = v.z + rz * 2.3
+    const blocked = world.query(ex, ez, this.radius, tmpBoxes).some((b) => circleAABB(ex, ez, this.radius, b) !== null)
+    if (blocked) { ex = v.x - rx * 2.3; ez = v.z - rz * 2.3 }
+    this.place(ex, ez, v.yaw)
     this.vx = v.vx * 0.3; this.vz = v.vz * 0.3
     v.driver = 'none'; v.controls.throttle = 0; v.controls.steer = 0; v.controls.handbrake = true
     this.vehicle = null

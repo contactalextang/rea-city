@@ -77,11 +77,13 @@ export class Missions {
     this.active = d; this.timer = d.timeLimit; this.progress = 0; this.result = 'none'
     for (let i = 0; i < this.defs.length; i++) this.startMarkers[i].set(null)
     if (d.type === 'deliver') {
-      if (this.ctx.player.vehicle === this.missionCar) this.ctx.player.exit()
+      if (this.ctx.player.vehicle === this.missionCar) this.ctx.player.exit(this.ctx.world)
       const g = this.ctx.graph
-      const e = g.nearestLane(d.start.x, d.start.z).edge
-      const p = g.lanePoint(e, Math.min(e.length - 6, g.nearestLane(d.start.x, d.start.z).t + 9), { x: 0, z: 0 })
-      this.missionCar.activate(p.x, p.z, Math.atan2(e.dx, e.dz))
+      const near = g.nearestLane(d.start.x, d.start.z)
+      const e = near.edge, t = Math.min(e.length - 6, near.t + 9)
+      const p = g.lanePoint(e, t, { x: 0, z: 0 })
+      const dir = g.dirAt(e, t, { x: 0, z: 0 })
+      this.missionCar.activate(p.x, p.z, Math.atan2(dir.x, dir.z))
       this.missionCar.controls.handbrake = true
       this.targetMarker.set(d.target)
       this.toast('上金色轿车，送到蓝色标记')

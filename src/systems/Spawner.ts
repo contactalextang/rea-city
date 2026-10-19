@@ -9,6 +9,7 @@ import type { PoliceAI } from '../entities/PoliceAI'
 
 const CAR_COLORS = [0xc0392b, 0x2980b9, 0x27ae60, 0xf39c12, 0x8e44ad, 0xecf0f1, 0x2c3e50, 0x16a085, 0xd35400, 0x7f8c8d, 0xf5f5f5, 0x1f1f1f, 0xe84393, 0x74b9ff]
 const tmp: P2 = { x: 0, z: 0 }
+const tmpDir: P2 = { x: 0, z: 0 }
 const camDir = new THREE.Vector3()
 
 /** 在玩家周围环形区内生成/回收行人、交通车与警车 */
@@ -27,11 +28,13 @@ export class Spawner {
   }
 
   /** 玩家周围、且优先在相机后方的随机车道点 */
-  private pickSpot(ctx: Ctx, min: number, max: number, behind: boolean): { edge: RoadEdge; t: number } | null {
+  private pickSpot(ctx: Ctx, min: number, max: number, behind: boolean, forPed = false): { edge: RoadEdge; t: number } | null {
     const px = ctx.player.worldX, pz = ctx.player.worldZ
     const cf = ctx.cam.camera.getWorldDirection(camDir)
     for (let k = 0; k < 24; k++) {
       const e = ctx.graph.randomEdge()
+      if (e.length < 14) continue
+      if (forPed && e.kind === 'expressway') continue   // 行人不上快速路
       const t = rand(6, e.length - 6)
       ctx.graph.lanePoint(e, t, tmp)
       const d = Math.hypot(tmp.x - px, tmp.z - pz)
@@ -60,7 +63,7 @@ export class Spawner {
     // 行人
     let budget = 6
     while (budget-- > 0 && this.peds.activeCount < MAX_PEDS) {
-      const spot = this.pickSpot(ctx, SPAWN_MIN * 0.6, SPAWN_MAX, true)
+      const spot = this.pickSpot(ctx, SPAWN_MIN * 0.6, SPAWN_MAX, true, true)
       if (!spot) break
       this.peds.spawnOnEdge(spot.edge, spot.t, ctx)
     }
@@ -72,8 +75,9 @@ export class Spawner {
       const spot = this.pickSpot(ctx, SPAWN_MIN, SPAWN_MAX, true); if (!spot) break
       ctx.graph.lanePoint(spot.edge, spot.t, tmp)
       if (ctx.vehicles.some((o) => o.active && Math.hypot(o.x - tmp.x, o.z - tmp.z) < 14)) continue
-      v.activate(tmp.x, tmp.z, Math.atan2(spot.edge.dx, spot.edge.dz))
-      this.trafficAI.start(v, spot.edge, spot.t, ctx)
+      ctx.graph.dirAt(spot.edge, spot.t, tmpDir)
+      v.activate(tmp.x, tmp.z, Math.atan2(tmpDir.x, tmpDir.z))
+      if (!this.trafficAI.start(v, spot.edge, spot.t, ctx)) { v.deactivate(); continue }
       budget--
     }
     // 报废/离场的警车回收
@@ -90,8 +94,9 @@ export class Spawner {
       const spot = v && this.pickSpot(ctx, 90, 150, true)
       if (v && spot) {
         ctx.graph.lanePoint(spot.edge, spot.t, tmp)
-        v.activate(tmp.x, tmp.z, Math.atan2(spot.edge.dx, spot.edge.dz))
-        v.vx = spot.edge.dx * 15; v.vz = spot.edge.dz * 15
+        ctx.graph.dirAt(spot.edge, spot.t, tmpDir)
+        v.activate(tmp.x, tmp.z, Math.atan2(tmpDir.x, tmpDir.z))
+        v.vx = tmpDir.x * 15; v.vz = tmpDir.z * 15
         this.policeAI.start(v, spot.edge, activePolice.length % 2 === 0 ? 1 : -1)
       }
     }
