@@ -33,7 +33,7 @@
 
 ## Phase 4 — 身份 + 角色系统
 - [x] P4.1 资产评估：选定 Quaternius Ultimate Modular Men/Women（CC0，62 骨男女同序，纯色材质，24 clip 含 Aim/Shoot，无 Jump/Sit）；详见 data/assets-eval/REPORT.md（gitignored）
-- [~] P4.2 Blender 转换脚本 → characters.glb
+- [x] P4.2 scripts/char/build.ts → public/assets/characters（glb 3.75 MB，46 部件，24 clip，14 预设；女包重蒙皮到男包绑定姿态；无 Jump/Sit/Drive 动画；three 会去掉节点名中的 : 用 userData.part 查找）
 - [ ] P4.3 CharacterLibrary / CharacterInstance / 行人与玩家替换
 - [ ] P4.4 roles.ts + presets.json + Creator UI + 存档
 
