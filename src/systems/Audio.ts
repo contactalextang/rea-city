@@ -1,4 +1,4 @@
-/** WebAudio 合成音效：引擎、警笛、撞击。无外部音频文件 */
+/** WebAudio 合成音效：引擎、警笛、撞击、雨声、雷声。无外部音频文件 */
 export class Audio {
   private ac: AudioContext | null = null
   private engine: OscillatorNode | null = null
@@ -6,6 +6,9 @@ export class Audio {
   private siren: OscillatorNode | null = null
   private sirenGain: GainNode | null = null
   private noise: AudioBuffer | null = null
+  private master: GainNode | null = null
+  private rainGain: GainNode | null = null
+  private rumble: AudioBuffer | null = null
 
   /** 必须在用户手势后调用 */
   unlock() {
@@ -14,6 +17,7 @@ export class Audio {
       this.ac = new AudioContext()
       const ac = this.ac
       const master = ac.createGain(); master.gain.value = 0.6; master.connect(ac.destination)
+      this.master = master
       this.engine = ac.createOscillator(); this.engine.type = 'sawtooth'
       const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400
       this.engineGain = ac.createGain(); this.engineGain.gain.value = 0
@@ -25,6 +29,17 @@ export class Audio {
       this.noise = ac.createBuffer(1, len, ac.sampleRate)
       const d = this.noise.getChannelData(0)
       for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2
+      // 雷声用的长白噪（3 s，无包络）
+      const rl = ac.sampleRate * 3
+      this.rumble = ac.createBuffer(1, rl, ac.sampleRate)
+      const rd = this.rumble.getChannelData(0)
+      for (let i = 0; i < rl; i++) rd[i] = Math.random() * 2 - 1
+      // 持续雨声：2 s 白噪循环 → 带通 → 增益（默认 0，暴雨时淡入）
+      const rain = ac.createBufferSource(); rain.buffer = this.rumble; rain.loop = true
+      const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 500
+      const rlp = ac.createBiquadFilter(); rlp.type = 'lowpass'; rlp.frequency.value = 2600
+      this.rainGain = ac.createGain(); this.rainGain.gain.value = 0
+      rain.connect(hp).connect(rlp).connect(this.rainGain).connect(master); rain.start()
     } catch { this.ac = null }
   }
 
@@ -58,5 +73,27 @@ export class Audio {
     const g = this.ac.createGain(); g.gain.value = Math.min(0.8, impulse * 0.05)
     const lp = this.ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900
     src.connect(lp).connect(g).connect(this.ac.destination); src.start()
+  }
+
+  /** 雨声音量 0–1（每帧调用，平滑淡入淡出） */
+  setRain(level: number) {
+    if (!this.ac || !this.rainGain) return
+    this.rainGain.gain.setTargetAtTime(Math.max(0, level) * 0.16, this.ac.currentTime, 0.4)
+  }
+
+  /** 雷声：白噪 → 低通扫频 → 指数衰减，外加次低频 */
+  thunder(strength = 1) {
+    if (!this.ac || !this.rumble || !this.master) return
+    const ac = this.ac, t = ac.currentTime
+    const src = ac.createBufferSource(); src.buffer = this.rumble
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'
+    lp.frequency.setValueAtTime(420, t); lp.frequency.exponentialRampToValueAtTime(70, t + 2.2)
+    const g = ac.createGain()
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.9 * strength, t + 0.06); g.gain.exponentialRampToValueAtTime(0.001, t + 2.8)
+    src.connect(lp).connect(g).connect(this.master); src.start(t); src.stop(t + 3)
+    const osc = ac.createOscillator(); osc.type = 'sine'
+    osc.frequency.setValueAtTime(55, t); osc.frequency.exponentialRampToValueAtTime(28, t + 1.5)
+    const og = ac.createGain(); og.gain.setValueAtTime(0.35 * strength, t); og.gain.exponentialRampToValueAtTime(0.001, t + 1.6)
+    osc.connect(og).connect(this.master); osc.start(t); osc.stop(t + 1.7)
   }
 }

@@ -6,6 +6,8 @@ export class Hud {
   private hintEl = $('hint')
   private toastEl = $('toast')
   private overlay = $('overlay')
+  private clockEl = $('clock')
+  private clockText = ''
 
   update(dt: number, health: number, money: number, stars: number, flash: number, speedKmh: number | null,
     mission: { title: string; desc: string; timer: string } | null, debug: string) {
@@ -25,6 +27,12 @@ export class Hud {
     this.toastTimer -= dt
     if (this.toastTimer <= 0) this.toastEl.classList.remove('show')
     $('debug').textContent = debug
+  }
+
+  /** 左上角时钟/天气：如 `第1天 07:30 · 晴` */
+  clock(text: string) {
+    if (text === this.clockText) return
+    this.clockText = text; this.clockEl.textContent = text
   }
 
   aiming(on: boolean) {

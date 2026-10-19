@@ -21,6 +21,9 @@ import { Audio } from '../systems/Audio'
 import { Weapon } from '../systems/Weapon'
 import { Hud } from '../ui/Hud'
 import { Minimap } from '../ui/Minimap'
+import { Clock } from '../systems/Clock'
+import { DayNight } from '../systems/DayNight'
+import { Weather, WEATHER_LABEL } from '../systems/Weather'
 
 type State = 'intro' | 'play' | 'dead' | 'busted' | 'won'
 const playingNow = (s: State) => s === 'play' || s === 'won'
@@ -51,6 +54,9 @@ export class Game {
   private muzzleTmp = new THREE.Vector3()
   hud = new Hud()
   minimap: Minimap
+  clock: Clock
+  dayNight: DayNight
+  weather: Weather
   ctx: Ctx
   state: State = 'intro'
   stateTimer = 0
@@ -67,6 +73,7 @@ export class Game {
   private forceAim = false
   private viewW = 0
   private viewH = 0
+  private clockHudTimer = 1
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
@@ -75,16 +82,14 @@ export class Game {
     this.renderer.domElement.className = 'game'
     container.appendChild(this.renderer.domElement)
     this.input.bindPointerLock(document.body)   // 覆盖层上点击也能开始并锁定鼠标
-    const sky = 0xa9c9e8
-    this.scene.background = new THREE.Color(sky)
-    this.scene.fog = new THREE.Fog(sky, 150, 380)
+    this.scene.background = new THREE.Color(0xa9c9e8)
+    this.scene.fog = new THREE.Fog(0xa9c9e8, 150, 380)   // 之后每帧由 DayNight 更新
     this.cam = new ChaseCamera(window.innerWidth / window.innerHeight)
     // 路网：sg 数据尚未就绪时回退方格城
     if (this.settings.world === 'sg') console.warn('[REA] 新加坡路网数据尚未就绪，回退到 grid')
     this.graph = new RoadGraph(buildGridGraphData())
-    this.scene.add(new THREE.HemisphereLight(0xdfefff, 0x6b6b60, 1.1))
-    const sun = new THREE.DirectionalLight(0xfff2dd, 1.6); sun.position.set(120, 200, 80)
-    this.scene.add(sun)
+    this.clock = new Clock(this.settings.timeSpeed)
+    this.dayNight = new DayNight(this.scene, this.renderer, this.settings)   // 创建半球光/太阳光
 
     this.city = new CityGenerator(this.scene, this.graph, this.world)
     this.city.build()
@@ -94,11 +99,15 @@ export class Game {
     this.peds = new Pedestrians(this.scene, this.events)
     this.trafficAI = new TrafficAI(this.peds)
     this.policeAI = new PoliceAI(this.peds)
-    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, wantedStars: 0, settings: this.settings }
+    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, wantedStars: 0, settings: this.settings, clock: this.clock }
     this.spawner = new Spawner(this.ctx, this.peds, this.trafficAI, this.policeAI)
     this.missions = new Missions(this.ctx, this.events)
     this.missions.setToast((s) => this.hud.toast(s))
     this.weapon = new Weapon(this.scene)
+    this.weather = new Weather(this.scene, this.dayNight, this.audio)
+    // 世界与实体都已挂到 scene：读取 userData 约定、设置阴影标记、生成路灯光晕
+    this.dayNight.attachWorld()
+    this.weather.attachWorld()
 
     // 医院（重生点）：路口 (1,1) 东向路段行驶侧的人行道
     const n = this.graph.node(1, 1)
@@ -191,6 +200,12 @@ export class Game {
     this.time += dt
     this.ctx.time = this.time
     this.ctx.wantedStars = this.wanted.stars
+    // 时钟/天气/昼夜在任何状态下都推进（含开场与死亡）
+    this.clock.advance(dt)
+    this.weather.update(dt, this.ctx)
+    this.dayNight.update(dt, this.ctx)
+    this.clockHudTimer += dt
+    if (this.clockHudTimer >= 1) { this.clockHudTimer = 0; this.hud.clock(`第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`) }
     const input = this.input
 
     if (this.state === 'intro') {
@@ -464,6 +479,18 @@ export class Game {
       get grid() { return { PITCH, HALF, DRIVE_SIDE } },
       get graphStats() { return self.graph.stats() },
       get settings() { return self.settings },
+      clock: {
+        set(hour: number, day?: number) { self.clock.set(hour, day) },
+        skip(hours: number) { self.clock.skip(hours) },
+        get hour() { return self.clock.hour }, get day() { return self.clock.day },
+        get hhmm() { return self.clock.hhmm }, get phase() { return self.clock.phase },
+        get speed() { return self.clock.speed }, set speed(v: number) { self.clock.speed = v },
+      },
+      weather: {
+        set(s: 'clear' | 'cloudy' | 'storm') { self.weather.set(s) },
+        get state() { return self.weather.state }, get gloom() { return self.weather.gloom }, get rain() { return self.weather.rainIntensity },
+      },
+      get dayNight() { const d = self.dayNight; return { sunIntensity: d.sun.intensity, hemiIntensity: d.hemi.intensity, lights: d.lights, gloom: d.gloom, shadows: self.renderer.shadowMap.enabled, sunDir: d.sun.position.clone().sub(d.sun.target.position).normalize().toArray().map((n) => +n.toFixed(2)) } },
     }
   }
 }

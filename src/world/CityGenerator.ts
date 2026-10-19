@@ -29,20 +29,26 @@ export class CityGenerator {
   private ground() {
     const grass = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshLambertMaterial({ color: 0x4f7a3a }))
     grass.rotation.x = -Math.PI / 2; grass.position.y = -0.05
+    grass.userData.castShadow = false
     this.group.add(grass)
     const size = CITY_MAX - CITY_MIN
-    const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshLambertMaterial({ color: 0x3b3b41 }))
+    const asphaltMat = new THREE.MeshLambertMaterial({ color: 0x3b3b41 })
+    const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(size, size), asphaltMat)
     asphalt.rotation.x = -Math.PI / 2; asphalt.position.y = 0
+    asphalt.userData.castShadow = false
     this.group.add(asphalt)
+    // 路面材质暴露给 Weather（雨天变深）；约定见 DayNight.ts 头注释
+    this.scene.userData.roads = [asphaltMat]
   }
 
   private blocksAndBuildings() {
     // 人行道板：每个街区一块（含 3m 人行道）
     const slabSize = BLOCK + SIDEWALK * 2
     const slab = new THREE.InstancedMesh(new THREE.BoxGeometry(slabSize, 0.15, slabSize), new THREE.MeshLambertMaterial({ color: 0x9d9d98 }), GRID * GRID)
+    slab.userData.castShadow = false
     const m = new THREE.Matrix4()
     const geoms: THREE.BufferGeometry[] = []
-    const windowTex = makeWindowTexture()
+    const { map: windowTex, emissive: windowGlow } = makeWindowTexture()
     let idx = 0
     for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) {
       const cx = i * PITCH - HALF + PITCH / 2, cz = j * PITCH - HALF + PITCH / 2
@@ -71,11 +77,14 @@ export class CityGenerator {
       [CITY_MIN + SIDEWALK / 2, 0, SIDEWALK, span], [CITY_MAX - SIDEWALK / 2, 0, SIDEWALK, span],
     ]) {
       const ring = new THREE.Mesh(new THREE.BoxGeometry(w, 0.15, d), ringMat)
-      ring.position.set(x, 0.075, z); this.group.add(ring)
+      ring.position.set(x, 0.075, z); ring.userData.castShadow = false; this.group.add(ring)
     }
     const merged = mergeGeometries(geoms, false)!
-    const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ map: windowTex, vertexColors: true }))
+    // 窗户材质：夜间由 DayNight 驱动 emissiveIntensity 0→0.9（emissiveMap 只有窗格发光）
+    const wallMat = new THREE.MeshLambertMaterial({ map: windowTex, vertexColors: true, emissive: 0xffd27a, emissiveMap: windowGlow, emissiveIntensity: 0 })
+    const mesh = new THREE.Mesh(merged, wallMat)
     this.group.add(mesh)
+    this.scene.userData.windows = [wallMat]
   }
 
   private roadMarkings() {
@@ -156,6 +165,9 @@ export class CityGenerator {
     const crowns = new THREE.InstancedMesh(new THREE.ConeGeometry(2.2, 4.5, 7).translate(0, 4.2, 0), new THREE.MeshLambertMaterial({ color: 0x3f7a2e }), crownMats.length)
     crownMats.forEach((mm, k) => crowns.setMatrixAt(k, mm))
     this.group.add(lamps, trunks, crowns)
+    // 路灯实例与灯头偏移暴露给 DayNight（夜间光晕）
+    this.scene.userData.lamps = lamps
+    this.scene.userData.lampHead = new THREE.Vector3(0, 5.45, 0.5)
   }
 
   private walls() {
@@ -222,7 +234,7 @@ function buildingGeometry(x: number, z: number, w: number, d: number, h: number,
       const c = f === 2 || f === 3 ? roof : color
       colors[k * 3] = c.r; colors[k * 3 + 1] = c.g; colors[k * 3 + 2] = c.b
       if (f === 2 || f === 3) { uv.setXY(k, 0.03, 0.03) }
-      else { uv.setXY(k, uv.getX(k) * span / 3.2, uv.getY(k) * h / 3.2) }
+      else { uv.setXY(k, uv.getX(k) * span / (3.2 * PANES), uv.getY(k) * h / (3.2 * PANES)) }
     }
   }
   g.setAttribute('color', new THREE.BufferAttribute(colors, 3))
@@ -230,15 +242,31 @@ function buildingGeometry(x: number, z: number, w: number, d: number, h: number,
   return g
 }
 
+/** 贴图每边窗格数：漫反射每格相同，自发光图随机点亮约 55% 的窗格 */
+const PANES = 4
+
 function makeWindowTexture() {
-  const c = document.createElement('canvas'); c.width = 64; c.height = 64
-  const ctx = c.getContext('2d')!
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 64, 64)
-  ctx.fillStyle = '#3a4a66'; ctx.fillRect(16, 14, 32, 36)
-  ctx.fillStyle = '#7f94b8'; ctx.fillRect(18, 16, 12, 14)
-  const tex = new THREE.CanvasTexture(c)
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-  tex.magFilter = THREE.NearestFilter
-  tex.colorSpace = THREE.SRGBColorSpace
-  return tex
+  const size = 64 * PANES
+  const mk = () => { const c = document.createElement('canvas'); c.width = c.height = size; return c }
+  const diff = mk(), glow = mk()
+  const d = diff.getContext('2d')!, g = glow.getContext('2d')!
+  d.fillStyle = '#ffffff'; d.fillRect(0, 0, size, size)
+  g.fillStyle = '#000000'; g.fillRect(0, 0, size, size)
+  for (let j = 0; j < PANES; j++) for (let i = 0; i < PANES; i++) {
+    const ox = i * 64, oy = j * 64
+    d.fillStyle = '#3a4a66'; d.fillRect(ox + 16, oy + 14, 32, 36)
+    d.fillStyle = '#7f94b8'; d.fillRect(ox + 18, oy + 16, 12, 14)
+    if (Math.random() < 0.55) {
+      const v = Math.floor(rand(150, 255))
+      g.fillStyle = `rgb(${v},${Math.floor(v * 0.86)},${Math.floor(v * 0.6)})`; g.fillRect(ox + 16, oy + 14, 32, 36)
+    }
+  }
+  const tex = (c: HTMLCanvasElement) => {
+    const t = new THREE.CanvasTexture(c)
+    t.wrapS = t.wrapT = THREE.RepeatWrapping
+    t.magFilter = THREE.NearestFilter
+    t.colorSpace = THREE.SRGBColorSpace
+    return t
+  }
+  return { map: tex(diff), emissive: tex(glow) }
 }
