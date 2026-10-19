@@ -12,10 +12,13 @@
     "geo:project": "node scripts/geo/02-project.ts",
     "geo:roads": "node scripts/geo/03-roads.ts",
     "geo:buildings": "node scripts/geo/04-buildings.ts",
-    "geo:all": "npm run geo:download && npm run geo:extract && npm run geo:project",
+    "geo:all": "npm run geo:roads && npm run geo:buildings && npm run geo:landuse && npm run geo:props && npm run geo:pois && npm run geo:roadmesh && npm run geo:chunks",
     "geo:landuse": "node scripts/geo/05-landuse.ts",
     "geo:props": "node scripts/geo/06-props.ts",
-    "geo:pois": "node scripts/geo/07-pois.ts"
+    "geo:pois": "node scripts/geo/07-pois.ts",
+    "geo:roadmesh": "node scripts/geo/08-roadmesh.ts",
+    "geo:chunks": "node scripts/geo/09-chunks.ts",
+    "char:build": "node scripts/char/build.ts"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +27,9 @@
     "three": "^0.186.1"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "@types/earcut": "^3.0.0",
     "@types/node": "^26.6.5",
     "@types/pngjs": "^6.0.5",

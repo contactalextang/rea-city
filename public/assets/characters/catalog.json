@@ -1,0 +1,1727 @@
+{
+  "version": 1,
+  "file": "characters.glb",
+  "generatedAt": "2026-10-19T19:02:11.155Z",
+  "attribution": {
+    "author": "Quaternius",
+    "packs": [
+      "Ultimate Modular Men",
+      "Ultimate Modular Women"
+    ],
+    "url": "https://quaternius.com/packs/ultimatemodularcharacters.html",
+    "license": "CC0 1.0 Universal (Public Domain Dedication)",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "note": "帽子 part:hat:cap 为本项目程序生成；part:hat:helmet 取自 Worker_Head 的安全帽部分。",
+    "licenseFile": "LICENSE-quaternius.txt"
+  },
+  "notes": [
+    "节点名 part:<slot>:<id>；three.js GLTFLoader 会去掉名字里的 \":\" 和 \".\"（见 nodeThree），原名在 object.userData.name，extras 在 object.userData.{part,slot,gender,set}。",
+    "关节名含 \".\"（如 Shoulder.L），three.js 里变成 ShoulderL（见 skeleton.jointsThree）。",
+    "所有部件共用同一个 skin；位置 / 法线 / 权重已按 KHR_mesh_quantization 量化，量化修正已并入 skin 的 inverseBindMatrices，运行时直接 mergeGeometries + bind(skeleton) 即可。",
+    "女包部件已重蒙皮到男包绑定姿态，只需男包的 24 段动画。",
+    "材质按名换色时以 part.materials 的 name/role 为准（同名材质在男女包里可能颜色/语义不同，例如女包 Brown 是眼睛）。"
+  ],
+  "skeleton": {
+    "joints": [
+      "Root",
+      "Body",
+      "Hips",
+      "Abdomen",
+      "Torso",
+      "Chest",
+      "Neck",
+      "Head",
+      "Shoulder.L",
+      "UpperArm.L",
+      "LowerArm.L",
+      "Wrist.L",
+      "Index1.L",
+      "Index2.L",
+      "Index3.L",
+      "Index4.L",
+      "Middle1.L",
+      "Middle2.L",
+      "Middle3.L",
+      "Middle4.L",
+      "Ring1.L",
+      "Ring2.L",
+      "Ring3.L",
+      "Ring4.L",
+      "Pinky1.L",
+      "Pinky2.L",
+      "Pinky3.L",
+      "Pinky4.L",
+      "Thumb1.L",
+      "Thumb2.L",
+      "Thumb3.L",
+      "Shoulder.R",
+      "UpperArm.R",
+      "LowerArm.R",
+      "Wrist.R",
+      "Index1.R",
+      "Index2.R",
+      "Index3.R",
+      "Index4.R",
+      "Middle1.R",
+      "Middle2.R",
+      "Middle3.R",
+      "Middle4.R",
+      "Ring1.R",
+      "Ring2.R",
+      "Ring3.R",
+      "Ring4.R",
+      "Pinky1.R",
+      "Pinky2.R",
+      "Pinky3.R",
+      "Pinky4.R",
+      "Thumb1.R",
+      "Thumb2.R",
+      "Thumb3.R",
+      "UpperLeg.L",
+      "LowerLeg.L",
+      "UpperLeg.R",
+      "LowerLeg.R",
+      "Foot.L",
+      "PT.L",
+      "Foot.R",
+      "PT.R"
+    ],
+    "jointsThree": [
+      "Root",
+      "Body",
+      "Hips",
+      "Abdomen",
+      "Torso",
+      "Chest",
+      "Neck",
+      "Head",
+      "ShoulderL",
+      "UpperArmL",
+      "LowerArmL",
+      "WristL",
+      "Index1L",
+      "Index2L",
+      "Index3L",
+      "Index4L",
+      "Middle1L",
+      "Middle2L",
+      "Middle3L",
+      "Middle4L",
+      "Ring1L",
+      "Ring2L",
+      "Ring3L",
+      "Ring4L",
+      "Pinky1L",
+      "Pinky2L",
+      "Pinky3L",
+      "Pinky4L",
+      "Thumb1L",
+      "Thumb2L",
+      "Thumb3L",
+      "ShoulderR",
+      "UpperArmR",
+      "LowerArmR",
+      "WristR",
+      "Index1R",
+      "Index2R",
+      "Index3R",
+      "Index4R",
+      "Middle1R",
+      "Middle2R",
+      "Middle3R",
+      "Middle4R",
+      "Ring1R",
+      "Ring2R",
+      "Ring3R",
+      "Ring4R",
+      "Pinky1R",
+      "Pinky2R",
+      "Pinky3R",
+      "Pinky4R",
+      "Thumb1R",
+      "Thumb2R",
+      "Thumb3R",
+      "UpperLegL",
+      "LowerLegL",
+      "UpperLegR",
+      "LowerLegR",
+      "FootL",
+      "PTL",
+      "FootR",
+      "PTR"
+    ],
+    "head": "Head",
+    "hips": "Hips",
+    "armature": "CharacterArmature"
+  },
+  "slots": [
+    "head",
+    "body",
+    "legs",
+    "feet",
+    "hat"
+  ],
+  "parts": [
+    {
+      "id": "m_casual2_body",
+      "slot": "body",
+      "gender": "m",
+      "set": "casual2",
+      "label": "T 恤",
+      "node": "part:body:m_casual2_body",
+      "nodeThree": "partbodym_casual2_body",
+      "tris": 2806,
+      "source": "Ultimate Modular Men/Casual_2.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "LightBrown",
+          "role": "top",
+          "default": "#969083"
+        }
+      ]
+    },
+    {
+      "id": "m_casual2_feet",
+      "slot": "feet",
+      "gender": "m",
+      "set": "casual2",
+      "label": "球鞋",
+      "node": "part:feet:m_casual2_feet",
+      "nodeThree": "partfeetm_casual2_feet",
+      "tris": 552,
+      "source": "Ultimate Modular Men/Casual_2.gltf",
+      "materials": [
+        {
+          "name": "Red_Dark",
+          "role": "shoes",
+          "default": "#7d2734"
+        },
+        {
+          "name": "White",
+          "role": "accent",
+          "default": "#b4b4b4"
+        }
+      ]
+    },
+    {
+      "id": "m_casual2_head",
+      "slot": "head",
+      "gender": "m",
+      "set": "casual2",
+      "label": "短发 + 胡茬",
+      "node": "part:head:m_casual2_head",
+      "nodeThree": "partheadm_casual2_head",
+      "tris": 1684,
+      "source": "Ultimate Modular Men/Casual_2.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Skin_Darker",
+          "role": "hair",
+          "default": "#b99c79"
+        },
+        {
+          "name": "Eyebrows",
+          "role": "hair",
+          "default": "#3e3429"
+        },
+        {
+          "name": "Hair",
+          "role": "hair",
+          "default": "#492e18"
+        },
+        {
+          "name": "Eye",
+          "role": "fixed",
+          "default": "#31251c"
+        }
+      ]
+    },
+    {
+      "id": "m_casual2_legs",
+      "slot": "legs",
+      "gender": "m",
+      "set": "casual2",
+      "label": "牛仔长裤",
+      "node": "part:legs:m_casual2_legs",
+      "nodeThree": "partlegsm_casual2_legs",
+      "tris": 734,
+      "source": "Ultimate Modular Men/Casual_2.gltf",
+      "materials": [
+        {
+          "name": "LightBlue",
+          "role": "bottom",
+          "default": "#333f47"
+        }
+      ]
+    },
+    {
+      "id": "m_adventurer_body",
+      "slot": "body",
+      "gender": "m",
+      "set": "adventurer",
+      "label": "探险外套",
+      "node": "part:body:m_adventurer_body",
+      "nodeThree": "partbodym_adventurer_body",
+      "tris": 3528,
+      "source": "Ultimate Modular Men/Adventurer.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Green",
+          "role": "top",
+          "default": "#464025"
+        },
+        {
+          "name": "LightGreen",
+          "role": "accent",
+          "default": "#585236"
+        }
+      ]
+    },
+    {
+      "id": "m_adventurer_feet",
+      "slot": "feet",
+      "gender": "m",
+      "set": "adventurer",
+      "label": "登山靴",
+      "node": "part:feet:m_adventurer_feet",
+      "nodeThree": "partfeetm_adventurer_feet",
+      "tris": 480,
+      "source": "Ultimate Modular Men/Adventurer.gltf",
+      "materials": [
+        {
+          "name": "Grey",
+          "role": "shoes",
+          "default": "#3f3f3f"
+        },
+        {
+          "name": "Black",
+          "role": "accent",
+          "default": "#242424"
+        }
+      ]
+    },
+    {
+      "id": "m_adventurer_head",
+      "slot": "head",
+      "gender": "m",
+      "set": "adventurer",
+      "label": "短发（探险）",
+      "node": "part:head:m_adventurer_head",
+      "nodeThree": "partheadm_adventurer_head",
+      "tris": 3620,
+      "source": "Ultimate Modular Men/Adventurer.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Eyebrows",
+          "role": "hair",
+          "default": "#3e3429"
+        },
+        {
+          "name": "Hair",
+          "role": "hair",
+          "default": "#492e18"
+        },
+        {
+          "name": "Eye",
+          "role": "fixed",
+          "default": "#31251c"
+        }
+      ]
+    },
+    {
+      "id": "m_adventurer_legs",
+      "slot": "legs",
+      "gender": "m",
+      "set": "adventurer",
+      "label": "探险长裤",
+      "node": "part:legs:m_adventurer_legs",
+      "nodeThree": "partlegsm_adventurer_legs",
+      "tris": 822,
+      "source": "Ultimate Modular Men/Adventurer.gltf",
+      "materials": [
+        {
+          "name": "Brown",
+          "role": "bottom",
+          "default": "#756440"
+        },
+        {
+          "name": "Brown2",
+          "role": "accent",
+          "default": "#5c4e32"
+        }
+      ]
+    },
+    {
+      "id": "m_beach_body",
+      "slot": "body",
+      "gender": "m",
+      "set": "beach",
+      "label": "背心（赤膊）",
+      "node": "part:body:m_beach_body",
+      "nodeThree": "partbodym_beach_body",
+      "tris": 2778,
+      "source": "Ultimate Modular Men/Beach.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "LightBrown",
+          "role": "top",
+          "default": "#969083"
+        }
+      ]
+    },
+    {
+      "id": "m_beach_feet",
+      "slot": "feet",
+      "gender": "m",
+      "set": "beach",
+      "label": "凉鞋",
+      "node": "part:feet:m_beach_feet",
+      "nodeThree": "partfeetm_beach_feet",
+      "tris": 682,
+      "source": "Ultimate Modular Men/Beach.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Red_Dark",
+          "role": "shoes",
+          "default": "#7d2734"
+        }
+      ]
+    },
+    {
+      "id": "m_beach_head",
+      "slot": "head",
+      "gender": "m",
+      "set": "beach",
+      "label": "短发 + 耳环",
+      "node": "part:head:m_beach_head",
+      "nodeThree": "partheadm_beach_head",
+      "tris": 2288,
+      "source": "Ultimate Modular Men/Beach.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Eyebrows",
+          "role": "hair",
+          "default": "#3e3429"
+        },
+        {
+          "name": "Eye",
+          "role": "fixed",
+          "default": "#31251c"
+        },
+        {
+          "name": "Hair",
+          "role": "hair",
+          "default": "#492e18"
+        },
+        {
+          "name": "Earrings",
+          "role": "accent",
+          "default": "#af8749"
+        }
+      ]
+    },
+    {
+      "id": "m_beach_legs",
+      "slot": "legs",
+      "gender": "m",
+      "set": "beach",
+      "label": "泳裤",
+      "node": "part:legs:m_beach_legs",
+      "nodeThree": "partlegsm_beach_legs",
+      "tris": 830,
+      "source": "Ultimate Modular Men/Beach.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Red_Dark",
+          "role": "bottom",
+          "default": "#7d2734"
+        },
+        {
+          "name": "White",
+          "role": "accent",
+          "default": "#b4b4b4"
+        }
+      ]
+    },
+    {
+      "id": "m_casual_body",
+      "slot": "body",
+      "gender": "m",
+      "set": "casual",
+      "label": "连帽卫衣",
+      "node": "part:body:m_casual_body",
+      "nodeThree": "partbodym_casual_body",
+      "tris": 3048,
+      "source": "Ultimate Modular Men/Casual_Hoodie.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Purple",
+          "role": "top",
+          "default": "#47375b"
+        }
+      ]
+    },
+    {
+      "id": "m_casual_feet",
+      "slot": "feet",
+      "gender": "m",
+      "set": "casual",
+      "label": "球鞋（卫衣）",
+      "node": "part:feet:m_casual_feet",
+      "nodeThree": "partfeetm_casual_feet",
+      "tris": 512,
+      "source": "Ultimate Modular Men/Casual_Hoodie.gltf",
+      "materials": [
+        {
+          "name": "Purple",
+          "role": "shoes",
+          "default": "#47375b"
+        },
+        {
+          "name": "White",
+          "role": "accent",
+          "default": "#b4b4b4"
+        }
+      ]
+    },
+    {
+      "id": "m_casual_head",
+      "slot": "head",
+      "gender": "m",
+      "set": "casual",
+      "label": "短发（卫衣）",
+      "node": "part:head:m_casual_head",
+      "nodeThree": "partheadm_casual_head",
+      "tris": 1888,
+      "source": "Ultimate Modular Men/Casual_Hoodie.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Eyebrows",
+          "role": "hair",
+          "default": "#3e3429"
+        },
+        {
+          "name": "Eye",
+          "role": "fixed",
+          "default": "#31251c"
+        },
+        {
+          "name": "Hair",
+          "role": "hair",
+          "default": "#492e18"
+        }
+      ]
+    },
+    {
+      "id": "m_casual_legs",
+      "slot": "legs",
+      "gender": "m",
+      "set": "casual",
+      "label": "牛仔短裤",
+      "node": "part:legs:m_casual_legs",
+      "nodeThree": "partlegsm_casual_legs",
+      "tris": 758,
+      "source": "Ultimate Modular Men/Casual_Hoodie.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "LightBlue",
+          "role": "bottom",
+          "default": "#333f47"
+        }
+      ]
+    },
+    {
+      "id": "m_punk_body",
+      "slot": "body",
+      "gender": "m",
+      "set": "punk",
+      "label": "T 恤 + 皮夹克",
+      "node": "part:body:m_punk_body",
+      "nodeThree": "partbodym_punk_body",
+      "tris": 2958,
+      "source": "Ultimate Modular Men/Punk.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "White",
+          "role": "accent",
+          "default": "#b4b4b4"
+        },
+        {
+          "name": "Black",
+          "role": "top",
+          "default": "#242424"
+        }
+      ]
+    },
+    {
+      "id": "m_punk_feet",
+      "slot": "feet",
+      "gender": "m",
+      "set": "punk",
+      "label": "皮靴",
+      "node": "part:feet:m_punk_feet",
+      "nodeThree": "partfeetm_punk_feet",
+      "tris": 552,
+      "source": "Ultimate Modular Men/Punk.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Black",
+          "role": "shoes",
+          "default": "#242424"
+        }
+      ]
+    },
+    {
+      "id": "m_punk_head",
+      "slot": "head",
+      "gender": "m",
+      "set": "punk",
+      "label": "莫霍克 + 耳环",
+      "node": "part:head:m_punk_head",
+      "nodeThree": "partheadm_punk_head",
+      "tris": 1244,
+      "source": "Ultimate Modular Men/Punk.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Eye",
+          "role": "fixed",
+          "default": "#31251c"
+        },
+        {
+          "name": "Eyebrows",
+          "role": "hair",
+          "default": "#3e3429"
+        },
+        {
+          "name": "Red_Dark",
+          "role": "accent",
+          "default": "#7d2734"
+        },
+        {
+          "name": "Red",
+          "role": "hair",
+          "default": "#7c0f1f"
+        },
+        {
+          "name": "Earrings",
+          "role": "accent",
+          "default": "#af8749"
+        }
+      ]
+    },
+    {
+      "id": "m_punk_legs",
+      "slot": "legs",
+      "gender": "m",
+      "set": "punk",
+      "label": "牛仔裤（朋克）",
+      "node": "part:legs:m_punk_legs",
+      "nodeThree": "partlegsm_punk_legs",
+      "tris": 746,
+      "source": "Ultimate Modular Men/Punk.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "LightBlue",
+          "role": "bottom",
+          "default": "#333f47"
+        }
+      ]
+    },
+    {
+      "id": "m_suit_body",
+      "slot": "body",
+      "gender": "m",
+      "set": "suit",
+      "label": "西装 + 领带",
+      "node": "part:body:m_suit_body",
+      "nodeThree": "partbodym_suit_body",
+      "tris": 2916,
+      "source": "Ultimate Modular Men/Suit.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Tie",
+          "role": "accent",
+          "default": "#494f5a"
+        },
+        {
+          "name": "Suit",
+          "role": "top",
+          "default": "#21282e"
+        },
+        {
+          "name": "White",
+          "role": "accent",
+          "default": "#b4b4b4"
+        }
+      ]
+    },
+    {
+      "id": "m_suit_feet",
+      "slot": "feet",
+      "gender": "m",
+      "set": "suit",
+      "label": "皮鞋",
+      "node": "part:feet:m_suit_feet",
+      "nodeThree": "partfeetm_suit_feet",
+      "tris": 528,
+      "source": "Ultimate Modular Men/Suit.gltf",
+      "materials": [
+        {
+          "name": "Black",
+          "role": "shoes",
+          "default": "#242424"
+        }
+      ]
+    },
+    {
+      "id": "m_suit_head",
+      "slot": "head",
+      "gender": "m",
+      "set": "suit",
+      "label": "短发（西装）",
+      "node": "part:head:m_suit_head",
+      "nodeThree": "partheadm_suit_head",
+      "tris": 2456,
+      "source": "Ultimate Modular Men/Suit.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Eyebrows",
+          "role": "hair",
+          "default": "#3e3429"
+        },
+        {
+          "name": "Hair",
+          "role": "hair",
+          "default": "#492e18"
+        },
+        {
+          "name": "Eye",
+          "role": "fixed",
+          "default": "#31251c"
+        }
+      ]
+    },
+    {
+      "id": "m_suit_legs",
+      "slot": "legs",
+      "gender": "m",
+      "set": "suit",
+      "label": "西裤",
+      "node": "part:legs:m_suit_legs",
+      "nodeThree": "partlegsm_suit_legs",
+      "tris": 734,
+      "source": "Ultimate Modular Men/Suit.gltf",
+      "materials": [
+        {
+          "name": "Suit",
+          "role": "bottom",
+          "default": "#21282e"
+        }
+      ]
+    },
+    {
+      "id": "m_worker_body",
+      "slot": "body",
+      "gender": "m",
+      "set": "worker",
+      "label": "衬衫 + 反光背心",
+      "node": "part:body:m_worker_body",
+      "nodeThree": "partbodym_worker_body",
+      "tris": 3018,
+      "source": "Ultimate Modular Men/Worker.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Worker_Yellow",
+          "role": "accent",
+          "default": "#b49413"
+        },
+        {
+          "name": "Worker_Vest",
+          "role": "accent",
+          "default": "#b9642a"
+        },
+        {
+          "name": "LightBrown",
+          "role": "top",
+          "default": "#969083"
+        }
+      ]
+    },
+    {
+      "id": "m_worker_feet",
+      "slot": "feet",
+      "gender": "m",
+      "set": "worker",
+      "label": "工靴",
+      "node": "part:feet:m_worker_feet",
+      "nodeThree": "partfeetm_worker_feet",
+      "tris": 464,
+      "source": "Ultimate Modular Men/Worker.gltf",
+      "materials": [
+        {
+          "name": "Grey",
+          "role": "shoes",
+          "default": "#3f3f3f"
+        },
+        {
+          "name": "Black",
+          "role": "accent",
+          "default": "#242424"
+        }
+      ]
+    },
+    {
+      "id": "m_worker_head",
+      "slot": "head",
+      "gender": "m",
+      "set": "worker",
+      "label": "安全帽 + 胡子",
+      "node": "part:head:m_worker_head",
+      "nodeThree": "partheadm_worker_head",
+      "tris": 936,
+      "source": "Ultimate Modular Men/Worker.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Eyebrows",
+          "role": "hair",
+          "default": "#3e3429"
+        },
+        {
+          "name": "Worker_Yellow",
+          "role": "hat",
+          "default": "#b49413"
+        },
+        {
+          "name": "Moustache",
+          "role": "hair",
+          "default": "#704104"
+        },
+        {
+          "name": "Eye",
+          "role": "fixed",
+          "default": "#31251c"
+        }
+      ]
+    },
+    {
+      "id": "m_worker_legs",
+      "slot": "legs",
+      "gender": "m",
+      "set": "worker",
+      "label": "工装裤",
+      "node": "part:legs:m_worker_legs",
+      "nodeThree": "partlegsm_worker_legs",
+      "tris": 822,
+      "source": "Ultimate Modular Men/Worker.gltf",
+      "materials": [
+        {
+          "name": "Brown",
+          "role": "bottom",
+          "default": "#756440"
+        },
+        {
+          "name": "Brown2",
+          "role": "accent",
+          "default": "#5c4e32"
+        }
+      ]
+    },
+    {
+      "id": "f_casual_body",
+      "slot": "body",
+      "gender": "f",
+      "set": "casual",
+      "label": "白 T 恤（女）",
+      "node": "part:body:f_casual_body",
+      "nodeThree": "partbodyf_casual_body",
+      "tris": 2654,
+      "source": "Ultimate Modular Women/Casual.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "White",
+          "role": "top",
+          "default": "#b4b4b4"
+        }
+      ]
+    },
+    {
+      "id": "f_casual_feet",
+      "slot": "feet",
+      "gender": "f",
+      "set": "casual",
+      "label": "平底鞋",
+      "node": "part:feet:f_casual_feet",
+      "nodeThree": "partfeetf_casual_feet",
+      "tris": 538,
+      "source": "Ultimate Modular Women/Casual.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Grey",
+          "role": "shoes",
+          "default": "#3f3f3f"
+        }
+      ]
+    },
+    {
+      "id": "f_casual_head",
+      "slot": "head",
+      "gender": "f",
+      "set": "casual",
+      "label": "金色长发",
+      "node": "part:head:f_casual_head",
+      "nodeThree": "partheadf_casual_head",
+      "tris": 2526,
+      "source": "Ultimate Modular Women/Casual.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Hair_Brown",
+          "role": "hair",
+          "default": "#3e3429"
+        },
+        {
+          "name": "Brown",
+          "role": "fixed",
+          "default": "#31251c"
+        },
+        {
+          "name": "Hair_Blond",
+          "role": "hair",
+          "default": "#8b7547"
+        }
+      ]
+    },
+    {
+      "id": "f_casual_legs",
+      "slot": "legs",
+      "gender": "f",
+      "set": "casual",
+      "label": "长裤（女）",
+      "node": "part:legs:f_casual_legs",
+      "nodeThree": "partlegsf_casual_legs",
+      "tris": 706,
+      "source": "Ultimate Modular Women/Casual.gltf",
+      "materials": [
+        {
+          "name": "Orange",
+          "role": "bottom",
+          "default": "#9e6238"
+        }
+      ]
+    },
+    {
+      "id": "f_formal_head",
+      "slot": "head",
+      "gender": "f",
+      "set": "formal",
+      "label": "红色长发",
+      "node": "part:head:f_formal_head",
+      "nodeThree": "partheadf_formal_head",
+      "tris": 2542,
+      "source": "Ultimate Modular Women/Formal.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Brown",
+          "role": "fixed",
+          "default": "#31251c"
+        },
+        {
+          "name": "Red",
+          "role": "hair",
+          "default": "#68220c"
+        }
+      ]
+    },
+    {
+      "id": "f_formal_body",
+      "slot": "body",
+      "gender": "f",
+      "set": "formal",
+      "label": "连衣裙上身",
+      "node": "part:body:f_formal_body",
+      "nodeThree": "partbodyf_formal_body",
+      "tris": 2594,
+      "source": "Ultimate Modular Women/Formal.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "LimeGreen",
+          "role": "top",
+          "default": "#466843"
+        },
+        {
+          "name": "Gold",
+          "role": "accent",
+          "default": "#af8749"
+        }
+      ]
+    },
+    {
+      "id": "f_formal_feet",
+      "slot": "feet",
+      "gender": "f",
+      "set": "formal",
+      "label": "高跟鞋",
+      "node": "part:feet:f_formal_feet",
+      "nodeThree": "partfeetf_formal_feet",
+      "tris": 490,
+      "source": "Ultimate Modular Women/Formal.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Red",
+          "role": "shoes",
+          "default": "#68220c"
+        }
+      ]
+    },
+    {
+      "id": "f_formal_legs",
+      "slot": "legs",
+      "gender": "f",
+      "set": "formal",
+      "label": "连衣裙裙摆",
+      "node": "part:legs:f_formal_legs",
+      "nodeThree": "partlegsf_formal_legs",
+      "tris": 482,
+      "source": "Ultimate Modular Women/Formal.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "LimeGreen",
+          "role": "bottom",
+          "default": "#466843"
+        }
+      ]
+    },
+    {
+      "id": "f_punk_body",
+      "slot": "body",
+      "gender": "f",
+      "set": "punk",
+      "label": "朋克上衣（女）",
+      "node": "part:body:f_punk_body",
+      "nodeThree": "partbodyf_punk_body",
+      "tris": 3118,
+      "source": "Ultimate Modular Women/Punk.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Pink",
+          "role": "top",
+          "default": "#681d65"
+        },
+        {
+          "name": "Black",
+          "role": "top",
+          "default": "#312e2b"
+        }
+      ]
+    },
+    {
+      "id": "f_punk_feet",
+      "slot": "feet",
+      "gender": "f",
+      "set": "punk",
+      "label": "皮靴（女）",
+      "node": "part:feet:f_punk_feet",
+      "nodeThree": "partfeetf_punk_feet",
+      "tris": 720,
+      "source": "Ultimate Modular Women/Punk.gltf",
+      "materials": [
+        {
+          "name": "Black",
+          "role": "shoes",
+          "default": "#312e2b"
+        },
+        {
+          "name": "Grey",
+          "role": "accent",
+          "default": "#3f3f3f"
+        }
+      ]
+    },
+    {
+      "id": "f_punk_head",
+      "slot": "head",
+      "gender": "f",
+      "set": "punk",
+      "label": "粉色短发 + 颈圈",
+      "node": "part:head:f_punk_head",
+      "nodeThree": "partheadf_punk_head",
+      "tris": 1386,
+      "source": "Ultimate Modular Women/Punk.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Pink",
+          "role": "hair",
+          "default": "#681d65"
+        },
+        {
+          "name": "Black",
+          "role": "accent",
+          "default": "#312e2b"
+        },
+        {
+          "name": "Hair_Brown",
+          "role": "hair",
+          "default": "#3e3429"
+        },
+        {
+          "name": "Brown",
+          "role": "fixed",
+          "default": "#31251c"
+        }
+      ]
+    },
+    {
+      "id": "f_punk_legs",
+      "slot": "legs",
+      "gender": "f",
+      "set": "punk",
+      "label": "紧身裤（女）",
+      "node": "part:legs:f_punk_legs",
+      "nodeThree": "partlegsf_punk_legs",
+      "tris": 732,
+      "source": "Ultimate Modular Women/Punk.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Black",
+          "role": "bottom",
+          "default": "#312e2b"
+        }
+      ]
+    },
+    {
+      "id": "f_worker_body",
+      "slot": "body",
+      "gender": "f",
+      "set": "worker",
+      "label": "衬衫 + 反光背心（女）",
+      "node": "part:body:f_worker_body",
+      "nodeThree": "partbodyf_worker_body",
+      "tris": 2610,
+      "source": "Ultimate Modular Women/Worker.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Worker_Vest",
+          "role": "accent",
+          "default": "#b9642a"
+        },
+        {
+          "name": "White",
+          "role": "top",
+          "default": "#b4b4b4"
+        },
+        {
+          "name": "Worker_Yellow",
+          "role": "accent",
+          "default": "#b49413"
+        }
+      ]
+    },
+    {
+      "id": "f_worker_feet",
+      "slot": "feet",
+      "gender": "f",
+      "set": "worker",
+      "label": "工靴（女）",
+      "node": "part:feet:f_worker_feet",
+      "nodeThree": "partfeetf_worker_feet",
+      "tris": 522,
+      "source": "Ultimate Modular Women/Worker.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "Black",
+          "role": "shoes",
+          "default": "#312e2b"
+        }
+      ]
+    },
+    {
+      "id": "f_worker_head",
+      "slot": "head",
+      "gender": "f",
+      "set": "worker",
+      "label": "安全帽 + 盘发",
+      "node": "part:head:f_worker_head",
+      "nodeThree": "partheadf_worker_head",
+      "tris": 2148,
+      "source": "Ultimate Modular Women/Worker.gltf",
+      "materials": [
+        {
+          "name": "Skin",
+          "role": "skin",
+          "default": "#cead86"
+        },
+        {
+          "name": "DarkBrown",
+          "role": "hair",
+          "default": "#492e18"
+        },
+        {
+          "name": "Brown",
+          "role": "fixed",
+          "default": "#31251c"
+        },
+        {
+          "name": "Worker_Yellow",
+          "role": "hat",
+          "default": "#b49413"
+        }
+      ]
+    },
+    {
+      "id": "f_worker_legs",
+      "slot": "legs",
+      "gender": "f",
+      "set": "worker",
+      "label": "工装裤（女）",
+      "node": "part:legs:f_worker_legs",
+      "nodeThree": "partlegsf_worker_legs",
+      "tris": 832,
+      "source": "Ultimate Modular Women/Worker.gltf",
+      "materials": [
+        {
+          "name": "Brown_02",
+          "role": "bottom",
+          "default": "#756440"
+        },
+        {
+          "name": "Brown2",
+          "role": "accent",
+          "default": "#5c4e32"
+        }
+      ]
+    },
+    {
+      "id": "cap",
+      "slot": "hat",
+      "gender": "any",
+      "set": "procedural",
+      "label": "鸭舌帽",
+      "node": "part:hat:cap",
+      "nodeThree": "parthatcap",
+      "tris": 70,
+      "source": "procedural",
+      "materials": [
+        {
+          "name": "Hat",
+          "role": "hat",
+          "default": "#c0392b"
+        }
+      ]
+    },
+    {
+      "id": "helmet",
+      "slot": "hat",
+      "gender": "any",
+      "set": "worker",
+      "label": "安全帽",
+      "node": "part:hat:helmet",
+      "nodeThree": "parthathelmet",
+      "tris": 320,
+      "source": "Ultimate Modular Men/Worker.gltf (Worker_Head.Worker_Yellow)",
+      "materials": [
+        {
+          "name": "Helmet",
+          "role": "hat",
+          "default": "#b49413"
+        }
+      ]
+    }
+  ],
+  "clips": {
+    "Idle": "Idle",
+    "IdleNeutral": "Idle_Neutral",
+    "Walk": "Walk",
+    "Run": "Run",
+    "RunBack": "Run_Back",
+    "RunLeft": "Run_Left",
+    "RunRight": "Run_Right",
+    "Aim": "Idle_Gun_Pointing",
+    "AimIdle": "Idle_Gun",
+    "Shoot": "Gun_Shoot",
+    "AimShoot": "Idle_Gun_Shoot",
+    "RunShoot": "Run_Shoot",
+    "Death": "Death",
+    "Hit": "HitRecieve",
+    "Hit2": "HitRecieve_2",
+    "Punch": "Punch_Right",
+    "PunchLeft": "Punch_Left",
+    "Kick": "Kick_Right",
+    "KickLeft": "Kick_Left",
+    "Roll": "Roll",
+    "Wave": "Wave",
+    "Interact": "Interact",
+    "IdleSword": "Idle_Sword",
+    "SwordSlash": "Sword_Slash"
+  },
+  "clipsRaw": [
+    "Death",
+    "Gun_Shoot",
+    "HitRecieve",
+    "HitRecieve_2",
+    "Idle",
+    "Idle_Gun",
+    "Idle_Gun_Pointing",
+    "Idle_Gun_Shoot",
+    "Idle_Neutral",
+    "Idle_Sword",
+    "Interact",
+    "Kick_Left",
+    "Kick_Right",
+    "Punch_Left",
+    "Punch_Right",
+    "Roll",
+    "Run",
+    "Run_Back",
+    "Run_Left",
+    "Run_Right",
+    "Run_Shoot",
+    "Sword_Slash",
+    "Walk",
+    "Wave"
+  ],
+  "presets": [
+    {
+      "id": "default_gang",
+      "label": "黑帮成员",
+      "body": "m",
+      "parts": {
+        "head": "m_casual2_head",
+        "body": "m_casual2_body",
+        "legs": "m_casual_legs",
+        "feet": "m_casual2_feet",
+        "hat": "cap"
+      },
+      "colors": {
+        "top": "#f2f2f2",
+        "bottom": "#2f3b5c",
+        "hat": "#c0392b",
+        "skin": "#f1c7a3",
+        "hair": "#2b1b10",
+        "shoes": "#333333",
+        "accent": "#e6e6e6"
+      }
+    },
+    {
+      "id": "default_gold",
+      "label": "金色西装",
+      "body": "m",
+      "parts": {
+        "head": "m_suit_head",
+        "body": "m_suit_body",
+        "legs": "m_suit_legs",
+        "feet": "m_suit_feet",
+        "hat": null
+      },
+      "colors": {
+        "top": "#c9a227",
+        "bottom": "#b8922a",
+        "accent": "#fff6d6",
+        "shoes": "#2a1a0a",
+        "skin": "#d9a56f",
+        "hair": "#1a1a1a"
+      }
+    },
+    {
+      "id": "default_white",
+      "label": "白衬衫商务",
+      "body": "m",
+      "parts": {
+        "head": "m_suit_head",
+        "body": "m_punk_body",
+        "legs": "m_suit_legs",
+        "feet": "m_suit_feet",
+        "hat": null
+      },
+      "colors": {
+        "top": "#f7f7f7",
+        "accent": "#f0f0f0",
+        "bottom": "#3a3f4b",
+        "shoes": "#1c1c1c",
+        "skin": "#f1c7a3",
+        "hair": "#3b2a1a"
+      },
+      "note": "m_punk_body 的皮夹克（top）与内衫（accent）都调成白色，近似白衬衫。"
+    },
+    {
+      "id": "default_blue",
+      "label": "蓝色工装",
+      "body": "m",
+      "parts": {
+        "head": "m_casual_head",
+        "body": "m_worker_body",
+        "legs": "m_worker_legs",
+        "feet": "m_worker_feet",
+        "hat": "helmet"
+      },
+      "colors": {
+        "top": "#2b6cb0",
+        "accent": "#f39c12",
+        "bottom": "#1f3f66",
+        "shoes": "#3a3a3a",
+        "hat": "#f5c400",
+        "skin": "#d9a56f",
+        "hair": "#1a1a1a"
+      }
+    },
+    {
+      "id": "ped_office_m",
+      "label": "上班族（男）",
+      "body": "m",
+      "parts": {
+        "head": "m_suit_head",
+        "body": "m_suit_body",
+        "legs": "m_suit_legs",
+        "feet": "m_suit_feet",
+        "hat": null
+      },
+      "colors": {
+        "top": "#1f2a44",
+        "bottom": "#1f2a44",
+        "accent": "#e9eef5",
+        "shoes": "#1a1a1a",
+        "skin": "#f1c7a3",
+        "hair": "#101010"
+      }
+    },
+    {
+      "id": "ped_office_f",
+      "label": "上班族（女）",
+      "body": "f",
+      "parts": {
+        "head": "f_casual_head",
+        "body": "f_formal_body",
+        "legs": "f_formal_legs",
+        "feet": "f_formal_feet",
+        "hat": null
+      },
+      "colors": {
+        "top": "#2c3e63",
+        "bottom": "#2c3e63",
+        "accent": "#d4af37",
+        "shoes": "#1a1a1a",
+        "skin": "#f1c7a3",
+        "hair": "#1b1b1b"
+      },
+      "note": "Formal 连衣裙上下身共用材质 LimeGreen，top/bottom 应设同色。"
+    },
+    {
+      "id": "ped_hawker_uncle",
+      "label": "小贩叔叔",
+      "body": "m",
+      "parts": {
+        "head": "m_casual2_head",
+        "body": "m_casual2_body",
+        "legs": "m_casual_legs",
+        "feet": "m_beach_feet",
+        "hat": null
+      },
+      "colors": {
+        "top": "#bfc5c9",
+        "bottom": "#4a4a4a",
+        "shoes": "#3b2a1a",
+        "skin": "#d9a56f",
+        "hair": "#8c8c8c",
+        "accent": "#ffffff"
+      }
+    },
+    {
+      "id": "ped_student",
+      "label": "校服学生",
+      "body": "f",
+      "parts": {
+        "head": "f_casual_head",
+        "body": "f_casual_body",
+        "legs": "f_formal_legs",
+        "feet": "f_casual_feet",
+        "hat": null
+      },
+      "colors": {
+        "top": "#ffffff",
+        "bottom": "#1e3a5f",
+        "shoes": "#ffffff",
+        "skin": "#f1c7a3",
+        "hair": "#1a1a1a"
+      },
+      "note": "白 T 恤 + 深蓝裙摆近似校服。"
+    },
+    {
+      "id": "ped_worker",
+      "label": "建筑工",
+      "body": "m",
+      "parts": {
+        "head": "m_worker_head",
+        "body": "m_worker_body",
+        "legs": "m_worker_legs",
+        "feet": "m_worker_feet",
+        "hat": null
+      },
+      "colors": {
+        "top": "#6b7a8f",
+        "accent": "#ff8c00",
+        "bottom": "#4b4b4b",
+        "shoes": "#2e2e2e",
+        "hat": "#f5c400",
+        "skin": "#a86b3c",
+        "hair": "#1a1a1a"
+      },
+      "note": "m_worker_head 自带安全帽（材质 Worker_Yellow，role=hat），不再叠 hat 部件。"
+    },
+    {
+      "id": "ped_auntie",
+      "label": "安娣",
+      "body": "f",
+      "parts": {
+        "head": "f_casual_head",
+        "body": "f_casual_body",
+        "legs": "f_casual_legs",
+        "feet": "f_casual_feet",
+        "hat": null
+      },
+      "colors": {
+        "top": "#d96c9b",
+        "bottom": "#6b4a3a",
+        "shoes": "#3a3a3a",
+        "skin": "#d9a56f",
+        "hair": "#4a4a4a"
+      }
+    },
+    {
+      "id": "ped_rider",
+      "label": "外卖骑手",
+      "body": "m",
+      "parts": {
+        "head": "m_casual_head",
+        "body": "m_casual_body",
+        "legs": "m_casual2_legs",
+        "feet": "m_worker_feet",
+        "hat": "helmet"
+      },
+      "colors": {
+        "top": "#00b14f",
+        "bottom": "#2b2b2b",
+        "shoes": "#1a1a1a",
+        "hat": "#00b14f",
+        "skin": "#d9a56f",
+        "hair": "#1a1a1a",
+        "accent": "#1a1a1a"
+      },
+      "note": "包里没有外卖箱/背包部件（Adventurer 的 Backpack 未打包），用绿色卫衣 + 绿色安全帽近似。"
+    },
+    {
+      "id": "ped_malay_f",
+      "label": "马来头巾（近似）",
+      "body": "f",
+      "parts": {
+        "head": "f_formal_head",
+        "body": "f_worker_body",
+        "legs": "f_casual_legs",
+        "feet": "f_casual_feet",
+        "hat": null
+      },
+      "colors": {
+        "hair": "#7b4fa0",
+        "top": "#8e6bbf",
+        "bottom": "#4a3a6b",
+        "accent": "#8e6bbf",
+        "shoes": "#2a2a2a",
+        "skin": "#d9a56f"
+      },
+      "note": "包里没有头巾部件：用 f_formal_head 的长发整体染成头巾色近似 tudung，长袖衬衫 + 长裤。"
+    },
+    {
+      "id": "ped_tourist",
+      "label": "游客（沙滩装）",
+      "body": "m",
+      "parts": {
+        "head": "m_beach_head",
+        "body": "m_beach_body",
+        "legs": "m_beach_legs",
+        "feet": "m_beach_feet",
+        "hat": "cap"
+      },
+      "colors": {
+        "top": "#f4d35e",
+        "bottom": "#e76f51",
+        "accent": "#ffffff",
+        "shoes": "#8d5524",
+        "hat": "#f8f8f8",
+        "skin": "#f1c7a3",
+        "hair": "#c9a66b"
+      }
+    },
+    {
+      "id": "ped_punk_f",
+      "label": "朋克少女",
+      "body": "f",
+      "parts": {
+        "head": "f_punk_head",
+        "body": "f_punk_body",
+        "legs": "f_punk_legs",
+        "feet": "f_punk_feet",
+        "hat": null
+      },
+      "colors": {
+        "hair": "#ff3fa4",
+        "top": "#2a2a2a",
+        "accent": "#8a2be2",
+        "bottom": "#1a1a1a",
+        "shoes": "#1a1a1a",
+        "skin": "#6b3f23"
+      }
+    }
+  ]
+}
