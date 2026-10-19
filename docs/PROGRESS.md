@@ -40,10 +40,11 @@
 ## Phase 5 — 生活模拟
 - [x] P5.1 Needs + Poi/Interactions/Panels/Phone/Save（方格城合成 POI 验证通过；真实世界只需 pois.load；遗留：的士与车辆不进存档）
 - [x] P5.2 Signals + Law（Wanted 已删；roles.ts 四身份；?role= 切换；吊销仅提示不阻止）
-- [ ] P5.3 Jobs（四身份工作线）+ Quests + 手机 HUD + 署名
+- [~] P5.3 Jobs（四身份工作线）+ Quests + 手机 HUD + 署名
 
 ## Phase 6 — 打磨
 - [ ] 步行道/天桥、桥梁抬高、地标、招牌贴图、音效、性能、README、启动器
 
 ## 日志
 - 2026-10-19 计划批准；git init；看板建立。
+- 2026-10-20 Phase 0/1/3 与 P5.1/P5.2 已提交；进行中 P2.1（加载器+查看页）、P4.2（角色 glb）、P5.3（工作/任务）；下一步 P2.3 接入 Game（WorldSource 切换、pois.load、signalLights）、P4.3 角色运行时、P4.4 建角色界面。
