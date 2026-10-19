@@ -10,6 +10,7 @@
     "geo:download": "node scripts/geo/00-download.ts",
     "geo:extract": "node scripts/geo/01-extract.ts",
     "geo:project": "node scripts/geo/02-project.ts",
+    "geo:buildings": "node scripts/geo/04-buildings.ts",
     "geo:all": "npm run geo:download && npm run geo:extract && npm run geo:project"
   },
   "keywords": [],
