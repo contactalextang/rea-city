@@ -32,14 +32,14 @@
 - [x] P3.2 Weather（clear/cloudy/storm；4000 雨丝 GPU；闪电+雷声；遗留：车辆假阴影贴片与真实阴影叠加）
 
 ## Phase 4 — 身份 + 角色系统
-- [~] P4.1 资产下载与评估（Quaternius Modular / Kenney Blocky）
-- [ ] P4.2 Blender 转换脚本 → characters.glb
+- [x] P4.1 资产评估：选定 Quaternius Ultimate Modular Men/Women（CC0，62 骨男女同序，纯色材质，24 clip 含 Aim/Shoot，无 Jump/Sit）；详见 data/assets-eval/REPORT.md（gitignored）
+- [~] P4.2 Blender 转换脚本 → characters.glb
 - [ ] P4.3 CharacterLibrary / CharacterInstance / 行人与玩家替换
 - [ ] P4.4 roles.ts + presets.json + Creator UI + 存档
 
 ## Phase 5 — 生活模拟
 - [ ] P5.1 Needs + Poi/Interactions（小贩中心、MRT、家、办公楼、工地、的士站）
-- [ ] P5.2 Signals + Law（合并 Wanted）
+- [~] P5.2 Signals + Law（合并 Wanted）
 - [ ] P5.3 Jobs（四身份工作线）+ Quests + 手机 HUD + 署名
 
 ## Phase 6 — 打磨
