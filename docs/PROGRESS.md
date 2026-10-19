@@ -10,15 +10,15 @@
 
 ## Phase 0 — 基建 + 路网通用化
 - [x] P0.0 git init、.gitignore（data/）、本看板、首次提交
-- [ ] P0.A RoadGraph 数据驱动 + GridGraph + Pathfinder + TrafficAI/PoliceAI/Spawner 适配 + DRIVE_SIDE + Settings.ts + Player 右侧下车
-- [ ] P0.B Colliders 多边形体 + circlePoly + addChunk/removeChunk + queryRay + Weapon 改用 queryRay
-- [ ] P0.V 验收：`?world=grid` 下旧玩法无回归（交通不卡死、警车能追上、射击命中楼房）
+- [x] P0.A RoadGraph 数据驱动 + GridGraph + Pathfinder + TrafficAI/PoliceAI/Spawner 适配 + DRIVE_SIDE + Settings.ts + Player 右侧下车（提交见 git log；grid 回归：交通 89% 正常、全部靠左、警车 3 s 追到、fps 120）
+- [x] P0.B Colliders 多边形体 + circlePoly + addChunk/removeChunk + queryRay + Weapon 改用 queryRay（提交 5a5fbcd；9/9 单测；调用方仍用 circleAABB，接入真实城市时改 circleBody）
+- [x] P0.V 验收：由 P0.A/P0.B 各自 Playwright 验证覆盖（射击命中楼房与车、交通、警察）
 
 ## Phase 1 — 离线数据流水线 scripts/geo/
-- [ ] P1.1 00-download / 01-extract / 02-project（原始数据到 data/geo/raw，提取到 data/geo/）
-- [ ] P1.2 03-roads（GraphData，SCC ≥90%，graph.svg）
-- [ ] P1.3 04-buildings（高度链 + 分类）
-- [ ] P1.4 05-landuse / 06-props / 07-pois
+- [x] P1.1 00-download / 01-extract / 02-project（提交 47168d8；data/geo/local 25 MB；切片内建筑 3709，80% 有层数/高度）
+- [~] P1.2 03-roads（GraphData，SCC ≥90%，graph.svg）
+- [~] P1.3 04-buildings（高度链 + 分类）
+- [~] P1.4 05-landuse / 06-props / 07-pois
 - [ ] P1.5 08-roadmesh / 09-chunks → public/world/sg/
 
 ## Phase 2 — 首个可玩版本（真实地图）
