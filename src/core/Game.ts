@@ -42,6 +42,8 @@ import { Assets } from '../systems/Assets'
 import { Business } from '../systems/Business'
 import { ACHIEVEMENTS } from '../data/progression'
 import { saveSettings } from './Settings'
+import { PostFX } from './PostFX'
+import type { FxQuality } from './Settings'
 import { CharacterLibrary } from '../characters/CharacterLibrary'
 import { identitySpec } from '../characters/presets'
 import { Creator, loadCreatorResult, saveCreatorResult, type CreatorResult } from '../ui/Creator'
@@ -89,6 +91,8 @@ export class Game {
   minimap!: Minimap
   clock: Clock
   dayNight: DayNight
+  /** 后期管线；fx=off 时为 null（直接 renderer.render，仍 AgX） */
+  postfx: PostFX | null = null
   weather: Weather
   pois = new PoiRegistry()
   needs: Needs
@@ -167,6 +171,7 @@ export class Game {
     document.body.appendChild(this.uiLayer)   // 放在 body 末尾：盖住 HUD
     this.clock = new Clock(this.settings.timeSpeed)
     this.dayNight = new DayNight(this.scene, this.renderer, this.settings)   // 创建半球光/太阳光
+    this.setFx(this.settings.fx, false)
     this.needs = new Needs(this.clock, this.role.needsRate)
     this.weapon = new Weapon(this.scene)
     this.weather = new Weather(this.scene, this.dayNight, this.audio)
@@ -176,6 +181,7 @@ export class Game {
       setTimeSpeed: (v) => { this.settings.timeSpeed = v; this.clock.speed = v; saveSettings(this.settings); this.hud.toast(`时间流速 ${v}×`) },
       setShadows: (on) => { this.settings.shadows = on; this.dayNight.setShadows(on); saveSettings(this.settings); this.hud.toast(on ? '阴影已开启' : '阴影已关闭') },
       setMusic: (on) => { this.settings.music = on; this.audio.setMusic(on); saveSettings(this.settings); this.hud.toast(on ? '音乐已开启' : '音乐已关闭') },
+      setFx: (q) => this.setFx(q),
       save: () => this.saveGame(true),
       load: () => this.loadGame(),
       restart: () => { Save.clear(); const q = new URLSearchParams(location.search); q.set('fresh', '1'); location.search = q.toString() },
@@ -324,6 +330,17 @@ export class Game {
     this.viewW = w; this.viewH = h
     this.renderer.setSize(w, h)
     this.cam.resize(w / h)
+    this.postfx?.setSize(w, h)
+  }
+
+  /** 切换后期画质（手机设置 / 调试）：重建 PostFX；off = 直出 */
+  setFx(q: FxQuality, persist = true) {
+    if (this.postfx && this.postfx.quality === q) return
+    this.postfx?.dispose()
+    this.postfx = q === 'off' ? null : new PostFX(this.renderer, this.scene, this.cam.camera, q)
+    this.settings.fx = q
+    this.dayNight.hdrSky = this.postfx !== null
+    if (persist) { saveSettings(this.settings); this.hud.toast(`画质：${q === 'high' ? '高' : q === 'low' ? '低' : '关（无后期）'}`) }
   }
 
   private toggleFullscreen() {
@@ -890,7 +907,7 @@ export class Game {
     if (this.phone.open && this.phoneTimer >= 0.25) {
       this.phoneTimer = 0
       const q = this.quests.active ? { title: this.quests.active.title, step: this.quests.stepLabel() } : null
-      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, music: this.settings.music, work: this.jobs.view(), quest: q })
+      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, music: this.settings.music, fx: this.settings.fx, work: this.jobs.view(), quest: q })
     }
     const speedKmh = pl.vehicle ? pl.vehicle.speed * 3.6 : null
     const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
@@ -931,7 +948,10 @@ export class Game {
       this.cam.camera.updateMatrixWorld()
       this.peds.animate(dt, this.cam.camera)
     }
-    this.renderer.render(this.scene, this.cam.camera)
+    if (this.postfx) {
+      this.postfx.setGrade(this.dayNight.grade)
+      this.postfx.render(dt)
+    } else this.renderer.render(this.scene, this.cam.camera)
   }
 
   private exposeDebug() {
@@ -1070,6 +1090,8 @@ export class Game {
       /** 测试：点是否在某个静态体（建筑多边形等）内 */
       inside(x: number, z: number) { return self.world.contains(x, z) },
       get settings() { return self.settings },
+      /** 后期画质：fx.set('high'|'low'|'off')；fx.grade 当前调色参数 */
+      fx: { set(q: FxQuality) { self.setFx(q) }, get quality() { return self.postfx?.quality ?? 'off' }, get grade() { return self.dayNight.grade }, get exposure() { return self.renderer.toneMappingExposure }, get envIntensity() { return self.scene.environmentIntensity } },
       audio: { get state() { return self.audio.state }, get musicMode() { return self.audio.musicMode }, get crashCount() { return self.audio.crashCount } },
       clock: {
         set(hour: number, day?: number) { self.clock.set(hour, day) },

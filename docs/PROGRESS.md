@@ -64,6 +64,13 @@
 - [x] P8.5 帝国任务线：新步骤类型、story/empire 分层、每身份 4 任务、帝国总结
 - [x] P8.V 四身份终验 + 看板/README/记忆
 
+## Phase 9 — 画面质感（计划 ~/.claude/plans/optimized-chasing-lantern.md）
+> 起因：试玩反馈人物质感差，参考赛博朋克 2077 夜景；保留 Quaternius 模型，只升级渲染管线与角色材质。
+- [x] P9.A 后期管线 PostFX（AgX/GTAO/泛光/调色/SMAA）+ ?fx= 设置 + DayNight 环境光/曝光重校/夜间角色轮廓光
+- [~] P9.B 角色 PBR 材质（CharacterMaterial：皮肤/布料三平面织纹/头发/皮革分区 + 菲涅尔边缘光）
+- [ ] P9.C 夜景氛围：窗户/招牌/路灯 HDR 发光、路面 Standard + 雨天湿地反光
+- [ ] P9.V 截图对比四时段 + 性能 + 回归 + 看板/README/记忆
+
 ## 后续
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
 - [ ] 后续可选：步行道图/天桥可走、桥梁抬高、五脚基、OneMap 补 HDB 层数

@@ -2,12 +2,14 @@ import type { JobsView } from '../systems/Jobs'
 import type { AssetId } from '../data/jobs'
 import { INVEST_AMOUNTS } from '../data/jobs'
 import type { AppView } from '../core/Context'
+import type { FxQuality } from '../core/Settings'
 
 /** 手机抽屉（Tab）：状态、工作、地图、设置、存读档；游戏不暂停但屏蔽移动输入 */
 export interface PhoneHost {
   setTimeSpeed(v: number): void
   setShadows(on: boolean): void
   setMusic(on: boolean): void
+  setFx(q: FxQuality): void
   save(): void
   load(): void
   restart(): void
@@ -30,6 +32,7 @@ export interface PhoneStatus {
   timeSpeed: number
   shadows: boolean
   music: boolean
+  fx: FxQuality
   work: JobsView
   quest: { title: string; step: string } | null
 }
@@ -111,6 +114,9 @@ export class Phone {
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-music]')) {
       b.addEventListener('click', () => { host.setMusic(b.dataset.music === '1'); if (this.status) this.status.music = b.dataset.music === '1'; this.refreshSettings() })
     }
+    for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-fx]')) {
+      b.addEventListener('click', () => { const q = b.dataset.fx as FxQuality; host.setFx(q); if (this.status) this.status.fx = q; this.refreshSettings() })
+    }
     // 内置子页也走注册表
     this.registerSub('work', '', (_r, force) => this.refreshWork(force), $('phone-sub-work'))
     this.registerSub('map', '', () => this.host.drawMap(this.mapCanvas), $('phone-sub-map'))
@@ -179,6 +185,7 @@ export class Phone {
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-speed]')) b.classList.toggle('on', Number(b.dataset.speed) === st.timeSpeed)
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-shadows]')) b.classList.toggle('on', (b.dataset.shadows === '1') === st.shadows)
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-music]')) b.classList.toggle('on', (b.dataset.music === '1') === st.music)
+    for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-fx]')) b.classList.toggle('on', b.dataset.fx === st.fx)
   }
 
   /** 工作页：内容签名不变就不重建 DOM，避免点击时按钮被替换 */
