@@ -34,8 +34,8 @@
 ## Phase 4 — 身份 + 角色系统
 - [x] P4.1 资产评估：选定 Quaternius Ultimate Modular Men/Women（CC0，62 骨男女同序，纯色材质，24 clip 含 Aim/Shoot，无 Jump/Sit）；详见 data/assets-eval/REPORT.md（gitignored）
 - [x] P4.2 scripts/char/build.ts → public/assets/characters（glb 3.75 MB，46 部件，24 clip，14 预设；女包重蒙皮到男包绑定姿态；无 Jump/Sit/Drive 动画；three 会去掉节点名中的 : 用 userData.part 查找）
-- [~] P4.3 角色运行时：库与查看页已完成（d262be0）；待 P5.3 后把 Player/Pedestrians 换成 CharacterInstance
-- [~] P4.4 roles.ts + presets.json + Creator UI + 存档
+- [~] P4.3 角色运行时：库完成（d262be0）；P4.3b 玩家/行人替换 + Creator 接入进行中
+- [x] P4.4 Creator 组件（58f3a7d）；接入开局与换装在 P4.3b
 
 ## Phase 5 — 生活模拟
 - [x] P5.1 Needs + Poi/Interactions/Panels/Phone/Save（方格城合成 POI 验证通过；真实世界只需 pois.load；遗留：的士与车辆不进存档）
@@ -43,6 +43,7 @@
 - [x] P5.3 Jobs + Quests + 手机工作页（计价/外卖/偷车/保护费/会议/投资/加班实测通过；gang_wreck 与撞车扣评分未实测）
 
 ## Phase 6 — 打磨
+- [~] P6a 地标精做 + shop POI 进行中
 - [ ] 步行道/天桥、桥梁抬高、地标、招牌贴图、音效、性能、README、启动器
 
 ## 日志
