@@ -34,7 +34,7 @@
 ## Phase 4 — 身份 + 角色系统
 - [x] P4.1 资产评估：选定 Quaternius Ultimate Modular Men/Women（CC0，62 骨男女同序，纯色材质，24 clip 含 Aim/Shoot，无 Jump/Sit）；详见 data/assets-eval/REPORT.md（gitignored）
 - [x] P4.2 scripts/char/build.ts → public/assets/characters（glb 3.75 MB，46 部件，24 clip，14 预设；女包重蒙皮到男包绑定姿态；无 Jump/Sit/Drive 动画；three 会去掉节点名中的 : 用 userData.part 查找）
-- [~] P4.3 角色运行时：库完成（d262be0）；P4.3b 玩家/行人替换 + Creator 接入进行中
+- [x] P4.3 玩家/行人骨骼角色 + Creator 接入开局/衣柜（60 行人 draw ~110，不限帧 530 fps；?chars=box 回退）
 - [x] P4.4 Creator 组件（58f3a7d）；接入开局与换装在 P4.3b
 
 ## Phase 5 — 生活模拟
