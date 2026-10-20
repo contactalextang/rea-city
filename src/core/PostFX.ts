@@ -130,10 +130,14 @@ export class PostFX {
   private output: OutputPass
   private time = 0
   private w = 1; private h = 1
+  /** 构造时的城市场景 / 相机（resetScene 恢复） */
+  private baseScene: THREE.Scene
+  private baseCamera: THREE.PerspectiveCamera
 
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, readonly quality: Exclude<FxQuality, 'off'>) {
     const size = renderer.getSize(new THREE.Vector2())
     this.w = size.x; this.h = size.y
+    this.baseScene = scene; this.baseCamera = camera
     const pr = this.pixelRatio()
     const rt = new THREE.WebGLRenderTarget(Math.max(1, size.x * pr), Math.max(1, size.y * pr), { type: THREE.HalfFloatType, samples: 4 })
     // high：渲染目标带深度纹理，GTAO 直接复用（不再额外渲染一遍法线/深度）
@@ -188,6 +192,19 @@ export class PostFX {
     this.composer.setSize(w, h)
     this.grade.uniforms.uResolution.value.set(w * pr, h * pr)
   }
+
+  /**
+   * 切换渲染的场景 / 相机（P10.D 竞技场）：RenderPass 与 GTAO 同时换；调色 / 泛光参数不动（调用方自己 setGrade）。
+   * 两个相机都是透视相机，GTAO 的 PERSPECTIVE_CAMERA 宏不变；near/far/投影矩阵每帧从 camera 读取。
+   */
+  setScene(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+    this.renderPass.scene = scene
+    this.renderPass.camera = camera
+    if (this.gtao) { this.gtao.scene = scene; this.gtao.camera = camera }
+  }
+  /** 恢复构造时的城市场景 / 相机 */
+  resetScene() { this.setScene(this.baseScene, this.baseCamera) }
+  get currentScene() { return this.renderPass.scene }
 
   setBloom(strength: number, threshold?: number, radius?: number) {
     this.bloom.strength = strength

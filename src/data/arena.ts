@@ -1,0 +1,264 @@
+/**
+ * P10.D 射击竞技（类 CS2 5v5 爆破）数据：武器 / 装备 / 经济 / 模式 / 难度 / 段位。
+ * 单位：米、秒。CS 的 1 unit ≈ 0.026 m（跑速 250 u/s ≈ 6.5 m/s）。
+ */
+
+export const U = 0.026
+export type Side = 'T' | 'CT'
+export type WeaponKind = 'knife' | 'pistol' | 'smg' | 'rifle' | 'sniper' | 'shotgun'
+export type Slot = 'primary' | 'secondary' | 'knife' | 'grenade' | 'c4'
+
+export interface WeaponDef {
+  id: string
+  name: string
+  kind: WeaponKind
+  slot: Slot
+  price: number
+  /** 限定阵营（undefined = 双方） */
+  side?: Side
+  damage: number
+  /** 打在护甲上时保留的伤害比例（CS armor penetration） */
+  armorPen: number
+  /** 爆头倍率 */
+  hsMul: number
+  /** 每分钟射速 */
+  rpm: number
+  auto: boolean
+  mag: number
+  reserve: number
+  reload: number
+  /** 持枪跑速 m/s */
+  speed: number
+  /** 每 500u（13 m）伤害衰减系数 */
+  rangeMod: number
+  /** 散布（弧度）：站立基础 / 满速移动附加 / 空中附加 / 每发累积 / 累积上限 */
+  spread: number
+  moveSpread: number
+  airSpread: number
+  bloom: number
+  bloomMax: number
+  /** 后坐力：前 10 发总上扬（度）、之后左右摆幅（度）、横向偏好 */
+  recoilUp: number
+  recoilSway: number
+  recoilBias: number
+  /** 弹丸数（霰弹） */
+  pellets?: number
+  /** 击杀奖励 */
+  killReward: number
+  /** 开镜 FOV 两档（狙击） */
+  scope?: [number, number]
+  /** 枪声：基频/衰减/音量（ArenaSfx） */
+  sound: { pitch: number; decay: number; vol: number; crack?: number }
+  /** 枪模颜色 */
+  color: number
+}
+
+const rpmOf = (r: number) => r
+export const WEAPONS: Record<string, WeaponDef> = {
+  knife: {
+    id: 'knife', name: '军刀', kind: 'knife', slot: 'knife', price: 0, damage: 40, armorPen: 0.85, hsMul: 1, rpm: rpmOf(150), auto: true, mag: 0, reserve: 0, reload: 0,
+    speed: 250 * U, rangeMod: 1, spread: 0, moveSpread: 0, airSpread: 0, bloom: 0, bloomMax: 0, recoilUp: 0, recoilSway: 0, recoilBias: 0, killReward: 1500,
+    sound: { pitch: 900, decay: 0.08, vol: 0.25 }, color: 0x9aa3ad,
+  },
+  glock: {
+    id: 'glock', name: 'G18 手枪', kind: 'pistol', slot: 'secondary', price: 200, side: 'T', damage: 30, armorPen: 0.47, hsMul: 4, rpm: 400, auto: false, mag: 20, reserve: 120, reload: 2.27,
+    speed: 240 * U, rangeMod: 0.85, spread: 0.0065, moveSpread: 0.03, airSpread: 0.12, bloom: 0.01, bloomMax: 0.035, recoilUp: 2.2, recoilSway: 0.6, recoilBias: 0.2, killReward: 300,
+    sound: { pitch: 520, decay: 0.12, vol: 0.55 }, color: 0x2b2b2b,
+  },
+  usp: {
+    id: 'usp', name: 'USP-S 消音', kind: 'pistol', slot: 'secondary', price: 200, side: 'CT', damage: 35, armorPen: 0.505, hsMul: 4, rpm: 352, auto: false, mag: 12, reserve: 24, reload: 2.2,
+    speed: 240 * U, rangeMod: 0.91, spread: 0.0045, moveSpread: 0.03, airSpread: 0.12, bloom: 0.012, bloomMax: 0.04, recoilUp: 2.4, recoilSway: 0.5, recoilBias: -0.2, killReward: 300,
+    sound: { pitch: 1400, decay: 0.07, vol: 0.28 }, color: 0x33363b,
+  },
+  deagle: {
+    id: 'deagle', name: '沙漠之鹰', kind: 'pistol', slot: 'secondary', price: 700, damage: 53, armorPen: 0.932, hsMul: 3.9, rpm: 267, auto: false, mag: 7, reserve: 35, reload: 2.2,
+    speed: 230 * U, rangeMod: 0.85, spread: 0.004, moveSpread: 0.08, airSpread: 0.2, bloom: 0.035, bloomMax: 0.07, recoilUp: 5, recoilSway: 1.2, recoilBias: 0.3, killReward: 300,
+    sound: { pitch: 260, decay: 0.22, vol: 0.85, crack: 1 }, color: 0x8c8f94,
+  },
+  mac10: {
+    id: 'mac10', name: 'MAC-10 冲锋枪', kind: 'smg', slot: 'primary', price: 1050, side: 'T', damage: 29, armorPen: 0.575, hsMul: 4, rpm: 800, auto: true, mag: 30, reserve: 100, reload: 2.6,
+    speed: 240 * U, rangeMod: 0.8, spread: 0.009, moveSpread: 0.028, airSpread: 0.13, bloom: 0.004, bloomMax: 0.03, recoilUp: 4.5, recoilSway: 1.6, recoilBias: 0.4, killReward: 600,
+    sound: { pitch: 620, decay: 0.08, vol: 0.5 }, color: 0x2a2a2a,
+  },
+  mp9: {
+    id: 'mp9', name: 'MP9 冲锋枪', kind: 'smg', slot: 'primary', price: 1250, side: 'CT', damage: 26, armorPen: 0.6, hsMul: 4, rpm: 857, auto: true, mag: 30, reserve: 120, reload: 2.1,
+    speed: 240 * U, rangeMod: 0.87, spread: 0.008, moveSpread: 0.025, airSpread: 0.13, bloom: 0.004, bloomMax: 0.028, recoilUp: 4, recoilSway: 1.4, recoilBias: -0.3, killReward: 600,
+    sound: { pitch: 700, decay: 0.07, vol: 0.45 }, color: 0x2e3238,
+  },
+  nova: {
+    id: 'nova', name: 'Nova 霰弹枪', kind: 'shotgun', slot: 'primary', price: 1050, damage: 26, armorPen: 0.5, hsMul: 4, rpm: 68, auto: false, mag: 8, reserve: 32, reload: 2.8,
+    speed: 220 * U, rangeMod: 0.7, spread: 0.045, moveSpread: 0.02, airSpread: 0.1, bloom: 0, bloomMax: 0, recoilUp: 4, recoilSway: 0.5, recoilBias: 0, pellets: 9, killReward: 900,
+    sound: { pitch: 180, decay: 0.3, vol: 0.95 }, color: 0x4a3a2a,
+  },
+  ak47: {
+    id: 'ak47', name: 'AK-47 步枪', kind: 'rifle', slot: 'primary', price: 2700, side: 'T', damage: 36, armorPen: 0.775, hsMul: 4, rpm: 600, auto: true, mag: 30, reserve: 90, reload: 2.5,
+    speed: 215 * U, rangeMod: 0.98, spread: 0.0042, moveSpread: 0.1, airSpread: 0.25, bloom: 0.006, bloomMax: 0.035, recoilUp: 6.5, recoilSway: 2.6, recoilBias: 0.3, killReward: 300,
+    sound: { pitch: 300, decay: 0.16, vol: 0.8, crack: 0.6 }, color: 0x5a3b22,
+  },
+  m4a4: {
+    id: 'm4a4', name: 'M4A4 步枪', kind: 'rifle', slot: 'primary', price: 3100, side: 'CT', damage: 33, armorPen: 0.7, hsMul: 4, rpm: 666, auto: true, mag: 30, reserve: 90, reload: 3.1,
+    speed: 225 * U, rangeMod: 0.97, spread: 0.0035, moveSpread: 0.09, airSpread: 0.25, bloom: 0.005, bloomMax: 0.03, recoilUp: 5.2, recoilSway: 2.0, recoilBias: -0.3, killReward: 300,
+    sound: { pitch: 380, decay: 0.13, vol: 0.7, crack: 0.5 }, color: 0x25282c,
+  },
+  awp: {
+    id: 'awp', name: 'AWP 狙击枪', kind: 'sniper', slot: 'primary', price: 4750, damage: 115, armorPen: 0.975, hsMul: 4, rpm: 41, auto: false, mag: 5, reserve: 30, reload: 3.7,
+    speed: 200 * U, rangeMod: 0.99, spread: 0.0012, moveSpread: 0.16, airSpread: 0.4, bloom: 0, bloomMax: 0, recoilUp: 3, recoilSway: 0.3, recoilBias: 0, killReward: 100,
+    scope: [40, 15], sound: { pitch: 150, decay: 0.45, vol: 1.0, crack: 1.2 }, color: 0x3f5a3a,
+  },
+}
+/** 狙击未开镜散布 */
+export const AWP_NOSCOPE_SPREAD = 0.09
+
+export interface EquipDef { id: string; name: string; price: number; side?: Side; kind: 'armor' | 'helmet' | 'kit' | 'he' | 'smoke' | 'flash' }
+export const EQUIP: Record<string, EquipDef> = {
+  vest: { id: 'vest', name: '防弹衣', price: 650, kind: 'armor' },
+  vesthelm: { id: 'vesthelm', name: '防弹衣+头盔', price: 1000, kind: 'helmet' },
+  kit: { id: 'kit', name: '拆弹器', price: 400, side: 'CT', kind: 'kit' },
+  he: { id: 'he', name: '高爆手雷', price: 300, kind: 'he' },
+  smoke: { id: 'smoke', name: '烟雾弹', price: 300, kind: 'smoke' },
+  flash: { id: 'flash', name: '闪光弹', price: 200, kind: 'flash' },
+}
+export const GRENADE_NAMES: Record<string, string> = { he: '高爆手雷', smoke: '烟雾弹', flash: '闪光弹' }
+
+/** 购买菜单分组（数字键：组号 → 组内序号） */
+export const BUY_MENU: { title: string; items: string[] }[] = [
+  { title: '手枪', items: ['glock', 'usp', 'deagle'] },
+  { title: '冲锋/霰弹', items: ['mac10', 'mp9', 'nova'] },
+  { title: '步枪', items: ['ak47', 'm4a4', 'awp'] },
+  { title: '装备', items: ['vest', 'vesthelm', 'kit'] },
+  { title: '投掷物', items: ['he', 'smoke', 'flash'] },
+]
+
+export const ECON = {
+  start: 800,
+  max: 16000,
+  win: 3250,
+  winBomb: 3500,
+  lossBonus: [1400, 1900, 2400, 2900, 3400],
+  plantBonusTeam: 800,
+  plantPlayer: 300,
+  defusePlayer: 300,
+}
+
+export const TIMES = {
+  freeze: 15,
+  round: 115,
+  buyWindow: 20,
+  bomb: 40,
+  plant: 3.2,
+  defuse: 10,
+  defuseKit: 5,
+  roundEnd: 5,
+}
+
+/** 胜利回合数 / 半场 */
+export const MATCH = { winRounds: 7, half: 6, duelWin: 5, dmTime: 300 }
+
+export type Difficulty = 'novice' | 'normal' | 'pro'
+export interface DiffParams {
+  label: string
+  /** 反应时间（秒） */
+  reaction: number
+  /** 瞄准误差（度，初始放大后收敛） */
+  aimError: number
+  /** 转向速度（度/秒） */
+  turnSpeed: number
+  /** 爆头倾向 0–1 */
+  headPref: number
+  /** 后坐力补偿 0–1 */
+  recoilComp: number
+  /** 急停概率 */
+  counterStrafe: number
+  /** 视野（度） */
+  fov: number
+  /** 点射长度（远距离） */
+  burst: number
+}
+export const DIFFICULTY: Record<Difficulty, DiffParams> = {
+  novice: { label: '新手', reaction: 0.6, aimError: 3.2, turnSpeed: 160, headPref: 0.08, recoilComp: 0, counterStrafe: 0, fov: 100, burst: 12 },
+  normal: { label: '普通', reaction: 0.35, aimError: 1.6, turnSpeed: 280, headPref: 0.3, recoilComp: 0.5, counterStrafe: 0.5, fov: 115, burst: 6 },
+  pro: { label: '职业', reaction: 0.2, aimError: 0.7, turnSpeed: 480, headPref: 0.6, recoilComp: 0.9, counterStrafe: 1, fov: 125, burst: 4 },
+}
+
+export type ArenaModeId = 'casual' | 'ranked' | 'pro' | 'duel' | 'dm'
+export interface ModeDef {
+  id: ArenaModeId
+  name: string
+  fee: number
+  /** 胜利奖金 */
+  prize: number
+  /** 个人表现奖金：每击杀 / MVP */
+  perKill: number
+  perMvp: number
+  unlock?: string
+  /** 默认 bot 难度（ranked 按段位） */
+  diff: Difficulty
+  desc: string
+}
+export const MODES: Record<ArenaModeId, ModeDef> = {
+  casual: { id: 'casual', name: '5v5 爆破（休闲）', fee: 50, prize: 150, perKill: 10, perMvp: 20, diff: 'normal', desc: '先赢 7 回合 · 普通 Bot' },
+  ranked: { id: 'ranked', name: '5v5 天梯', fee: 200, prize: 600, perKill: 30, perMvp: 60, unlock: 'arena_ranked', diff: 'normal', desc: '影响段位 · Bot 随段位变强' },
+  pro: { id: 'pro', name: '职业联赛', fee: 1000, prize: 3000, perKill: 120, perMvp: 250, unlock: 'arena_pro', diff: 'pro', desc: '职业 Bot · 高额奖金' },
+  duel: { id: 'duel', name: '1v1 单挑', fee: 100, prize: 250, perKill: 0, perMvp: 0, diff: 'normal', desc: '先赢 5 回合 · 无炸弹' },
+  dm: { id: 'dm', name: '死斗热身', fee: 0, prize: 0, perKill: 0, perMvp: 0, diff: 'normal', desc: '免费 · 5 分钟 · 随买随用' },
+}
+
+/** 段位：ELO → 名称 */
+export const RANKS: { name: string; min: number }[] = [
+  { name: '青铜 I', min: -Infinity }, { name: '青铜 II', min: 800 }, { name: '青铜 III', min: 900 },
+  { name: '白银 I', min: 1000 }, { name: '白银 II', min: 1100 }, { name: '白银 III', min: 1200 },
+  { name: '黄金 I', min: 1300 }, { name: '黄金 II', min: 1400 }, { name: '黄金 III', min: 1500 },
+  { name: '铂金 I', min: 1600 }, { name: '铂金 II', min: 1700 }, { name: '铂金 III', min: 1800 },
+  { name: '钻石 I', min: 1900 }, { name: '钻石 II', min: 2000 }, { name: '钻石 III', min: 2100 },
+  { name: '大师', min: 2200 }, { name: '传奇', min: 2500 },
+]
+export const ELO_START = 1000
+export function rankOf(elo: number): string {
+  let r = RANKS[0].name
+  for (const k of RANKS) if (elo >= k.min) r = k.name
+  return r
+}
+/** 天梯 bot 难度：按 ELO 混合（返回 5 个敌方 bot 的难度） */
+export function rankedDifficulty(elo: number): Difficulty[] {
+  if (elo < 950) return ['novice', 'novice', 'novice', 'normal', 'normal']
+  if (elo < 1250) return ['novice', 'normal', 'normal', 'normal', 'normal']
+  if (elo < 1700) return ['normal', 'normal', 'normal', 'normal', 'pro']
+  if (elo < 2100) return ['normal', 'normal', 'pro', 'pro', 'pro']
+  return ['pro', 'pro', 'pro', 'pro', 'pro']
+}
+/** bot 队伍等效 ELO（期望胜率） */
+export const DIFF_ELO: Record<Difficulty, number> = { novice: 850, normal: 1300, pro: 2000 }
+
+/** 伤害部位倍率（头部用武器 hsMul） */
+export const HIT_MUL = { head: 0, chest: 1, stomach: 1.25, legs: 0.75 }
+export type HitGroup = keyof typeof HIT_MUL
+
+export const BOT_NAMES_T = ['阿强', '老黑', 'Ah Beng', 'Rizal', 'Kumar', '大头', 'Jun', 'Wei', 'Siva', 'Ahmad']
+export const BOT_NAMES_CT = ['Marcus', '志明', 'Hafiz', 'Daniel', 'Ravi', 'Kenji', 'Leon', 'Ivan', 'Arjun', 'Tan']
+
+/**
+ * 确定性后坐力图案（度）：返回第 i 发的累计偏移 [yaw 右正, pitch 上正]。
+ * 前 10 发主要上扬（先快后慢），之后沿正弦左右摆、继续缓慢上飘——每把枪固定，可练压枪。
+ */
+export function recoilAt(def: WeaponDef, i: number): [number, number] {
+  if (i <= 0 || def.recoilUp === 0) return [0, 0]
+  const n = Math.min(i, 30)
+  // 上扬：前 10 发占 recoilUp，之后每发 +3%
+  const k = Math.min(n, 10) / 10
+  let pitch = def.recoilUp * (1 - (1 - k) * (1 - k))
+  if (n > 10) pitch += def.recoilUp * 0.03 * (n - 10)
+  // 横向：前 10 发轻微偏向 bias，之后摆动
+  let yaw = def.recoilBias * def.recoilUp * 0.12 * Math.min(n, 10) / 10
+  if (n > 10) {
+    const t = (n - 10) / 20
+    yaw += def.recoilSway * Math.sin(t * Math.PI * 1.6 + 0.4) * (0.6 + 0.4 * t) * (def.recoilBias >= 0 ? -1 : 1)
+  }
+  // 小数发插值（idx 衰减时平滑回落）
+  const frac = i - Math.floor(i)
+  if (frac > 0 && i < 30) {
+    const [y2, p2] = recoilAt(def, Math.floor(i) + 1)
+    const [y1, p1] = Math.floor(i) <= 0 ? [0, 0] : recoilAt(def, Math.floor(i))
+    return [y1 + (y2 - y1) * frac, p1 + (p2 - p1) * frac]
+  }
+  return [yaw, pitch]
+}
