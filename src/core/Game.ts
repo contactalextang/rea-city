@@ -967,7 +967,7 @@ export class Game {
         for (const p of self.peds.peds) if (p.active && self.peds.chars[p.idx]) { const k = self.peds.chars[p.idx].current ?? '-'; clips[k] = (clips[k] ?? 0) + 1 }
         return {
           mode: self.charLib ? 'gltf' : 'box', playerClip: pc?.current ?? null, playerSpec: pc?.spec ?? null, playerVisible: self.player.group.visible,
-          tint: pc ? pc.mesh.material instanceof THREE.MeshLambertMaterial ? pc.mesh.material.emissive.getHexString() : null : null,
+          tint: pc ? pc.mesh.material.emissive.getHexString() : null,
           gunVisible: self.player.showGun, name: self.playerName, pedLod: { ...self.peds.lodStats }, pedClips: clips,
           pedSpecs: new Set(self.peds.chars.map((c) => c.spec.parts.body + c.spec.colors.top)).size,
         }

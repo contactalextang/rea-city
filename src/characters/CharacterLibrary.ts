@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { CharacterSpec, Role, Slot } from './CharacterSpec'
 import { specKey } from './CharacterSpec'
+import { CHAR_UNIFORMS, CharacterMaterial, createCharacterMaterial, matClassOf } from './CharacterMaterial'
 
 /** 部件里按材质划分的顶点区间（合并后用于按 role 上色） */
 export interface PartGroup { start: number; count: number; materialName: string; role: Role; defaultColor: string }
@@ -128,8 +129,8 @@ export class CharacterLibrary {
   readonly parts = new Map<string, PartDef>()
   readonly presets = new Map<string, CatalogPreset>()
   readonly clips = new Map<string, THREE.AnimationClip>()
-  /** 共享材质模板（实例各自 clone 一份以支持受击着色；shader program 仍共享） */
-  readonly material: THREE.MeshLambertMaterial
+  /** 共享材质模板（实例各自 clone 一份以支持受击着色；shader program 仍共享，见 CharacterMaterial） */
+  readonly material: CharacterMaterial
   readonly headBoneName: string
   readonly hipsBoneName: string
   /** 骨骼模板：只含 Bone 的层级 */
@@ -142,7 +143,7 @@ export class CharacterLibrary {
   private constructor(readonly catalog: Catalog, scene: THREE.Group, animations: THREE.AnimationClip[]) {
     this.headBoneName = catalog.skeleton.head
     this.hipsBoneName = catalog.skeleton.hips
-    this.material = new THREE.MeshLambertMaterial({ vertexColors: true, name: 'CharacterLambert' })
+    this.material = createCharacterMaterial()
 
     // 1) 收集部件节点（extras.part → userData.part）；单图元节点本身就是 SkinnedMesh，多图元是 Group 下多个 SkinnedMesh
     const partNodes: THREE.Object3D[] = []
@@ -177,6 +178,10 @@ export class CharacterLibrary {
     this.armature = armature
     this.templateBones = skeleton.bones
     this.boneInverses = skeleton.boneInverses
+    // 量化位置 → 米：scene 量化体积是等比缩放，绑定姿态下 bone.matrixWorld × boneInverse = 反量化矩阵
+    armature.updateMatrixWorld(true)
+    const dequant = new THREE.Matrix4().multiplyMatrices(skeleton.bones[0].matrixWorld, skeleton.boneInverses[0])
+    CHAR_UNIFORMS.uObjScale.value = dequant.getMaxScaleOnAxis()
 
     // 3) 动画别名
     for (const [alias, raw] of Object.entries(catalog.clips)) {
@@ -240,6 +245,7 @@ export class CharacterLibrary {
     const { geometry, offsets } = concatGeometries(parts.map((p) => p.geometry))
     const n = geometry.attributes.position.count
     const color = new Float32Array(n * 3)
+    const mat = new Uint8Array(n)   // 着色分区（CharacterMaterial：0 皮肤 1 布料 2 皮革 3 头发 4 饰品）
     const c = new THREE.Color()
     const colors = spec.colors as Record<string, string | undefined>
     parts.forEach((p, pi) => {
@@ -247,10 +253,12 @@ export class CharacterLibrary {
       for (const g of p.groups) {
         const hex = g.role === 'fixed' ? g.defaultColor : (colors[g.role] ?? g.defaultColor)
         c.set(hex)
-        for (let i = base + g.start, e = base + g.start + g.count; i < e; i++) { color[i * 3] = c.r; color[i * 3 + 1] = c.g; color[i * 3 + 2] = c.b }
+        const m = matClassOf(g.role, g.materialName)
+        for (let i = base + g.start, e = base + g.start + g.count; i < e; i++) { color[i * 3] = c.r; color[i * 3 + 1] = c.g; color[i * 3 + 2] = c.b; mat[i] = m }
       }
     })
     geometry.setAttribute('color', new THREE.BufferAttribute(color, 3))
+    geometry.setAttribute('aMat', new THREE.BufferAttribute(mat, 1))
     // 顶点在量化空间，bbox 无意义；包围球由 CharacterInstance 在骨骼空间手动给出
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.95, 0), 1.5)
     geometry.boundingBox = new THREE.Box3(new THREE.Vector3(-1.2, -0.1, -1.2), new THREE.Vector3(1.2, 2.1, 1.2))

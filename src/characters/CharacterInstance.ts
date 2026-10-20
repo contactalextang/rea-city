@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { CharacterLibrary } from './CharacterLibrary'
 import type { CharacterSpec } from './CharacterSpec'
 import { validateSpec } from './CharacterSpec'
+import type { CharacterMaterial } from './CharacterMaterial'
 
 export interface PlayOptions { fade?: number; loop?: boolean; timeScale?: number }
 
@@ -23,7 +24,8 @@ export class CharacterInstance {
   /** 当前动画别名 */
   current: string | null = null
   private currentAction: THREE.AnimationAction | null = null
-  private readonly material: THREE.MeshLambertMaterial
+  /** 模板的 clone（CharacterMaterial 子类：原型上的 onBeforeCompile/cacheKey 随 clone 保留 → 共用 program） */
+  readonly material: CharacterMaterial
   private lodAcc = 0
   private lodTick = 0
   private disposed = false
@@ -34,7 +36,7 @@ export class CharacterInstance {
     this.root = root; this.skeleton = skeleton
     this.headBone = bones.find((b) => b.name === lib.headBoneName) ?? bones[0]
     this.hipsBone = bones.find((b) => b.name === lib.hipsBoneName) ?? bones[0]
-    this.material = lib.material.clone()
+    this.material = lib.material.clone() as CharacterMaterial
     this.mesh = new THREE.SkinnedMesh(lib.acquireGeometry(this.spec), this.material)
     this.mesh.name = 'character'
     // 自带包围球（骨骼空间，脚底原点）：几何本身是量化坐标，不能用来算

@@ -1,6 +1,8 @@
 // 角色库独立测试页：dev/chars.html。4×4 排列 14 个预设 + 2 个随机行人，验证 draw call / 三角数 / 泄漏 / LOD。
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { LOOK } from '../core/LookUniforms'
 import { CharacterLibrary } from '../characters/CharacterLibrary'
 import { CharacterInstance } from '../characters/CharacterInstance'
 import { specFromPreset } from '../characters/CharacterSpec'
@@ -18,6 +20,9 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.setSize(innerWidth, innerHeight)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFShadowMap
+// 模拟主游戏 P9 画面：AgX 色调映射 + RoomEnvironment PMREM 环境光
+renderer.toneMapping = THREE.AgXToneMapping
+renderer.toneMappingExposure = 1
 document.body.appendChild(renderer.domElement)
 
 const scene = new THREE.Scene()
@@ -28,7 +33,11 @@ const controls = new OrbitControls(camera, renderer.domElement)
 controls.target.set(0, 1, 0)
 controls.update()
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x3a4256, 1.1))
+const pmrem = new THREE.PMREMGenerator(renderer)
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+pmrem.dispose()
+const hemi = new THREE.HemisphereLight(0xffffff, 0x3a4256, 1.1)
+scene.add(hemi)
 const sun = new THREE.DirectionalLight(0xffffff, 2.2)
 sun.position.set(6, 10, 5)
 sun.castShadow = true
@@ -41,6 +50,25 @@ ground.rotation.x = -Math.PI / 2
 ground.receiveShadow = true
 scene.add(ground)
 scene.add(new THREE.GridHelper(16, 16, 0x6b7390, 0x4a5068))
+
+// 夜景用彩色点光（霓虹招牌感）
+const neonA = new THREE.PointLight(0xff3fa8, 0, 9, 1.6); neonA.position.set(-3.5, 2.4, 2.5); scene.add(neonA)
+const neonB = new THREE.PointLight(0x2fd6ff, 0, 9, 1.6); neonB.position.set(3.5, 2.0, -1.5); scene.add(neonB)
+let night = false
+/** 日/夜光照：夜 = 暗环境 0.15 + 冷色边缘光 0.8 + 两盏彩色点光 */
+function setNight(on: boolean) {
+  night = on
+  scene.environmentIntensity = on ? 0.15 : 0.6
+  scene.background = new THREE.Color(on ? 0x0b0e18 : 0x2d3140)
+  hemi.intensity = on ? 0.12 : 1.1
+  hemi.color.set(on ? 0x6f86c8 : 0xffffff)
+  sun.intensity = on ? 0.35 : 2.2
+  sun.color.set(on ? 0x8fa6ff : 0xffffff)
+  neonA.intensity = neonB.intensity = on ? 14 : 0
+  LOOK.uRimColor.value.set(on ? 0x6fe3ff : 0x9fc8ff)
+  LOOK.uRimStrength.value = on ? 0.8 : 0.15
+}
+setNight(false)
 
 const COLS = 4, SPACING = 1.7
 const DEMO_CLIPS = ['Idle', 'Walk', 'Run', 'Aim', 'Shoot', 'Wave', 'Death', 'Hit', 'Punch', 'Kick', 'Roll', 'Interact', 'RunShoot', 'AimIdle', 'RunBack', 'IdleNeutral']
@@ -101,6 +129,7 @@ async function main() {
   button('随机重生成（2 个行人）', () => regen(false))
   button('全部随机重生成', () => regen(true))
   button('LOD 0/1/2', () => { lod = ((lod + 1) % 3) as 0 | 1 | 2 })
+  button('日 / 夜', () => setNight(!night))
   button('受击闪红', () => { tintT = 0.3; slots.forEach((s) => s.inst.setTint(0xff2a2a)) })
 
   const timer = new THREE.Timer()
@@ -119,6 +148,7 @@ async function main() {
     hud.textContent = [
       `角色 ${slots.length}  draw calls ${info.render.calls}  三角 ${info.render.triangles.toLocaleString()}  fps ${fps.toFixed(0)}`,
       `geometries ${info.memory.geometries}  textures ${info.memory.textures}  programs ${info.programs?.length ?? 0}  缓存几何 ${lib.cachedGeometryCount}`,
+      `${night ? '夜' : '日'}  AgX  env ${scene.environmentIntensity}  rim ${LOOK.uRimStrength.value}`,
       `LOD ${lod}  ${slots[0]?.label} head y=${headV.y.toFixed(2)} 动作=${slots[0]?.inst.current}`,
       slots.map((s, i) => `${i.toString().padStart(2)} ${s.label.padEnd(16)} ${s.clip}`).join('\n'),
     ].join('\n')
@@ -127,8 +157,8 @@ async function main() {
   // 自动化测试钩子
   ;(window as unknown as { __chars: unknown }).__chars = {
     lib, slots, scene, renderer, camera,
-    regen, playAll, setLod: (l: 0 | 1 | 2) => { lod = l }, getLod: () => lod,
-    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, fps, cached: lib.cachedGeometryCount }),
+    regen, playAll, setNight, LOOK, setLod: (l: 0 | 1 | 2) => { lod = l }, getLod: () => lod,
+    stats: () => ({ programs: renderer.info.programs?.length ?? 0, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, fps, cached: lib.cachedGeometryCount }),
     headY: (i: number) => { const v = new THREE.Vector3(); slots[i].inst.headPosition(v); return v.y },
   }
 }
