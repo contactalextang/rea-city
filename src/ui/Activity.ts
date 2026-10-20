@@ -134,6 +134,8 @@ export class Activity {
   get current() { return this.spec }
   get opaque() { return !!this.spec?.opaque }
   get clockRuns() { return !!this.spec?.clockRuns }
+  /** 活动提示条正在显示 */
+  get toastShowing() { return this.toastT > 0 }
 
   private trackPointer(e: PointerEvent) {
     const r = (this.cv ?? this.body).getBoundingClientRect()

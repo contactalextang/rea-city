@@ -39,6 +39,9 @@ export class Player implements Body {
   speedMul = 1
   /** 本步是否在奔跑（Needs 额外耗精力） */
   running = false
+  /** 醉意系数 0–1（Game 每步按夜店醉意写入；0 = 清醒，手感完全不变）：开车转向带噪声、步行左右飘 */
+  drunk = 0
+  private drunkT = 0
   /** 骨骼角色（chars=gltf 且角色库加载成功）；null = 盒子人 */
   char: CharacterInstance | null = null
   /** 盒子人部件（骨骼角色启用后从 group 移除） */
@@ -120,6 +123,12 @@ export class Player implements Body {
         const rate = Math.abs(want) > Math.abs(this.steerCur) ? 7 / (1 + Math.max(0, sp - 8) / 12) : 12
         this.steerCur += clamp(want - this.steerCur, -rate * dt, rate * dt)
         c.steer = this.steerCur
+        if (this.drunk > 0) {
+          // 醉驾：低频的方向漂移（两个不成倍数的正弦叠加），随车速略增，最多约 ±0.22 打角
+          this.drunkT += dt
+          const t = this.drunkT, k = this.drunk * Math.min(1, 0.4 + sp / 25)
+          c.steer = clamp(c.steer + (Math.sin(t * 1.3) + 0.6 * Math.sin(t * 2.9 + 1.7)) * 0.14 * k, -1, 1)
+        }
         c.handbrake = input.down('Space')
       } else { c.throttle = 0; c.steer = 0; c.handbrake = false }
       return
@@ -138,6 +147,14 @@ export class Player implements Body {
       const rx = -fz, rz = fx
       mx = fx * fwdIn + rx * sideIn; mz = fz * fwdIn + rz * sideIn
       const len = Math.hypot(mx, mz); mx /= len; mz /= len
+      if (this.drunk > 0) {
+        // 醉酒步行：移动方向左右摆（最多约 ±20°）
+        this.drunkT += dt
+        const a = (Math.sin(this.drunkT * 1.1) + 0.5 * Math.sin(this.drunkT * 2.3 + 0.9)) * 0.24 * this.drunk
+        const ca = Math.cos(a), sa = Math.sin(a)
+        const nx = mx * ca + mz * sa, nz = -mx * sa + mz * ca
+        mx = nx; mz = nz
+      }
       if (!this.aiming) this.yaw = Math.atan2(mx, mz)
     }
     // 瞄准模式（指针锁定）：始终面向相机方向，移动变成平移

@@ -95,8 +95,8 @@ export class Progress implements Subsystem<ProgressSave> {
 
   constructor(private ctx: Ctx, private host: ProgressHost) {
     const ev = ctx.events
-    ev.on('jobDone', ({ job, amount }) => {
-      this.addXp(amount * XP.perJobDollar)
+    ev.on('jobDone', ({ job, amount, base }) => {
+      this.addXp((base ?? amount) * XP.perJobDollar)   // addXp 自己乘心情倍率：按标价算，避免重复计
       if (job === 'blue_taxi') this.stats.trips++
     })
     ev.on('ate', () => this.addXp(XP.ate))

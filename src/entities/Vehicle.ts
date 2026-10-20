@@ -318,6 +318,8 @@ export class Vehicle implements VehicleBody, Body {
   /** 半车长（交通 AI 跟车间距用） */
   readonly halfLen: number
   health = 100
+  /** 碰撞 / 中弹伤害倍率（Game.hitVehicle 结算时乘它；比赛车加固用 0.3，默认 1） */
+  damageMul = 1
   /** 这辆车自己的调校倍率（商店车辆，如超跑）；NPC 车为 1 */
   tune: TuneMul = { accel: 1, maxFwd: 1 }
   wrecked = false
@@ -384,7 +386,7 @@ export class Vehicle implements VehicleBody, Body {
 
   activate(x: number, z: number, yaw: number) {
     this.x = x; this.z = z; this.yaw = yaw; this.vx = this.vz = 0
-    this.health = 100; this.wrecked = false; this.wreckedAt = -1
+    this.health = 100; this.wrecked = false; this.wreckedAt = -1; this.damageMul = 1
     this.bodyMat.color.copy(this.baseColor)
     this.controls.throttle = 0; this.controls.steer = 0; this.controls.handbrake = false
     this.active = true; this.group.visible = true; this.ai = null; this.driver = 'none'; this.kinematic = false

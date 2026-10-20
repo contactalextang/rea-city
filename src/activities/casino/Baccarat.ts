@@ -27,7 +27,7 @@ export class BaccaratTable extends Table {
     if (this.live) return
     const stake = this.commitBets(); if (!stake) return
     this.shoe.checkCut()
-    if (this.shoe.shuffled) this.api.toast('洗牌（8 副牌）', 1.2)
+    if (this.shoe.shuffled) this.notice('洗牌（8 副牌）', 1.2)
     if (this.pendingStack) { this.shoe.stack(this.pendingStack); this.pendingStack = null }
     const c = baccaratDeal(this.shoe)
     this.coup = c; this.dq.reset()

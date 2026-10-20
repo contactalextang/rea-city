@@ -134,7 +134,7 @@ export class Casino implements CasinoHost {
       },
       update: (dt, input, ptr) => { table?.frame(dt, input, ptr) },
       onEscape: () => {
-        if (table?.inRound) { this.game.activity.toast('本局进行中，结束后再离开', 1.5); return true }
+        if (table?.inRound) { table.notice('本局进行中，结束后再离开', 1.8); return true }
         return false
       },
       onClose: () => {

@@ -1,6 +1,8 @@
 import type { Ctx } from '../core/Context'
 import type { RoadEdge } from '../world/RoadGraph'
 import type { LawStrictness } from '../core/Settings'
+import { charge } from './Wallet'
+import { lineClear } from '../entities/PoliceAI'
 
 export type CrimeKind = 'shoot' | 'carjack' | 'hitPed' | 'hitPolice' | 'wreck' | 'shootVehicle' | 'hitVehicle'
 export type TrafficKind = 'speeding' | 'redLight' | 'collision' | 'hitPedTraffic'
@@ -47,6 +49,12 @@ const TICKETS: Record<Exclude<TrafficKind, 'hitPedTraffic'>, { fine: number; poi
   redLight: { fine: 200, points: 12, label: '闯红灯' },   // points 实际取 LawTuning.redLightPoints
   collision: { fine: 300, points: 6, label: '碰撞' },
 }
+/**
+ * 酒驾（新加坡：初犯罚款 S$2,000–10,000、吊销驾照；游戏里取下限）：醉意超标开车被 40 m 内、无遮挡的警车看到 →
+ * 罚款 + 扣分 + 1 星（警方出动拦截）。同一次醉酒只罚一次（醒到标准以下才重置），另有 60 s 冷却。
+ */
+export const DRUNK_DRIVING = { fine: 2000, points: 12, spotDist: 40, minSpeed: 3, cooldown: 60 }
+
 const CRIME_LABEL: Partial<Record<CrimeKind, string>> = { carjack: '抢车', wreck: '毁车', shoot: '开枪', shootVehicle: '开枪' }
 
 /**
@@ -75,6 +83,16 @@ export class Law {
   private prevEdge: RoadEdge | null = null
   private prevT = 0
   private toastFn: (text: string, seconds?: number) => void = () => {}
+  /** 醉意来源（P10.E 夜店插件注入 club.drunkLevel）；0 = 清醒 */
+  drunkLevel: () => number = () => 0
+  /** 酒驾标准（醉意单位，夜店插件注入 DRUNK_LIMIT） */
+  drunkLimit = 2.5
+  /** 本次醉酒已被查到（醒到标准以下才重置） */
+  private drunkCaught = false
+  private lastDrunkTicket = -100
+  private drunkScan = 0
+  /** 累计酒驾次数（调试 / 统计） */
+  drunkTickets = 0
 
   setToast(fn: (text: string, seconds?: number) => void) { this.toastFn = fn }
 
@@ -127,13 +145,52 @@ export class Law {
     const def = TICKETS[kind]
     const points = kind === 'redLight' ? lawTuning(ctx).redLightPoints : def.points
     this.fines += def.fine; this.demerits += points
-    ctx.player.money -= def.fine
+    charge(ctx, def.fine, 'fine')
     this.raise(kind === 'redLight' && this.policeDist(ctx) < 80 ? 2 : 1, t)
     this.toastFn(`罚单 $${def.fine} · ${label ?? def.label} +${points} 分`, 3)
-    if (this.demerits >= DEMERIT_LIMIT) {
-      this.licenseSuspendedUntilDay = ctx.clock.day + 1
-      this.demerits = 0
-      this.toastFn(`扣满 ${DEMERIT_LIMIT} 分，驾照吊销至第 ${this.licenseSuspendedUntilDay} 天`, 4)
+    this.checkDemerits(ctx)
+  }
+
+  private checkDemerits(ctx: Ctx) {
+    if (this.demerits < DEMERIT_LIMIT) return
+    this.licenseSuspendedUntilDay = ctx.clock.day + 1
+    this.demerits = 0
+    this.toastFn(`扣满 ${DEMERIT_LIMIT} 分，驾照吊销至第 ${this.licenseSuspendedUntilDay} 天`, 4)
+  }
+
+  /** 醉意超标（夜店插件提供） */
+  get drunk() { return this.drunkLevel() >= this.drunkLimit }
+
+  /** 醉驾查处：罚款 + 扣分 + 1 星并出警 */
+  drunkDriving(ctx: Ctx) {
+    const d = DRUNK_DRIVING
+    this.drunkCaught = true; this.lastDrunkTicket = ctx.time; this.drunkTickets++
+    this.fines += d.fine; this.demerits += d.points
+    charge(ctx, d.fine, 'fine:drunk')
+    this.pursuitLevel = Math.max(this.pursuitLevel, 1)
+    this.lastCrime = ctx.time
+    this.chase = true
+    this.flash = 1
+    this.toastFn(`酒驾被警察拦查！罚款 $${d.fine.toLocaleString()} · +${d.points} 分 · 通缉 1 星`, 4)
+    this.checkDemerits(ctx)
+  }
+
+  /** 醉酒开车且附近警车看得见 → drunkDriving；每 0.5 s 扫一次 */
+  private detectDrunk(dt: number, ctx: Ctx) {
+    if (!this.drunk) { this.drunkCaught = false; return }
+    const v = ctx.player.vehicle
+    if (!v || v.wrecked || this.drunkCaught || this.trafficExempt) return
+    if (v.absSpeed < DRUNK_DRIVING.minSpeed || ctx.time - this.lastDrunkTicket < DRUNK_DRIVING.cooldown) return
+    this.drunkScan -= dt
+    if (this.drunkScan > 0) return
+    this.drunkScan = 0.5
+    const px = ctx.player.worldX, pz = ctx.player.worldZ
+    for (const p of ctx.vehicles) {
+      // 出勤警车 + 路边停着的警车（路检 / 巡逻点）都算
+      if (!p.active || p.kind !== 'police' || p.wrecked || (p.driver !== 'police' && p.driver !== 'none')) continue
+      if (Math.hypot(p.x - px, p.z - pz) > DRUNK_DRIVING.spotDist || !lineClear(ctx, p.x, p.z, px, pz)) continue
+      this.drunkDriving(ctx)
+      return
     }
   }
 
@@ -160,6 +217,7 @@ export class Law {
   update(dt: number, ctx: Ctx) {
     this.flash = Math.max(0, this.flash - dt)
     this.detectTraffic(dt, ctx)
+    this.detectDrunk(dt, ctx)
     if (this.pursuitLevel <= 0) { this.chase = false; return }
     const tune = lawTuning(ctx)
     if (ctx.time - this.lastCrime < tune.decayDelay) return

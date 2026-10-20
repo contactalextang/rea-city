@@ -29,8 +29,8 @@ export class SlotsTable extends Table {
   private start() {
     if (this.spin) return
     const bet = this.chip
-    if (bet < this.hall.min || bet > this.hall.max) { this.api.toast(`本厅每转 ${money(this.hall.min)}–${money(this.hall.max)}`, 1.5); return }
-    if (!this.host.stake(this.game, bet)) { this.api.toast('现金不足', 1.4); return }
+    if (bet < this.hall.min || bet > this.hall.max) { this.notice(`本厅每转 ${money(this.hall.min)}–${money(this.hall.max)}`, 1.5); return }
+    if (!this.host.stake(this.game, bet)) { this.notice('现金不足', 1.4); return }
     const stops = this.forced ?? slotSpin(); this.forced = null
     const p0 = this.pos.map((p) => mod(p, L))
     const d = stops.map((s, i) => mod(p0[i] - s, L) + L * (3 + i))

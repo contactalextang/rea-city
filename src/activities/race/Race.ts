@@ -26,6 +26,8 @@ export const OUT_OF_CAR_LIMIT = 15
 /** 完赛后 AI 继续跑完的最长时间 */
 const COOLDOWN_T = 150
 const SPOT_DIST = 60
+/** 比赛车（AI 与玩家参赛车）的伤害倍率（Vehicle.damageMul） */
+export const RACE_DAMAGE_MUL = 0.3
 const P = { x: 0, z: 0, dx: 0, dz: 0, hw: 0 }
 const fmt = (t: number) => { const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, '0')}` }
 export const fmtTime = fmt
@@ -119,11 +121,8 @@ export class RaceSession {
     }
     this.placeAll()
     // 赛车加固：比赛期间玩家这辆车也按 0.3 倍吃伤害（与 AI 赛车一致），结束时还原
-    if (!Object.prototype.hasOwnProperty.call(car, 'damage')) {
-      const base = car.damage.bind(car)
-      car.damage = (amount: number) => base(amount * 0.3)
-      this.patchedDamage = true
-    }
+    this.prevDamageMul = car.damageMul
+    car.damageMul = RACE_DAMAGE_MUL
     game.law.trafficExempt = true
     // 街头赛：非黑帮身份在路线中段放一辆巡逻警车（被它近距离看到 → 1 星通缉）
     if (opts.mode === 'street' && game.ctx.role.id !== 'gang') this.placePatrol()
@@ -334,7 +333,7 @@ export class RaceSession {
   }
 
   disposed = false
-  private patchedDamage = false
+  private prevDamageMul = 1
   /** 回收 AI / 租车 / 巡逻车 / 标记 */
   dispose() {
     if (this.disposed) return
@@ -347,7 +346,7 @@ export class RaceSession {
       g.hud.toast('租来的跑车已归还', 2)
     }
     if (this.patrol && this.patrol.driver !== 'police') this.patrol.deactivate()
-    if (this.patchedDamage) delete (this.car as { damage?: unknown }).damage
+    this.car.damageMul = this.prevDamageMul
     g.scene.remove(this.marker.group, this.preview.group)
     g.law.trafficExempt = false
     this.onDispose?.()
@@ -395,6 +394,20 @@ export class RaceSession {
 
   /** 当前目标点（小地图） */
   get target() { return this.phase === 'done' ? null : this.marker.point }
+  private pathCache: { x: number; z: number }[] | null = null
+  /** 小地图赛道线：路线点每 5 个取 1（环线首尾相接）；结束后不画 */
+  get navPath() {
+    if (this.phase === 'done') return null
+    if (!this.pathCache) {
+      const pts = this.route.pts
+      const out = pts.filter((_, i) => i % 5 === 0).map((p) => ({ x: p.x, z: p.z }))
+      const last = pts[pts.length - 1]
+      if (last) out.push({ x: last.x, z: last.z })
+      if (this.route.loop && pts[0]) out.push({ x: pts[0].x, z: pts[0].z })
+      this.pathCache = out
+    }
+    return this.pathCache
+  }
 
   hudCard() {
     const def = this.def, me = this.player

@@ -3,6 +3,8 @@
 // 一有钱就买回本最快的产业动作（新开 / 升档 / 雇经理），每隔一阵绕一圈收钱柜。
 // 数值全部取自 src/data/*（产业、商店、工资、工作参数、XP 与解锁门槛），真实秒 ↔ 游戏小时用 GAME_HOUR_SEC。
 // 随机事件按期望值折算（景气 / 低迷对称抵消；黑帮突袭 / 查封、被捕按频率扣），结果确定、可断言。
+// 心情（P10）：mood 0–100，<30 工资 / XP ×0.85、>75 ×1.1；清醒时 3/h 衰减到 40 为止，上班 / 被捕扣、吃饭 / 睡觉 / 娱乐加（同 Needs.wireMood）。
+// 娱乐消费（P10）：每游戏天睡前（一晚花费 ≤ 现金 4%）出去玩一晚，21 点后夜店 / 赌场轮流、更早只去赌场，夜店 / 赌场轮流，按期望花费与心情计。
 // 断言：首个产业 ≤ 13 真实分钟；中期目标（见 MID）落在 42–78 分钟（60 ± 30%）。
 import { GAME_HOUR_SEC } from '../../src/config.ts'
 import { BIZ_TYPES, BIZ_RESALE, COLLECT_BONUS, type BizType } from '../../src/data/business.ts'
@@ -11,6 +13,9 @@ import { ECONOMY, HAWKER_MENU } from '../../src/data/menus.ts'
 import { JOB_PARAMS } from '../../src/data/jobs.ts'
 import { XP, xpFor, MAX_LEVEL, unlockLevel } from '../../src/data/progression.ts'
 import { ROLES, type RoleId } from '../../src/data/roles.ts'
+import { MOOD } from '../../src/data/mood.ts'
+import { ENTRY_LEVY } from '../../src/data/casino.ts'
+import { DRINKS } from '../../src/data/dates.ts'
 
 // ---------- 典型玩家假设（真实秒） ----------
 const A = {
@@ -41,6 +46,22 @@ const A = {
   /** 留给吃饭 / 房租的现金 */
   reserve: 60,
 }
+
+// ---------- 娱乐（每晚一次，夜店 / 赌场轮流；真实秒按一晚约 1 游戏小时计） ----------
+const beer = DRINKS.find((d) => d.id === 'beer')!.price, sling = DRINKS.find((d) => d.id === 'cocktail')!.price
+const FUN = {
+  /** 夜店 21 点开门（更早收工的晚上去 24 小时的赌场） */
+  clubFrom: 21,
+  /** 一晚花的真实秒（≈ 40 游戏分钟：进场、喝两杯、跳一曲 / 玩二十来局快局） */
+  sec: 120,
+  /** 量入为出：一晚花费不超过手头现金的这个比例才去（穷的时候不去 MBS 交 $150 入场税） */
+  budgetShare: 0.04,
+  /** 夜店：门票平日 $30 / 周末 $40（均值 ≈ $32.9）+ 啤酒 + 新加坡司令；心情 = 两杯酒 2×drink + 一曲舞（85% 准确率 → round(0.85×8)） */
+  club: { cost: (30 * 5 + 40 * 2) / 7 + beer + sling, mood: 2 * MOOD.drink + Math.round(0.85 * 8), xp: 0 },
+  /** 赌场：入场税 + 期望输额（20 局 × $20，混合玩法庄家优势约 2.7%）；心情按 45% 胜率 × 20 局，输局扣到 workFloor 为止 → 约 +8 */
+  casino: { cost: ENTRY_LEVY + 20 * 20 * 0.027, mood: Math.round(20 * (0.45 * MOOD.gambleWin + 0.55 * MOOD.gambleLose * 0.5)), xp: 20 * XP.gambleRound },
+}
+
 /** 中期目标（任一满足）：产业升到 T3 / 买下该身份对应的房产；金领产业只有一档，以第二级产业「写字楼股份」代替 T3 */
 const MID: Record<RoleId, { tier3?: string; biz?: string; property: string; label: string }> = {
   gang: { tier3: 'biz_protect', property: 'home_shophouse', label: '保护费 T3 / 店屋' },
@@ -62,6 +83,10 @@ function simulate(role: RoleId): Result {
   let abs = 7.5          // 游戏绝对小时（第 1 天 07:30 开局）
   let cash = R.cash
   let hunger = 80, energy = 100
+  let mood: number = MOOD.start, moodLow = 0, moodHigh = 0, moodSamples = 0, moodSum = 0
+  let funNight = -1, funNights = 0, funSpent = 0, clubNights = 0
+  const mul = () => mood < MOOD.low ? MOOD.lowMul : mood > MOOD.high ? MOOD.highMul : 1
+  const addMood = (n: number, floor?: number) => { if (n < 0 && floor !== undefined) { if (mood <= floor) return; mood = Math.max(floor, mood + n) } else mood = Math.min(100, Math.max(0, mood + n)) }
   let level = 1, xp = 0
   const biz: OwnBiz[] = []
   const props = new Set<string>()
@@ -75,10 +100,10 @@ function simulate(role: RoleId): Result {
   const day = () => Math.floor(abs / 24) + 1
   const addXp = (n: number) => {
     if (level >= MAX_LEVEL || !(n > 0)) return
-    xp += n
+    xp += n * mul()
     while (level < MAX_LEVEL && xp >= xpFor(level)) { xp -= xpFor(level); level++; if (process.env.ECON_DEBUG) console.log(`  ${role} Lv${level} @ ${(sec / 60).toFixed(1)} 分`) }
   }
-  const earn = (n: number, job = true) => { cash += n; jobTotal += n; if (job) addXp(n * XP.perJobDollar) }
+  const earn = (n: number, job = true, kind: 'shift' | 'job' | 'site' = 'job') => { n *= mul(); addMood(kind === 'shift' ? MOOD.clockIn : kind === 'site' ? MOOD.siteHour : MOOD.jobDone, MOOD.workFloor); cash += n; jobTotal += n; if (job) addXp(n * XP.perJobDollar) }
   const nw = () => cash + assetValue * 0.6 + biz.reduce((a, b) => a + b.invested, 0) * BIZ_RESALE
   /** 产业每日收入期望（黑帮：查封 5% 停业、突袭 8% 损失半个钱柜 + 一天收入 → 约 ×0.85） */
   const eff = (t: BizType) => t.risk.raidPerDay > 0 ? 1 - (t.risk.inspectPerDay ?? 0) - t.risk.raidPerDay * (1 + t.risk.lossPct * 0.5) : 1
@@ -87,7 +112,8 @@ function simulate(role: RoleId): Result {
   const passHours = (dh: number, needs = true) => {
     if (dh <= 0) return
     abs += dh
-    if (needs) { hunger = Math.max(0, hunger - 6 * R.needsRate * dh); energy = Math.max(0, energy - 4 * R.needsRate * dh) }
+    if (needs) { hunger = Math.max(0, hunger - 6 * R.needsRate * dh); energy = Math.max(0, energy - 4 * R.needsRate * dh); if (mood > MOOD.decayFloor) mood = Math.max(MOOD.decayFloor, mood - MOOD.decayPerHour * dh) }
+    moodSamples++; moodSum += mood; if (mood < MOOD.low) moodLow++; if (mood > MOOD.high) moodHigh++
     for (const b of biz) {
       const tier = b.t.tiers[b.tier - 1]
       const rate = tier.perDay / 24 * eff(b.t)
@@ -156,19 +182,30 @@ function simulate(role: RoleId): Result {
   }
   const ownHome = () => [...props].some((id) => { const s = SHOP.find((x) => x.id === id); return s?.poi?.includes(R.home) })
   const sleep = () => {
+    goOut()
     spendSec(A.travelSec)
     const h = hour()
     passHours(h < 7 ? 7 - h : 24 - h + 7, false)
     energy = 100
     hunger = Math.max(0, hunger - (props.size ? 10 : 20))
     if (R.systems.rent && !ownHome()) cash -= ECONOMY.rent[role] ?? 0
-    addXp(XP.slept)
+    addXp(XP.slept); addMood(MOOD.slept); mood = Math.max(mood, MOOD.sleepFloor)
     otDone = 0
   }
   const eat = () => {
-    spendSec(A.eatSec); passHours(20 / 60, false); cash -= meal; hunger = Math.min(100, hunger + mealHunger); addXp(XP.ate)
+    spendSec(A.eatSec); passHours(20 / 60, false); cash -= meal; hunger = Math.min(100, hunger + mealHunger); addXp(XP.ate); addMood(MOOD.ate)
     // 在小贩中心吃饭：顺手收自己档口的钱柜（蓝领档口就开在那里）
     for (const b of biz) if (!b.manager && b.t.poiType === 'hawker' && b.till > 0) { const amt = b.till * COLLECT_BONUS; b.till = 0; cash += amt; addXp(amt / XP.bizIncomeDiv); break }
+  }
+
+  /** 睡前出去玩一晚（每游戏天一次；21 点前只有赌场开着，之后夜店 / 赌场轮流）：钱够当晚花费 + 预留才去 */
+  const goOut = () => {
+    if (funNight === day()) return
+    const kind = hour() < FUN.clubFrom || funNights % 2 === 1 ? FUN.casino : FUN.club
+    if (cash - kind.cost < A.reserve || kind.cost > cash * FUN.budgetShare) return
+    funNight = day(); funNights++
+    if (kind === FUN.club) clubNights++
+    spendSec(FUN.sec); cash -= kind.cost; funSpent += kind.cost; addMood(kind.mood); addXp(kind.xp)
   }
 
   /** 一次工作动作（按身份选最赚钱的） */
@@ -182,24 +219,26 @@ function simulate(role: RoleId): Result {
           lastBust = sec
           cash -= Math.ceil(Math.max(0, cash) * 0.1)
           for (const b of biz) if (b.t.roles.includes('gang')) b.till = 0
-          spendSec(A.bustLostSec)
+          spendSec(A.bustLostSec); addMood(MOOD.busted)
         }
         return
       }
       case 'gold': {
-        if (shiftDay !== day() && h >= 9 && h < 9.5) { shiftDay = day(); passHours(18 - h); hunger -= 30; energy -= 25; earn(ECONOMY.salary.gold); addXp(XP.clockIn); return }
+        if (shiftDay !== day() && h >= 9 && h < 9.5) { shiftDay = day(); passHours(18 - h); hunger -= 30; energy -= 25; earn(ECONOMY.salary.gold, true, 'shift'); addXp(XP.clockIn); return }
+        // 典型玩家会掐着点上班：快到 9 点时不再接会议（一单约 0.7 游戏小时，会错过 09:00–09:30 打卡窗口），在楼下等
+        if (shiftDay !== day() && h >= 9 - A.meeting.sec / GAME_HOUR_SEC && h < 9) { spendSec((9 - h) * GAME_HOUR_SEC); return }
         spendSec(A.meeting.sec); earn(A.meeting.pay); return
       }
       case 'white': {
         const sal = ECONOMY.salary.white
-        if (shiftDay !== day() && h >= 9 && h < 9.5) { spendSec(10); shiftDay = day(); passHours(18 - hour()); hunger -= 30; energy -= 25; earn(sal); addXp(XP.clockIn); return }
+        if (shiftDay !== day() && h >= 9 && h < 9.5) { spendSec(10); shiftDay = day(); passHours(18 - hour()); hunger -= 30; energy -= 25; earn(sal, true, 'shift'); addXp(XP.clockIn); return }
         const O = JOB_PARAMS.overtime
         if (h >= O.from && h < O.to && otDone < 2) { spendSec(10); otDone++; passHours(O.hours, false); hunger -= 10; energy -= 15; earn(O.pay); return }
         // 没活干：等到 09:00 / 18:00（期间收钱、闲逛）
         spendSec(30); return
       }
       case 'blue': {
-        if (energy >= 15) { spendSec(A.siteClickSec); passHours(1, false); hunger -= 6; energy -= 12; earn(ECONOMY.siteWage); return }
+        if (energy >= 15) { spendSec(A.siteClickSec); passHours(1, false); hunger -= 6; energy -= 12; earn(ECONOMY.siteWage, true, 'site'); return }
         spendSec(30); return
       }
     }
@@ -218,6 +257,7 @@ function simulate(role: RoleId): Result {
     if (lastWhere !== workplace) { spendSec(A.travelSec); lastWhere = workplace; continue }
     work()
   }
+  console.log(`  [mood] ${role}: 平均 ${(moodSum / moodSamples).toFixed(1)} · <30 占比 ${(moodLow / moodSamples * 100).toFixed(1)}% · >75 占比 ${(moodHigh / moodSamples * 100).toFixed(1)}% · 结束 ${mood.toFixed(0)} · 娱乐 ${funNights} 晚（夜店 ${clubNights}）共 $${Math.round(funSpent)}（均 $${funNights ? Math.round(funSpent / funNights) : 0}/晚）`)
   return { day60, job60, role, firstBiz, mid, midWhat, nw60, nw180, level60, level180: level, biz180: biz.map((b) => `${b.t.name}T${b.tier}${b.manager ? '+经理' : ''}`).join(' ') }
 }
 

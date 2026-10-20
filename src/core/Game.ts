@@ -33,7 +33,7 @@ import { Weather, WEATHER_LABEL } from '../systems/Weather'
 import { PoiRegistry, type Poi } from '../systems/Poi'
 import { Needs, wireMood, MOOD } from '../systems/Needs'
 import { Interactions } from '../systems/Interactions'
-import { Panels } from '../ui/Panels'
+import { Panels, type PanelSpec } from '../ui/Panels'
 import { Phone } from '../ui/Phone'
 import * as Save from '../systems/Save'
 import { Progress } from '../systems/Progress'
@@ -305,6 +305,11 @@ export class Game {
     wireMood(this.events, this.needs)
     this.activity = new Activity(() => this.ctx)
     this.activity.onClosed = (spec) => this.afterActivity(spec)
+    // 活动期间 HUD 隐藏：hud.toast / 成就横幅转发到活动提示条（赌场入场税、成就、心情等即时可见）
+    this.hud.sink = (text, sec) => {
+      if (this.state !== 'activity' || !this.activity.isOpen) return false
+      this.activity.toast(text, sec); return true
+    }
     this.progress = new Progress(this.ctx, { netWorth: () => this.wallet.netWorth(), bizCount: () => this.business.list().length })
     // 投资买卖只是现金 ↔ 持仓互换，不计入终身收支
     this.jobs.onInvestCash = (d) => this.progress.excludeCash(d)
@@ -426,9 +431,10 @@ export class Game {
     // 成长：升级 / 成就提示；的士小费升级（网约车 App）按倍率补发小费
     this.events.on('levelUp', ({ level }) => { this.hud.toast(`升级！Lv${level} ${this.progress.title}`, 3) })
     this.events.on('achievement', ({ id }) => { const a = ACHIEVEMENTS.find((x) => x.id === id); this.hud.achievement(`成就解锁 ★ ${a?.name ?? id}`) })
-    this.events.on('jobDone', ({ job, amount }) => {
+    this.events.on('jobDone', ({ job, amount, base }) => {
       const mul = this.assets.effects().taxiTipMul
-      if (job === 'blue_taxi' && mul > 1) this.wallet.earn(Math.round(amount * (mul - 1) * 100) / 100, 'taxiTip')
+      // 按标价算补发小费（taxiTip 属 job 类，earn 会再乘一次心情倍率）
+      if (job === 'blue_taxi' && mul > 1) this.wallet.earn(Math.round((base ?? amount) * (mul - 1) * 100) / 100, 'taxiTip')
     })
     // 每次购买（商店 / 产业 / 升档 / 经理）后自动存档：同一步内多次购买只存一次
     this.events.on('purchased', () => { this.saveDue = true })
@@ -591,6 +597,21 @@ export class Game {
     if (document.pointerLockElement) document.exitPointerLock()
     this.interactions.open(poi)
   }
+  /**
+   * 公开面板接口（插件用）：在 play / panel 状态弹出自定义面板（世界暂停）；按钮里关闭走 closePanel。
+   * 返回 false = 当前状态不能弹（活动 / 竞技场 / 死亡等）。
+   */
+  showPanel(spec: PanelSpec): boolean {
+    if (!this.ready || this.creatorUi || (this.state !== 'play' && this.state !== 'panel')) return false
+    if (this.state === 'play') {
+      this.state = 'panel'
+      this.phone.set(false)
+      if (document.pointerLockElement) document.exitPointerLock()
+    }
+    this.interactions.current = null
+    this.panels.show(spec)
+    return true
+  }
   closePanel() {
     this.panels.hide()
     this.interactions.current = null
@@ -623,8 +644,10 @@ export class Game {
     if (this.state === 'panel') { this.panels.hide(); this.interactions.current = null }
     this.phone.set(false)
     if (document.pointerLockElement) document.exitPointerLock()
+    const pending = this.hud.takeToast()   // 打开前刚弹的提示（如“已缴入场税”）转到活动提示条
     this.state = 'activity'
     this.activity.open(spec)
+    if (pending && this.activity.isOpen && !this.activity.toastShowing) this.activity.toast(pending.text, pending.seconds)
     return this.state === 'activity' && this.activity.isOpen
   }
   closeActivity() { this.activity.close() }
@@ -755,6 +778,11 @@ export class Game {
     this.hud.vignette(this.needs.low)
     if (fainted && playing) { this.faint(); return }
 
+    // 醉意（夜店插件经 law.drunkLevel 提供）：清醒 = 0；醉驾标准 2.5 单位约 0.36，6 单位以上 = 1
+    const drunkLv = this.law.drunkLevel()
+    this.player.drunk = drunkLv > 0.5 ? Math.min(1, (drunkLv - 0.5) / 5.5) : 0
+    if (playing) this.updateDrunkPatrol(dt)
+
     // 玩家输入与上下车
     const gun = this.role.systems.gun
     this.player.aiming = control && gun && (input.locked || this.forceAim) && !this.player.inVehicle
@@ -817,6 +845,39 @@ export class Game {
     for (const v of this.vehicles) if (v.active) v.sync(this.time)
     this.jobs.sync(this.time); this.quests.sync(this.time, this.jobs.targetPoint !== null)
     this.updateHud(dt)
+  }
+
+  /** 酒驾路检：醉驾超标且附近没有警车时，每开 15–30 s 在前方约 90 m 的路边停一辆警车（被它看到 → Law 酒驾查处） */
+  private drunkPatrol: Vehicle | null = null
+  private drunkPatrolT = 0
+  private updateDrunkPatrol(dt: number) {
+    const pl = this.player, v = pl.vehicle
+    const pv = this.drunkPatrol
+    if (pv && pv.active && pv.driver === 'none' && Math.hypot(pv.x - pl.worldX, pv.z - pl.worldZ) > 300) { pv.deactivate() }
+    if (!v || !this.law.drunk || this.law.trafficExempt || v.absSpeed < 5) { this.drunkPatrolT = 0; return }
+    if (pv?.active && pv.driver === 'none') return
+    if (this.law.policeDist(this.ctx) < 150) return
+    this.drunkPatrolT += dt
+    if (this.drunkPatrolT < 15) return
+    const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw)
+    // 前方 90 / 60 / 40 m 依次找路：停在行驶侧路缘外（车道外缘 + 1 m），不挡车流；被小件道具（路灯 / 树）以外的静态体挡住就前后挪一挪
+    for (const ahead of [90, 60, 40]) {
+      const lane = this.graph.nearestLane(v.x + fx * ahead, v.z + fz * ahead, fx, fz)
+      if (!(lane.dist <= 40)) continue
+      const e = lane.edge, off = DRIVE_SIDE * (e.lanes * e.laneW + 1), back = DRIVE_SIDE * 0.5 * e.laneW
+      for (const dt0 of [0, 12, -12, 24]) {
+        const t = Math.max(4, Math.min(e.length - 4, lane.t + dt0))
+        const c = this.graph.lanePoint(e, t, { x: 0, z: 0 }, 0), d = this.graph.dirAt(e, t, { x: 0, z: 0 })
+        const x = c.x + d.z * back - d.z * off, z = c.z - d.x * back + d.x * off
+        if (this.world.contains(x, z) || this.world.query(x, z, 1.4, tmpBoxes).some((b) => (b.maxX - b.minX >= 1.5 || b.maxZ - b.minZ >= 1.5) && circleBody(x, z, 1.4, b) !== null)) continue
+        const car = this.spawner.spawnOwned(this.ctx, 'drunk_patrol', x, z, Math.atan2(d.x, d.z), { kind: 'police', color: 0xf4f4f4, model: 'sedan' })
+        car.driver = 'none'; car.controls.handbrake = true
+        this.drunkPatrol = car
+        this.drunkPatrolT = -Math.random() * 15   // 下一次设卡至少再开 15–30 s
+        return
+      }
+    }
+    this.drunkPatrolT = 10   // 没找到地方停：5 s 后再试
   }
 
   /** 帝国总结：头衔、净资产、产业数、终身统计 */
@@ -993,7 +1054,7 @@ export class Game {
   /** 给车辆扣血，并在报废瞬间发事件 */
   private hitVehicle(v: Vehicle, amount: number, byPlayerDirect: boolean) {
     const was = v.wrecked
-    v.damage(amount)
+    v.damage(amount * v.damageMul)
     if (!was && v.wrecked) {
       v.wreckedAt = this.time
       const byPlayer = byPlayerDirect || this.time - v.lastHitByPlayer < 3
@@ -1027,7 +1088,7 @@ export class Game {
     for (const v of this.vehicles) if (v.active && v.driver === 'police') { police.push(v); policeDist = Math.min(policeDist, Math.hypot(v.x - pl.worldX, v.z - pl.worldZ)) }
     // 目标优先级：进行中的工作 > 任务 > 被动工作（打卡/投资 → 最近办公楼）
     const target = this.pluginTarget() ?? this.jobs.targetPoint ?? this.quests.targetPoint ?? this.business.navTarget ?? this.jobs.passiveTarget
-    this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, target, this.quests.starts, police, this.quests.carPoint, this.hospital, this.pois.all, pl.health, this.business.points())
+    this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, target, this.quests.starts, police, this.quests.carPoint, this.hospital, this.pois.all, pl.health, this.business.points(), this.pluginPath())
     this.phoneTimer += dt
     if (this.phone.open && this.phoneTimer >= 0.25) {
       this.phoneTimer = 0
@@ -1046,6 +1107,11 @@ export class Game {
 
   private pluginTarget() {
     for (const pl of this.plugins) { const t = pl.navTarget?.(); if (t) return t }
+    return null
+  }
+  /** 插件导航折线（赛道线）：第一个非空的 */
+  private pluginPath() {
+    for (const pl of this.plugins) { const p = pl.navPath?.(); if (p && p.length > 1) return p }
     return null
   }
 
@@ -1144,6 +1210,8 @@ export class Game {
         get policeStars() { return self.law.policeStars },
         get demerits() { return self.law.demerits }, get fines() { return self.law.fines }, get arrests() { return self.law.arrests },
         get licenseSuspendedUntilDay() { return self.law.licenseSuspendedUntilDay },
+        /** 酒驾：醉意 / 是否超标 / 被查次数 / 玩家醉意系数 / 路检警车位置 */
+        get drunk() { const p = self.drunkPatrol; return { level: self.law.drunkLevel(), over: self.law.drunk, tickets: self.law.drunkTickets, factor: self.player.drunk, patrol: p?.active ? { x: p.x, z: p.z, driver: p.driver } : null, patrolTimer: +self.drunkPatrolT.toFixed(2) } },
       },
       signals: {
         stateOf(nodeId: number) { return self.signals.stateOf(nodeId) },

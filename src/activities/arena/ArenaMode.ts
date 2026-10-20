@@ -84,8 +84,8 @@ export class ArenaMode implements ArenaSession, BotWorld {
   private scoped = 0
   private specIdx = 0
   private specTarget: Actor | null = null
-  private prevRmb = false
-  private prevLmb = false
+  /** 滚轮累计（takeWheel，满一格切枪） */
+  private wheelAcc = 0
   private lastMouse = { dx: 0, dy: 0 }
   private beepT = 0
   private respawnAt = new Map<Actor, number>()
@@ -558,9 +558,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
     }
     if (!p.alive) {
       // 观战切换
-      const lmb = input.mouseDown(0) || input.clicked
-      if (lmb && !this.prevLmb) this.specIdx++
-      this.prevLmb = lmb
+      if (input.mousePressed(0) || input.clicked) this.specIdx++
       return
     }
     if (this.autopilot) return
@@ -577,6 +575,9 @@ export class ArenaMode implements ArenaSession, BotWorld {
       else this.selectSlot(p, 'grenade')
     }
     if (input.justPressed('Digit5')) this.selectSlot(p, 'c4')
+    // 滚轮切枪（向下 = 下一把）：累计到一格（约 60）切一次，每帧最多一次
+    this.wheelAcc += input.takeWheel()
+    if (Math.abs(this.wheelAcc) >= 60) { this.cycleSlot(p, this.wheelAcc > 0 ? 1 : -1); this.wheelAcc = 0 }
     if (input.justPressed('KeyQ')) { const s = p.lastSlot; if (p.hasSlot(s)) this.selectSlot(p, s) }
     if (input.justPressed('KeyR')) this.startReload(p)
     if (input.justPressed('KeyZ') && this.mode !== 'dm' && this.mode !== 'duel') {
@@ -585,21 +586,27 @@ export class ArenaMode implements ArenaSession, BotWorld {
       this.hud.center(this.command === 'follow' ? '队友：跟我！' : this.command === 'hold' ? '队友：守住这里！' : '队友：自由行动', 1.5)
     }
     // 开镜
-    const rmb = input.mouseDown(2)
     const w = p.weapon()
-    if (rmb && !this.prevRmb) {
+    if (input.mousePressed(2)) {
       if (w.def.scope) { this.scoped = (this.scoped + 1) % 3; w.scope = this.scoped }
       else if (w.def.kind === 'knife') this.melee(p, true)
     }
-    this.prevRmb = rmb
-    // 开火
-    const lmb = input.mouseDown(0)
+    // 开火（半自动 = 按下边沿；手雷 = 松开时投出）
     if (p.slot === 'grenade') {
-      if (this.prevLmb && !lmb && p.grenades.length) this.throwNade(p, p.grenades[0] as NadeKind, false)
+      if (input.mouseReleased(0) && p.grenades.length) this.throwNade(p, p.grenades[0] as NadeKind, false)
     } else if (p.slot === 'c4') {
       // 左键 / E 按住下包
-    } else if (lmb && (w.def.auto || !this.prevLmb)) this.tryFire(p)
-    this.prevLmb = lmb
+    } else if (w.def.auto ? input.mouseDown(0) : input.mousePressed(0)) this.tryFire(p)
+  }
+
+  /** 滚轮切枪：按 主武器 → 副武器 → 刀 → 手雷 → C4 的顺序循环，跳过没有的 */
+  private cycleSlot(a: Actor, dir: 1 | -1) {
+    const order = ['primary', 'secondary', 'knife', 'grenade', 'c4'] as const
+    let i = Math.max(0, order.indexOf(a.slot as typeof order[number]))
+    for (let k = 0; k < order.length; k++) {
+      i = (i + dir + order.length) % order.length
+      if (a.hasSlot(order[i])) { this.selectSlot(a, order[i]); return }
+    }
   }
 
   // ———————————————————— 战斗 ————————————————————
@@ -816,7 +823,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
         const fx = -Math.sin(a.yaw), fz = -Math.cos(a.yaw), rx = Math.cos(a.yaw), rz = -Math.sin(a.yaw)
         mx = fx * f + rx * s; mz = fz * f + rz * s
         a.walking = !ui && (inp.down('ShiftLeft') || inp.down('ShiftRight'))
-        a.wantCrouch = !ui && (inp.down('KeyC') || inp.down('ControlLeft'))
+        a.wantCrouch = !ui && inp.down('KeyC')   // 只用 C（Ctrl 会和 Ctrl+W 关标签页冲突）
         jump = !ui && inp.justPressed('Space')
         // 按住 E（或拿 C4 时左键）：下包 / 拆包
         const use = !ui && (inp.down('KeyE') || (a.slot === 'c4' && inp.mouseDown(0)))

@@ -10,7 +10,7 @@ import { venueOf, venueById } from '../../data/venues'
 import { isUnlocked, unlockLevel } from '../../data/progression'
 import { routesFor, routeById, RACE_RENT, RACE_BETS, RIVALS, PRIZE_POOL_SHARE, PRIZE_FIXED_SHARE, betOdds, type RaceRouteDef } from '../../data/races'
 import { buildRoute, type BuiltRoute } from './Route'
-import { RaceSession, fmtTime, type RaceMode, type RaceResult } from './Race'
+import { RaceSession, fmtTime, RACE_DAMAGE_MUL, type RaceMode, type RaceResult } from './Race'
 
 interface RaceSave { best: Record<string, number>; wins: number; races: number; podiums: number; log: string[] }
 const emptySave = (): RaceSave => ({ best: {}, wins: 0, races: 0, podiums: 0, log: [] })
@@ -76,11 +76,9 @@ export function installRace(game: Game) {
     const rv = RIVALS[i]
     const v = game.spawner.spawnOwned(game.ctx, `race_ai_${i}`, at.x, at.z, 0, { kind: 'luxury', color: rv.color, model: 'sports' })
     v.tune = { accel: 1, maxFwd: 1 }
-    if (!aiCars[i]) {
-      // 比赛车加固：Game 对"被玩家撞"的车按 3.5× 结算伤害，AI 赛车蹭一下就报废；这几辆自己的车伤害按 0.3 倍吃
-      const base = v.damage.bind(v)
-      v.damage = (amount: number) => base(amount * 0.3)
-    }
+    // 比赛车加固：Game 对"被玩家撞"的车按 3.5× 结算伤害，AI 赛车蹭一下就报废；这几辆车伤害按 0.3 倍吃
+    // （spawnOwned → activate 会把 damageMul 复位为 1，所以每次取车都要设）
+    v.damageMul = RACE_DAMAGE_MUL
     aiCars[i] = v
     return v
   }
@@ -153,14 +151,7 @@ export function installRace(game: Game) {
   }
 
   /** 在 play / panel 状态弹面板（暂停世界）；关闭走 game.closePanel */
-  const showPanel = (spec: PanelSpec) => {
-    if (game.state === 'play') {
-      game.state = 'panel'
-      game.phone.set(false)
-      if (document.pointerLockElement) document.exitPointerLock()
-    }
-    if (game.state === 'panel') game.panels.show(spec)
-  }
+  const showPanel = (spec: PanelSpec) => { game.showPanel(spec) }
 
   /** 报名面板：路线详情 + 自有车 / 租车 + 押注 */
   const setupPanel = (poi: Poi, def: RaceRouteDef, mode: RaceMode) => {
@@ -252,6 +243,7 @@ export function installRace(game: Game) {
     app: { name: 'race', title: '赛车', view },
     hudCard: () => session?.hudCard() ?? null,
     navTarget: () => session?.target ?? null,
+    navPath: () => session?.navPath ?? null,
     onBustOrDeath: () => { if (session) session.abort(game.state === 'busted' ? '被捕' : '倒下') },
     debug: () => ({
       routes: () => routesFor(worldKind()).map((d) => {
@@ -284,7 +276,10 @@ export function installRace(game: Game) {
       get final() { return lastFinal },
       get crashes() { return crashes },
       get law() { return { stars: game.law.stars, fines: game.law.fines, exempt: game.law.trafficExempt } },
-      get rental() { return rentalRef ? { active: rentalRef.active, driver: rentalRef.driver } : null },
+      get rental() { return rentalRef ? { active: rentalRef.active, driver: rentalRef.driver, damageMul: rentalRef.damageMul } : null },
+      /** 小地图赛道线点数（无比赛 0）与参赛车伤害倍率 */
+      get navPath() { return session?.navPath?.length ?? 0 },
+      get damageMuls() { return { car: session?.car.damageMul ?? null, ai: aiCars.map((v) => v.damageMul) } },
       get save() { return save },
       get aiCars() { return aiCars.map((v) => ({ active: v.active, x: v.x, z: v.z })) },
     }),

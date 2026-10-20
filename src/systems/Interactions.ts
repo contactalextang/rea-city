@@ -223,7 +223,7 @@ export class Interactions {
           const got = earn(this.ctx, pay, 'salary')
           this.host.toast(`下班了 · 薪水 +${money(got)}${got !== pay ? `（心情 ×${this.ctx.needs.moodMul}）` : ''}`, 3)
           this.ctx.events.emit('clockIn', { day: clock.day, pay })
-          this.ctx.events.emit('jobDone', { job: 'white_shift', amount: pay })
+          this.ctx.events.emit('jobDone', { job: 'white_shift', amount: got, base: pay })
           this.close()
         } },
         { label: '离开', onClick: () => this.close() },
@@ -247,8 +247,8 @@ export class Interactions {
           needs.sync()
           needs.add(-6, -12)
           const got = earn(this.ctx, ECONOMY.siteWage, 'site')
-          this.host.toast(`工钱 +${money(got)}`)
-          this.ctx.events.emit('jobDone', { job: 'blue_site', amount: ECONOMY.siteWage })
+          this.host.toast(`工钱 +${money(got)}${got !== ECONOMY.siteWage ? `（心情 ×${needs.moodMul}）` : ''}`)
+          this.ctx.events.emit('jobDone', { job: 'blue_site', amount: got, base: ECONOMY.siteWage })
           this.refresh()
         } },
         { label: '离开', onClick: () => this.close() },

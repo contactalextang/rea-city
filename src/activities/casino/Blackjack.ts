@@ -30,7 +30,7 @@ export class BlackjackTable extends Table {
     if (this.inRound) return
     const stake = this.commitBets(); if (!stake) return
     this.shoe.checkCut()
-    if (this.shoe.shuffled) this.api.toast('洗牌（6 副牌）', 1.2)
+    if (this.shoe.shuffled) this.notice('洗牌（6 副牌）', 1.2)
     if (this.pendingStack) { this.shoe.stack(this.pendingStack); this.pendingStack = null }
     const r = new BlackjackRound(this.shoe, stake)
     this.round = r; this.settled = false; this.dq.reset(); this.holeAt = -1; this.dealerWait = 0.4
@@ -43,12 +43,12 @@ export class BlackjackTable extends Table {
   private act(a: BjAction) {
     const r = this.round; if (!r || !r.legal(a) || this.dq.busy(this.t)) return
     const extra = r.extraStake(a)
-    if (extra > 0 && !this.host.stake(this.game, extra)) { this.api.toast('现金不足', 1.4); return }
+    if (extra > 0 && !this.host.stake(this.game, extra)) { this.notice('现金不足', 1.4); return }
     r.act(a); this.actionsUsed.add(a)
   }
   private insure(take: boolean) {
     const r = this.round; if (!r || r.phase !== 'insurance' || this.dq.busy(this.t)) return
-    if (take && !this.host.stake(this.game, r.baseBet / 2)) { this.api.toast('现金不足', 1.4); return }
+    if (take && !this.host.stake(this.game, r.baseBet / 2)) { this.notice('现金不足', 1.4); return }
     r.insurance(take); if (take) this.actionsUsed.add('insurance')
   }
 

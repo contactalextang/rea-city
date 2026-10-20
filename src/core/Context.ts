@@ -52,7 +52,8 @@ export interface GameEvents {
   clockIn: { day: number; pay: number }
   taxiRented: { v: Vehicle }
   /** 某项工作产生一笔收入（的士每单 / 保护费每家 / 一次性任务奖励） */
-  jobDone: { job: string; amount: number }
+  /** amount = 实际入账（含心情倍率），base = 倍率前的标价（小费升级 / XP 按它算，避免心情倍率重复计） */
+  jobDone: { job: string; amount: number; base?: number }
   invested: { asset: string; amount: number }
   /** 一次购买：商店物品（vehicle/property/upgrade）、产业（biz 买下 / bizTier 升级 / manager 雇经理） */
   purchased: { kind: PurchaseKind; id: string; cost: number }

@@ -50,6 +50,9 @@ export abstract class Table {
   protected banner: { text: string; color: string; t: number } | null = null
   /** 底部状态行 */
   protected status = ''
+  /** 底部状态行位置的临时提示（替代顶部 api.toast，避免压住下注区说明文字） */
+  private noticeText = ''
+  private noticeUntil = 0
   private hoverId = ''
   /** 本帧之前排队的点击（自己监听 pointerdown，同一帧多次点击也不丢） */
   private clicks: { x: number; y: number }[] = []
@@ -199,14 +202,25 @@ export abstract class Table {
     const y = VH - 22
     this.text(`现金 ${money(this.cash)}`, VW - 40, 40, 18, '#7ee787', 'right', 800)
     this.text(`${this.hall.name} · 限额 ${money(this.hall.min)}–${money(this.hall.max)}`, VW - 40, 64, 13, 'rgba(255,255,255,.75)', 'right', 500)
-    if (this.status) this.text(this.status, VW / 2, y, 14, 'rgba(255,255,255,.85)', 'center', 500)
+    if (this.noticeText && this.t < this.noticeUntil) {
+      // 提示：黄色粗体 + 深色底条，占用状态行（各桌布局都给状态行留了空）
+      const g = this.g
+      g.save(); g.font = `800 16px -apple-system, "PingFang SC", Arial, sans-serif`
+      const w = g.measureText(this.noticeText).width + 28
+      g.fillStyle = 'rgba(0,0,0,.6)'; this.rr(VW / 2 - w / 2, y - 14, w, 28, 14); g.fill()
+      g.restore()
+      this.text(this.noticeText, VW / 2, y, 16, '#ffd33d', 'center', 800)
+    } else if (this.status) this.text(this.status, VW / 2, y, 14, 'rgba(255,255,255,.85)', 'center', 500)
   }
+
+  /** 桌内提示（显示在底部状态行，sec 秒后恢复状态行） */
+  notice(text: string, sec = 1.5) { this.noticeText = text; this.noticeUntil = this.t + sec }
 
   /** 往下注区加一枚当前筹码（限额、现金检查） */
   protected place(key: string, maxTotal = this.hall.max) {
     const amt = this.chip
-    if (this.betTotal + amt > maxTotal) { this.api.toast(`超过本厅上限 ${money(maxTotal)}`, 1.4); return }
-    if (this.betTotal + amt > this.cash) { this.api.toast('现金不足', 1.4); return }
+    if (this.betTotal + amt > maxTotal) { this.notice(`超过本厅上限 ${money(maxTotal)}`, 1.4); return }
+    if (this.betTotal + amt > this.cash) { this.notice('现金不足', 1.4); return }
     this.bets[key] = (this.bets[key] ?? 0) + amt
     this.sfx.chip()
   }
@@ -214,16 +228,16 @@ export abstract class Table {
   protected rebet() {
     const tot = Object.values(this.lastBets).reduce((a, b) => a + b, 0)
     if (!tot) return
-    if (tot > this.cash) { this.api.toast('现金不足，无法重复上局', 1.4); return }
+    if (tot > this.cash) { this.notice('现金不足，无法重复上局', 1.4); return }
     if (tot > this.hall.max) return
     this.bets = { ...this.lastBets }; this.sfx.chip()
   }
   /** 确认下注：最低限额 + 扣钱；成功返回总额 */
   protected commitBets(): number {
     const tot = this.betTotal
-    if (tot <= 0) { this.api.toast('请先点筹码再点下注区', 1.6); return 0 }
-    if (tot < this.hall.min) { this.api.toast(`本厅最低 ${money(this.hall.min)}`, 1.6); return 0 }
-    if (!this.host.stake(this.game, tot)) { this.api.toast('现金不足', 1.4); return 0 }
+    if (tot <= 0) { this.notice('请先点筹码再点下注区', 1.6); return 0 }
+    if (tot < this.hall.min) { this.notice(`本厅最低 ${money(this.hall.min)}`, 1.6); return 0 }
+    if (!this.host.stake(this.game, tot)) { this.notice('现金不足', 1.4); return 0 }
     this.lastBets = { ...this.bets }
     return tot
   }

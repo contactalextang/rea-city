@@ -11,6 +11,9 @@ import { ECONOMY } from '../data/menus'
 import { rand, pick, CAR_WID, type VehicleKind } from '../config'
 import { earn as earnCash } from './Wallet'
 
+/** 实际入账与标价不同（心情倍率）时的提示后缀 */
+const moodNote = (ctx: Ctx, got: number, base: number) => Math.abs(got - base) > 0.005 ? ` · 心情 ×${ctx.needs.moodMul}` : ''
+
 /**
  * 工作系统：按身份提供可开工/下班的工作（的士、外卖、偷车、收保护费、赶会议…）
  * 与被动工作（打卡、工地、投资、加班：只在工作页显示状态/在 POI 面板加按钮）。
@@ -108,7 +111,7 @@ abstract class BaseJob implements Job {
   protected begin(_ctx: Ctx) {}
   protected end(_ctx: Ctx) {}
   /** 完成并结束 */
-  protected finish(ctx: Ctx, amount: number, msg: string) { this.J.earn(this.id, amount, msg); this.stop(ctx) }
+  protected finish(ctx: Ctx, amount: number, msg: string | ((got: number) => string)) { this.J.earn(this.id, amount, msg); this.stop(ctx) }
   protected fail(ctx: Ctx, reason: string) { this.J.toast(`${this.title}失败：${reason}`, 3); this.stop(ctx) }
   protected pdist(ctx: Ctx, p: P2) { return Math.round(Math.hypot(ctx.player.worldX - p.x, ctx.player.worldZ - p.z)) }
 }
@@ -147,7 +150,7 @@ class GangSteal extends BaseJob {
     if (ctx.player.vehicle === t && dist2(t, this.fence!.door) < JOB_PARAMS.steal.deliverRadius && t.absSpeed < 2) {
       const bonus = Math.round(Math.max(0, t.health))
       ctx.player.exit(ctx.world); t.deactivate()
-      this.finish(ctx, JOB_PARAMS.steal.reward + bonus, `交货成功 +$${JOB_PARAMS.steal.reward} · 车况加成 +$${bonus}`)
+      this.finish(ctx, JOB_PARAMS.steal.reward + bonus, (got) => `交货成功 +$${got}（含车况加成 $${bonus}）`)
     }
   }
   hudText() {
@@ -180,7 +183,7 @@ class GangProtect extends BaseJob {
   }
   private collect(ctx: Ctx) {
     const amount = Math.round(rand(JOB_PARAMS.protect.min, JOB_PARAMS.protect.max))
-    this.J.earn(this.id, amount, `收到 $${amount}（${this.idx + 1}/${this.stores.length}）`)
+    this.J.earn(this.id, amount, (got) => `收到 $${got}（${this.idx + 1}/${this.stores.length}）`)
     if (Math.random() < JOB_PARAMS.protect.policeChance) { ctx.law.crime('carjack', JOB_PARAMS.protect.heat, ctx); this.J.toast('店家报警了！', 3) }
     this.idx++
     this.J.closePanel()
@@ -211,7 +214,7 @@ class GangWreck extends BaseJob {
       if (this.count >= JOB_PARAMS.wreck.count) { this.phase = 'escape'; this.J.toast('够了！甩掉警察', 3) }
       return
     }
-    if (ctx.law.pursuitLevel <= 0) this.finish(ctx, JOB_PARAMS.wreck.reward, `街头破坏完成 +$${JOB_PARAMS.wreck.reward}`)
+    if (ctx.law.pursuitLevel <= 0) this.finish(ctx, JOB_PARAMS.wreck.reward, (got) => `街头破坏完成 +$${got}`)
   }
   hudText() { return this.phase === 'wreck' ? `已撞毁 ${this.count}/${JOB_PARAMS.wreck.count}` : `甩掉警察（热度 ${this.J.ctx.law.pursuitLevel.toFixed(1)}）` }
   timeLeft() { return this.phase === 'wreck' ? this.timer : null }
@@ -242,7 +245,7 @@ class GoldMeeting extends BaseJob {
     if (this.pdist(ctx, o.door) < JOB_PARAMS.meeting.radius) {
       const late = this.elapsed > this.limit
       const pay = late ? JOB_PARAMS.meeting.reward / 2 : JOB_PARAMS.meeting.reward
-      this.finish(ctx, pay, late ? `迟到了，只拿到 $${pay}` : `准时到会 +$${pay}`)
+      this.finish(ctx, pay, (got) => late ? `迟到了，只拿到 $${got}` : `准时到会 +$${got}`)
     }
   }
   hudText() { return `赶到 ${this.office!.name}（${this.pdist(this.J.ctx, this.office!.door)} m）` }
@@ -331,7 +334,7 @@ class WhiteOvertime extends BaseJob {
     const O = JOB_PARAMS.overtime
     return [{ label: `加班 ${O.hours} 小时`, note: `+$${O.pay} · 精力 −15 饱食 −10`, disabled: !this.open(ctx), onClick: () => {
       ctx.clock.skip(O.hours); ctx.needs.sync(); ctx.needs.add(-10, -15)
-      this.J.earn(this.id, O.pay, `加班结束 +$${O.pay}`)
+      this.J.earn(this.id, O.pay, (got) => `加班结束 +$${got}`)
       this.J.closePanel()
     } }]
   }
@@ -487,7 +490,7 @@ class BlueTaxi extends BaseJob {
       const fare = taxiFare(this.odometer, this.waitSec, this.peak, this.rating)
       this.lastTrip = { dist: Math.round(this.odometer), wait: Math.round(this.waitSec), peak: this.peak, rating: this.rating, fare }
       this.J.stats.taxiTrips++; this.J.stats.taxiRatingSum += this.rating
-      this.J.earn(this.id, fare, `到达 ${d.name} · ${(this.odometer / 1000).toFixed(2)} km · 车资 $${fare.toFixed(2)}${this.rating >= JOB_PARAMS.taxi.tipRating ? '（含小费）' : ''}`)
+      this.J.earn(this.id, fare, (got) => `到达 ${d.name} · ${(this.odometer / 1000).toFixed(2)} km · 车资 $${got.toFixed(2)}${this.rating >= JOB_PARAMS.taxi.tipRating ? '（含小费）' : ''}`)
       this.phase = 'wait'; this.nextTimer = 2; this.dest = null; this.J.blue.set(null)
     }
   }
@@ -554,7 +557,7 @@ class BlueDelivery extends BaseJob {
     if (this.pdist(ctx, d.door) < JOB_PARAMS.delivery.radius && (!v || v.absSpeed < 3)) {
       const late = this.elapsed > this.limit
       const pay = late ? JOB_PARAMS.delivery.late : round2(JOB_PARAMS.delivery.base + this.dist / 1000 * JOB_PARAMS.delivery.perKm)
-      this.finish(ctx, pay, late ? `送达但超时，只拿到 $${pay}` : `送达 ${d.name} +$${pay.toFixed(2)}`)
+      this.finish(ctx, pay, (got) => late ? `送达但超时，只拿到 $${got}` : `送达 ${d.name} +$${got.toFixed(2)}`)
     }
   }
   hudText() {
@@ -621,13 +624,17 @@ export class Jobs {
   /** 工作自行结束（完成/失败）时回调 */
   notifyStopped(j: Job) { if (this.active === j) this.active = null; this.clearMarkers() }
 
-  /** 结算一笔收入：加钱、今日收入、完成计数、jobDone 事件 */
-  earn(job: string, amount: number, msg?: string) {
-    earnCash(this.ctx, amount, job)
-    this.stats.todayIncome = round2(this.stats.todayIncome + amount)
+  /**
+   * 结算一笔收入：加钱（earn 乘心情倍率）、今日收入、完成计数、jobDone 事件；
+   * 今日收入 / 事件 / 提示都用实际入账金额。msg 为函数时传入实际金额 got（与标价不同时自动注明心情倍率）。
+   */
+  earn(job: string, amount: number, msg?: string | ((got: number) => string)) {
+    const got = earnCash(this.ctx, amount, job)
+    this.stats.todayIncome = round2(this.stats.todayIncome + got)
     this.stats.done[job] = (this.stats.done[job] ?? 0) + 1
-    this.ctx.events.emit('jobDone', { job, amount })
-    if (msg) this.toast(msg, 3)
+    this.ctx.events.emit('jobDone', { job, amount: got, base: amount })
+    if (msg) this.toast((typeof msg === 'function' ? msg(got) : msg) + moodNote(this.ctx, got, amount), 3)
+    return got
   }
 
   update(dt: number, ctx: Ctx) {

@@ -96,8 +96,22 @@ export class Hud {
     el.className = `mood${mul < 1 ? ' low' : mul > 1 ? ' high' : ''}`
   }
 
-  /** 成就横幅（排队显示） */
-  achievement(text: string) { this.achQueue.push(text) }
+  /**
+   * 提示转发（Game 注入）：活动打开时 HUD 隐藏，toast / 成就横幅改由活动自己的提示条显示；
+   * 返回 true = 已转发（HUD 不再显示）。
+   */
+  sink: ((text: string, seconds: number) => boolean) | null = null
+
+  /** 成就横幅（排队显示；活动期间转发到活动提示条） */
+  achievement(text: string) { if (this.sink?.(text, 3)) return; this.achQueue.push(text) }
+
+  /** 取走当前还在显示的 toast（打开活动时转交给活动提示条）；没有则 null */
+  takeToast(): { text: string; seconds: number } | null {
+    if (this.toastTimer <= 0 || !this.toastEl.classList.contains('show')) return null
+    const r = { text: this.toastEl.textContent ?? '', seconds: Math.max(1, this.toastTimer) }
+    this.toastTimer = 0; this.toastEl.classList.remove('show')
+    return r.text ? r : null
+  }
 
   /** 左上角时钟/天气：如 `第1天 07:30 · 晴` */
   clock(text: string) {
@@ -132,6 +146,7 @@ export class Hud {
   }
 
   toast(text: string, seconds = 2.5) {
+    if (this.sink?.(text, seconds)) return
     this.toastEl.textContent = text
     this.toastEl.classList.add('show')
     this.toastTimer = seconds

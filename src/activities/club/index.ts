@@ -98,4 +98,10 @@ export class ClubPlugin implements GamePlugin {
   }
 }
 
-export function installClub(game: Game) { game.addPlugin(new ClubPlugin(game)) }
+export function installClub(game: Game) {
+  const pl = new ClubPlugin(game)
+  game.addPlugin(pl)
+  // 酒驾：Law 读醉意（被警车 40 m 内无遮挡看到 → 罚款 / 扣分 / 1 星），Game 按醉意给转向 / 步行加漂移
+  game.law.drunkLevel = () => pl.drunkLevel()
+  game.law.drunkLimit = DRUNK_LIMIT
+}

@@ -22,6 +22,8 @@ export interface GamePlugin {
   hudCard?(): { title: string; desc: string; timer: string; sub?: string } | null   // timer 空串 = 不显示
   /** 小地图 / 光柱目标（优先于工作 / 任务） */
   navTarget?(): { x: number; z: number } | null
+  /** 小地图 / 手机大地图上画的导航折线（如赛道线）；null = 不画 */
+  navPath?(): { x: number; z: number }[] | null
   /** 被捕 / 倒下时 */
   onBustOrDeath?(): void
   /** 测试钩子对象，挂到 window.__game.plug[id] */
