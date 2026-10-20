@@ -11,7 +11,7 @@ import { agx, agxInverse } from '../core/AgX'
  * 昼夜系统：太阳/月光方向光（阴影跟随玩家）、半球光、天空/雾/曝光色表、
  * 夜间窗户自发光与路灯光晕。只依赖 scene/renderer/ctx；世界实现通过
  * scene.userData 约定暴露：windows: MeshLambertMaterial[]，lamps: InstancedMesh，
- * lampHead: Vector3（灯头相对实例原点的偏移），roads: Material[]（由 Weather 使用），
+ * lampHead: Vector3（灯头相对实例原点的偏移），roads: MeshStandardMaterial[]（由 Weather 使用），
  * lampsVersion: number（可选；流式世界每次灯柱实例变化时递增，光晕随之重建）。
  */
 
@@ -71,6 +71,8 @@ export class DayNight {
   gloom = 0
   /** 闪电亮度（Weather 写入） */
   flash = 0
+  /** 0–1 路面湿度（Weather 写入）：路灯地面光池拉出朝向相机的湿地倒影条纹 */
+  wet = 0
   /** 当前夜间灯光开启度 0–1（窗户/路灯） */
   lights = 0
   /** 雾距倍率：方格城 1；真实城市放远（far ≈ 900 m）以看到天际线 */
@@ -90,7 +92,7 @@ export class DayNight {
   private halo: THREE.InstancedMesh | null = null
   private pool: THREE.InstancedMesh | null = null
   private haloMat: THREE.ShaderMaterial | null = null
-  private poolMat: THREE.MeshBasicMaterial | null = null
+  private poolMat: THREE.ShaderMaterial | null = null
   private tmpV = new THREE.Vector3()
   private tmpM = new THREE.Matrix4()
   private lampSrc: THREE.InstancedMesh | null = null
@@ -109,6 +111,9 @@ export class DayNight {
     scene.environment = pmrem.fromScene(room, 0.04).texture
     scene.environmentIntensity = DAY.envI
     room.dispose()
+    // 湿路面专用反射环境：无热点的天空渐变（天顶灰蓝 → 地平线暖白 → 地下近黑）。RoomEnvironment 里有强发光灯箱，
+    // 低粗糙度路面会把它们反射成一团 HDR 白斑；这张图只给"天空/远处城市"的柔和反光。Weather 读 scene.userData.roadEnv
+    scene.userData.roadEnv = makeSkyGradientEnv(pmrem)
     pmrem.dispose()
 
     this.hemi = new THREE.HemisphereLight(0xdfefff, 0x6b6b60, 1.1)
@@ -155,13 +160,16 @@ export class DayNight {
     })
   }
 
-  /** 递归设置阴影标记：不透明 Lambert 网格投影+接收；userData.castShadow=false 可排除（地面等） */
+  /**
+   * 递归设置阴影标记：不透明 Lambert 网格投影+接收；userData.castShadow=false 可排除（地面等）；
+   * Standard 材质（路面/角色）同样参与；其它材质可用 material.userData.receiveShadow=true 显式加入
+   */
   applyShadowFlags(root: THREE.Object3D) {
     root.traverse((o) => {
       const m = o as THREE.Mesh
       if (!m.isMesh) return
       const mat = m.material as THREE.Material
-      const opaque = !mat.transparent && (mat as THREE.MeshLambertMaterial).isMeshLambertMaterial === true
+      const opaque = !mat.transparent && ((mat as THREE.MeshLambertMaterial).isMeshLambertMaterial === true || (mat as THREE.MeshStandardMaterial).isMeshStandardMaterial === true || mat.userData.receiveShadow === true)
       m.receiveShadow = opaque
       m.castShadow = opaque && m.userData.castShadow !== false
     })
@@ -181,11 +189,15 @@ export class DayNight {
       return c.lerp(out, gloom)
     }
     gloomTint(this.cSky, this.tmpA); gloomTint(this.cFog, this.tmpA); gloomTint(this.cHemiSky, this.tmpA)
-    this.cHemiGround.multiplyScalar(1 - 0.4 * gloom)
-    this.hemiI *= 1 - 0.4 * gloom
-    this.sunI *= 1 - 0.85 * gloom
-    this.exposure *= 1 - 0.12 * gloom
-    this.envI *= 1 - 0.35 * gloom
+    // 夜间（night≈1）暴雨不再一味压暗：城市灯光被低云反射（天光），半球光/环境光反而略抬、曝光不降，墙面不至于全黑
+    const night = clamp((0.3 - this.envI) / 0.26, 0, 1)
+    this.cHemiGround.multiplyScalar(1 - 0.4 * gloom * (1 - night))
+    this.hemiI *= 1 - 0.4 * gloom * (1 - night)
+    this.hemiI += 0.06 * gloom * night
+    // 夜里暴雨月光几乎全灭：否则湿路面（低粗糙度）上会出现一大团月光镜面高光，被泛光放大成白斑
+    this.sunI *= 1 - (0.85 + 0.13 * night) * gloom
+    this.exposure *= 1 - 0.12 * gloom * (1 - night)
+    this.envI = this.envI * (1 - 0.35 * gloom) + 0.02 * gloom * night
     const gr = this.grade
     gr.saturation *= 1 - 0.18 * gloom
     gr.split *= 1 - 0.3 * gloom
@@ -229,8 +241,13 @@ export class DayNight {
     const target = Math.max(on, gloom * 0.55)
     this.lights = Math.abs(target - this.lights) > 0.3 ? target : lerp(this.lights, target, 1 - Math.exp(-dt * 3))
     for (const w of this.windows) w.emissiveIntensity = 1.5 * this.lights   // HDR：>1 才会被泛光阈值抓到
+    LOOK.uSignGlow.value = this.lights
     if (this.haloMat) { this.haloMat.uniforms.uOpacity.value = this.lights; this.halo!.visible = this.lights > 0.01 }
-    if (this.poolMat) { this.poolMat.opacity = 0.55 * this.lights; this.pool!.visible = this.lights > 0.01 }
+    if (this.poolMat) {
+      const u = this.poolMat.uniforms
+      u.uOpacity.value = 0.55 * this.lights; u.uWet.value = clamp(this.wet, 0, 1)
+      this.pool!.visible = this.lights > 0.01
+    }
 
     // 流式世界：灯柱实例集合变了（区块加载/卸载）→ 重写光晕实例
     const ud = this.scene.userData
@@ -285,20 +302,20 @@ export class DayNight {
       if (this.halo) { this.halo.removeFromParent(); this.halo.dispose(); this.halo.geometry.dispose() }
       if (this.pool) { this.pool.removeFromParent(); this.pool.dispose(); this.pool.geometry.dispose() }
       this.halo = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), this.haloMat!, cap)
-      this.pool = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), this.poolMat!, cap)
+      this.pool = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1, 1, 1), this.poolMat!, cap)
       this.halo.frustumCulled = false
       this.pool.frustumCulled = false
       this.halo.visible = this.pool.visible = this.lights > 0.01
       this.scene.add(this.halo, this.pool)
     }
     const head = this.lampHead
-    const q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), ps = new THREE.Vector3(9, 1, 9)
+    const q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1)
     for (let i = 0; i < n; i++) {
       lamps.getMatrixAt(i, this.tmpM)
       this.tmpV.copy(head).applyMatrix4(this.tmpM)
       this.halo.setMatrixAt(i, this.tmpM.compose(this.tmpV, q, s))
-      this.tmpV.y = 0.04
-      this.pool.setMatrixAt(i, this.tmpM.compose(this.tmpV, q, ps))
+      this.tmpV.y = 0.15   // 高于人行道（0.12），否则人行道上的灯下光池/倒影被遮住
+      this.pool.setMatrixAt(i, this.tmpM.compose(this.tmpV, q, s))
     }
     this.halo.count = n; this.pool.count = n
     this.halo.instanceMatrix.needsUpdate = true
@@ -328,8 +345,68 @@ export class DayNight {
         }`,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
     })
-    this.poolMat = new THREE.MeshBasicMaterial({ map: tex, color: 0xffc77a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
+    // 地面光池 + 湿地倒影：同一个实例四边形，顶点着色器把它沿"灯→相机"方向拉长（干燥时就是半径 4.5 m 的圆形光池），
+    // 片元里解析计算圆形光池 + 一条朝相机的高斯条纹（灯头在湿路面上的拉长倒影，HDR 供泛光抓取）。不增加 draw call。
+    this.poolMat = new THREE.ShaderMaterial({
+      uniforms: { uOpacity: { value: 0 }, uWet: { value: 0 }, uColor: { value: new THREE.Color(0xffc77a) }, uStreak: { value: new THREE.Color(0xffd79a).multiplyScalar(1.7) }, uR: { value: 4.5 }, uFar: { value: 170 } },
+      vertexShader: `
+        uniform float uWet, uR;
+        varying vec2 vLocal;      // x = 沿"灯→相机"距离，y = 横向距离（米）
+        varying float vC, vL, vD;
+        void main() {
+          vec3 c = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          vec2 tc = cameraPosition.xz - c.xz;
+          float D = length(tc);
+          vec2 f = D > 1e-3 ? tc / D : vec2(0.0, 1.0);
+          vec2 sd = vec2(-f.y, f.x);
+          // 倒影中心：灯头高 H≈5 m、相机高 E≈3 m，镜面点离灯 D·H/(H+E) ≈ 0.6·D；粗糙湿面再沿视线拉成长条。
+          // 只给中远处的灯画倒影（近处的会糊在镜头前），镜面点离相机至少 ~8 m
+          float cc = clamp(D * 0.6, 0.0, max(0.0, D - 8.0));
+          float ll = 0.8 + cc * 0.16;
+          float front = max(uR, uWet > 0.01 ? min(cc + ll * 2.2, D - 2.0) : uR);
+          float along = mix(-uR, front, position.x + 0.5);
+          float across = position.y * 2.0 * uR;
+          vLocal = vec2(along, across); vC = cc; vL = ll; vD = D;
+          vec3 w = vec3(c.x + f.x * along + sd.x * across, c.y, c.z + f.y * along + sd.y * across);
+          gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+        }`,
+      fragmentShader: `
+        uniform float uOpacity, uWet, uR, uFar; uniform vec3 uColor, uStreak;
+        varying vec2 vLocal; varying float vC, vL, vD;
+        void main() {
+          float r = length(vLocal) / uR;
+          // 与原径向贴图同形：中心亮、0.25/0.6 处衰减
+          float pool = r < 0.25 ? mix(1.0, 0.55, r / 0.25) : r < 0.6 ? mix(0.55, 0.12, (r - 0.25) / 0.35) : max(0.0, mix(0.12, 0.0, (r - 0.6) / 0.4));
+          float w = 0.16 + 0.008 * vC;
+          float da = (vLocal.x - vC) / vL;
+          float streak = exp(-(vLocal.y * vLocal.y) / (w * w)) * exp(-da * da) * uWet * smoothstep(10.0, 22.0, vD);
+          float fade = 1.0 - smoothstep(uFar * 0.55, uFar, vD);
+          vec3 col = uColor * pool * uOpacity * (1.0 + 0.4 * uWet) + uStreak * streak * uOpacity * 1.1;
+          gl_FragColor = vec4(col * fade, 1.0);
+        }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide,
+    })
   }
+}
+
+function makeSkyGradientEnv(pmrem: THREE.PMREMGenerator): THREE.Texture {
+  const geo = new THREE.SphereGeometry(10, 32, 16)
+  const pos = geo.getAttribute('position')
+  const col = new Float32Array(pos.count * 3)
+  const zen = new THREE.Color(0.55, 0.62, 0.75), hor = new THREE.Color(1.0, 0.92, 0.82), low = new THREE.Color(0.04, 0.04, 0.05), c = new THREE.Color()
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / 10
+    if (y >= 0) c.copy(hor).lerp(zen, Math.pow(y, 0.6))
+    else c.copy(hor).lerp(low, Math.min(1, -y * 6))
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  const sky = new THREE.Scene()
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide }))
+  sky.add(mesh)
+  const tex = pmrem.fromScene(sky, 0.02).texture
+  geo.dispose(); (mesh.material as THREE.Material).dispose()
+  return tex
 }
 
 function makeGlowTexture() {

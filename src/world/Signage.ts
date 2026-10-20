@@ -5,6 +5,7 @@ import type { RoadGraph, RoadEdge, RoadKind } from './RoadGraph'
 import { isReplaced } from './Landmarks'
 import { TextAtlas, FONT_CJK, FONT_LATIN, fitText, roundRect, type Painter, type SlotKind } from './TextAtlas'
 import type { Poi } from '../systems/Poi'
+import { LOOK } from '../core/LookUniforms'
 
 /**
  * 文字类街景（一眼认出新加坡）：路名牌、组屋山墙楼号、店屋招牌、小贩中心大招牌、MRT 出口站名牌、
@@ -12,6 +13,8 @@ import type { Poi } from '../systems/Poi'
  * - 所有文字画进一张 2048² 文字图集（TextAtlas），按字符串去重 + 引用计数；
  * - 全部文字面板 = 一个 InstancedMesh（单位平面 + 每实例 uvRect 属性，onBeforeCompile 改 vMapUv），
  *   细杆 = 一个 InstancedMesh；整个世界的文字只占 2 个 draw call，不投影。
+ * - 夜间自发光：每实例 aGlow 权重（店屋/小贩中心招牌最亮、MRT/巴士次之、路名牌/楼号很弱、地面字不发光），
+ *   乘共享 LOOK.uSignGlow（DayNight 的灯光开启度，白天 0）；招牌亮色部分 HDR >1，被泛光抓到。
  * - 按区块组织：ChunkManager 构建/卸载块时 addChunk/removeChunk 计算/丢弃该块的招牌规格；
  *   只有离玩家所在块 ≤ ACTIVE_R 的块才"激活"（占图集槽、写实例），远处的字反正看不清。
  * - 路口/斑马线/小贩中心来自路网与 POI，构造时按所在块预分桶；楼号/店屋/巴士站/MRT 来自块数据。
@@ -30,6 +33,20 @@ const ZEBRA_LEN = 2.4
 const WIDE_ASPECT = 256 / 56
 /** 楼号槽宽高比（128×56） */
 const NUM_ASPECT = 128 / 56
+/** 夜间自发光倍率（乘贴图颜色的平方与饱和度权重：彩色亮字/彩色底 >1 被泛光抓到，白/米色底 <1 不糊字，深色底只微亮） */
+const SIGN_GLOW_GAIN = 2.0
+/** 按 key 前缀的自发光权重：商业招牌亮，功能性牌子暗 */
+function glowOf(key: string): number {
+  const p = key.slice(0, key.indexOf(':'))
+  switch (p) {
+    case 'shop': case 'hk': return 1
+    case 'mrt': return 0.7
+    case 'bus': return 0.4
+    case 'blk': return 0.22
+    case 'st': return 0.12
+    default: return 0
+  }
+}
 
 interface SignItem { key: string; kind: SlotKind; paint: Painter; mats: THREE.Matrix4[] }
 interface Bucket { items: SignItem[]; poles: THREE.Matrix4[] }
@@ -240,6 +257,7 @@ export class Signage {
   private planeGeo = new THREE.PlaneGeometry(1, 1)
   private poleGeo = new THREE.CylinderGeometry(0.045, 0.05, 1, 6).translate(0, 0.5, 0)
   private uvArr: Float32Array
+  private glowArr: Float32Array
   private chunks = new Map<string, ChunkSigns>()
   /** 路网/POI 派生的招牌，按块预分桶 */
   private staticBuckets = new Map<string, Bucket>()
@@ -257,11 +275,22 @@ export class Signage {
     this.textMat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader
         .replace('#include <uv_pars_vertex>', '#include <uv_pars_vertex>\nattribute vec4 uvRect;')
-        .replace('#include <uv_vertex>', '#include <uv_vertex>\n\tvMapUv = uvRect.xy + uv * uvRect.zw;')
+        .replace('#include <uv_vertex>', '#include <uv_vertex>\n\tvMapUv = uvRect.xy + uv * uvRect.zw;\n\tvGlow = aGlow;')
+        .replace('#include <common>', '#include <common>\nattribute float aGlow;\nvarying float vGlow;')
+      sh.uniforms.uSignGlow = LOOK.uSignGlow
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float uSignGlow;\nvarying float vGlow;')
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+          {
+            // 白/米色灯箱底按饱和度降权（否则整块发白糊字），彩色字与彩色底保持 HDR >1
+            vec3 sc = diffuseColor.rgb;
+            float mx = max(max(sc.r, sc.g), sc.b), sat = mx > 1e-3 ? (mx - min(min(sc.r, sc.g), sc.b)) / mx : 0.0;
+            totalEmissiveRadiance += sc * sc * (vGlow * uSignGlow * ${SIGN_GLOW_GAIN.toFixed(2)} * mix(0.3, 1.0, sat));
+          }`)
     }
     this.textMat.customProgramCacheKey = () => 'signage-atlas'
     const tm = this.makeText(1024)
-    this.textMesh = tm.mesh; this.uvArr = tm.uv
+    this.textMesh = tm.mesh; this.uvArr = tm.uv; this.glowArr = tm.glow
     this.poleMesh = this.makePole(512)
     this.group.add(this.textMesh, this.poleMesh)
     this.roads = new RoadSegIndex(graph)
@@ -280,13 +309,15 @@ export class Signage {
     const geo = this.planeGeo.clone()
     const uv = new Float32Array(cap * 4)
     geo.setAttribute('uvRect', new THREE.InstancedBufferAttribute(uv, 4))
+    const glow = new Float32Array(cap)
+    geo.setAttribute('aGlow', new THREE.InstancedBufferAttribute(glow, 1))
     const m = new THREE.InstancedMesh(geo, this.textMat, cap)
     m.count = 0
     m.frustumCulled = false
     m.name = 'signage:text'
     m.castShadow = false; m.receiveShadow = false
     m.userData.castShadow = false
-    return { mesh: m, uv }
+    return { mesh: m, uv, glow }
   }
   private makePole(cap: number) {
     const m = new THREE.InstancedMesh(this.poleGeo, this.poleMat, cap)
@@ -302,8 +333,8 @@ export class Signage {
     if (n <= old.instanceMatrix.count) return
     let cap = old.instanceMatrix.count * 2
     while (cap < n) cap *= 2
-    const { mesh, uv } = this.makeText(cap)
-    this.textMesh = mesh; this.uvArr = uv
+    const { mesh, uv, glow } = this.makeText(cap)
+    this.textMesh = mesh; this.uvArr = uv; this.glowArr = glow
     this.group.add(mesh)
     old.removeFromParent(); old.dispose(); old.geometry.dispose()
   }
@@ -587,9 +618,11 @@ export class Signage {
         if (!held.has(it.key)) continue
         let r = slotOf.get(it.key)
         if (!r) { r = this.atlas.rectOf(it.key) ?? [0, 0, 0, 0]; slotOf.set(it.key, r) }
+        const gl = glowOf(it.key)
         for (const m of it.mats) {
           this.textMesh.setMatrixAt(t, m)
           this.uvArr.set(r, t * 4)
+          this.glowArr[t] = gl
           t++
         }
       }
@@ -601,6 +634,7 @@ export class Signage {
     this.poleMesh.instanceMatrix.needsUpdate = true
     const attr = this.textMesh.geometry.getAttribute('uvRect') as THREE.InstancedBufferAttribute
     attr.needsUpdate = true
+    ;(this.textMesh.geometry.getAttribute('aGlow') as THREE.InstancedBufferAttribute).needsUpdate = true
     this.atlas.flush()
     this.version++
   }

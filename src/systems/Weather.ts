@@ -2,7 +2,8 @@ import * as THREE from 'three'
 import type { Ctx } from '../core/Context'
 import type { DayNight } from './DayNight'
 import type { Audio } from './Audio'
-import { rand, clamp } from '../config'
+import { rand, clamp, lerp } from '../config'
+import { ROAD_UNIFORMS, ROAD_ROUGH_DRY, ROAD_ROUGH_WET } from '../world/RoadMaterial'
 
 export type WeatherState = 'clear' | 'cloudy' | 'storm'
 const GLOOM: Record<WeatherState, number> = { clear: 0, cloudy: 0.4, storm: 1 }
@@ -16,7 +17,7 @@ const RAIN_BOX = 40
 
 /**
  * 天气系统：clear/cloudy/storm 马尔可夫转移（每游戏小时抽一次，午后雷雨峰值），
- * 雨滴（LineSegments + shader 循环下落，零 CPU 更新）、闪电与雷声、雨声、路面变深。
+ * 雨滴（LineSegments + shader 循环下落，零 CPU 更新）、闪电与雷声、雨声、湿路面（变深 + 低粗糙度反光 + 菲涅尔天光 + 路灯倒影）。
  * 跳时（吃饭/睡觉/读档/调试 clock.set）不抽签；手动 set(…, true) 的天气锁定若干游戏小时，
  * 锁只按真实流逝的游戏时间消耗，期间既不抽签也不自然过期。
  */
@@ -37,7 +38,9 @@ export class Weather {
   private flash = 0
   private flashHold = 0
   private thunderIn = -1
-  private roads: THREE.MeshLambertMaterial[] = []
+  private roads: THREE.MeshStandardMaterial[] = []
+  /** 0–1 路面湿度：下雨时较快变湿，雨停后慢慢变干 */
+  wet = 0
   private roadBase: THREE.Color[] = []
   private tmpV = new THREE.Vector3()
 
@@ -78,10 +81,15 @@ export class Weather {
     scene.add(this.rain)
   }
 
-  /** 世界就绪后读取路面材质（用于雨天变深） */
+  /**
+   * 世界就绪后读取路面材质（雨天变深/反光）。路面用 DayNight 生成的无热点天空渐变环境（scene.userData.roadEnv）
+   * 作显式 envMap：既避开 RoomEnvironment 灯箱的镜面白斑，又让 envMapIntensity 不被 scene.environmentIntensity 覆盖
+   */
   attachWorld() {
-    this.roads = (this.scene.userData.roads as THREE.MeshLambertMaterial[] | undefined) ?? []
+    this.roads = (this.scene.userData.roads as THREE.MeshStandardMaterial[] | undefined) ?? []
     this.roadBase = this.roads.map((m) => m.color.clone())
+    const env = (this.scene.userData.roadEnv as THREE.Texture | undefined) ?? this.scene.environment
+    for (const m of this.roads) if (m.isMeshStandardMaterial && !m.envMap && env) { m.envMap = env; m.needsUpdate = true }
   }
 
   /** 切换天气；manual = 手动指定（调试/剧情），锁定 lockHours 游戏小时不被整点抽签与自然过期改掉 */
@@ -106,6 +114,7 @@ export class Weather {
     this.lockHours = Math.max(0, Number(d.lockHours) || 0)
     this.gloom = GLOOM[d.state]
     this.rainLevel = d.state === 'storm' ? 1 : 0
+    this.wet = this.rainLevel
   }
 
   update(dt: number, ctx: Ctx) {
@@ -142,9 +151,28 @@ export class Weather {
     this.rainMat.uniforms.uCenter.value.copy(cam.position).addScaledVector(this.tmpV, 10).y += 8
     this.rain.visible = this.rainLevel > 0.02
 
-    // 路面变深
-    const wet = clamp(this.gloom, 0, 1)
-    for (let i = 0; i < this.roads.length; i++) this.roads[i].color.copy(this.roadBase[i]).multiplyScalar(1 - 0.45 * wet)
+    // 湿路面：下雨时 ~4 s 变湿，雨停后 ~25 s 晾干；多云（无雨）只按阴沉稍微返潮
+    const wTarget = Math.max(this.rainLevel, 0.25 * clamp(this.gloom, 0, 1))
+    this.wet += (wTarget - this.wet) * (1 - Math.exp(-dt * (wTarget > this.wet ? 0.25 : 0.04)))
+    const wet = clamp(this.wet, 0, 1)
+    this.dayNight.wet = wet
+    // 变深（湿沥青反照率降低）+ 降粗糙度出高光；天空渐变环境的反射强度跟场景环境光走、湿时放大 1.9 倍（白天再高路缘掠射处会发白），
+    // 菲涅尔天光取雾色（DayNight 已按 AgX 反解成 HDR）近似远处路面映出的天空；
+    const env = this.scene.environmentIntensity
+    const rough = lerp(ROAD_ROUGH_DRY, ROAD_ROUGH_WET, wet)
+    for (let i = 0; i < this.roads.length; i++) {
+      const m = this.roads[i]
+      m.color.copy(this.roadBase[i]).multiplyScalar(1 - 0.45 * wet)
+      m.roughness = rough
+      m.envMapIntensity = env * (1 + 0.9 * wet)
+    }
+    const fog = this.scene.fog as THREE.Fog | null
+    // 夜里再叠一份暖色"城市灯光"倒影（湿路面映出的窗户/招牌/路灯的平均亮度），随 DayNight.lights 渐入
+    const sheen = ROAD_UNIFORMS.uWetSheen.value
+    if (fog) sheen.copy(fog.color).multiplyScalar(0.4 * wet)
+    else sheen.setRGB(0, 0, 0)
+    const city = wet * this.dayNight.lights
+    sheen.r += 0.05 * city; sheen.g += 0.035 * city; sheen.b += 0.025 * city
 
     // 闪电与雷声
     if (this.state === 'storm' && this.rainLevel > 0.5) {

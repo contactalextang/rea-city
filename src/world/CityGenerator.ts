@@ -4,6 +4,7 @@ import { GRID, BLOCK, ROAD, SIDEWALK, PITCH, HALF, CITY_MIN, CITY_MAX, rand, ran
 import type { RoadGraph, P2 } from './RoadGraph'
 import type { SignalLights } from '../systems/Signals'
 import { StaticWorld, type AABB } from './Colliders'
+import { makeRoadMaterial } from './RoadMaterial'
 
 export interface Building { box: AABB; h: number; color: THREE.Color }
 export interface BlockInfo { i: number; j: number; cx: number; cz: number; park: boolean }
@@ -34,7 +35,7 @@ export class CityGenerator {
     grass.userData.castShadow = false
     this.group.add(grass)
     const size = CITY_MAX - CITY_MIN
-    const asphaltMat = new THREE.MeshLambertMaterial({ color: 0x3b3b41 })
+    const asphaltMat = makeRoadMaterial()
     const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(size, size), asphaltMat)
     asphalt.rotation.x = -Math.PI / 2; asphalt.position.y = 0
     asphalt.userData.castShadow = false

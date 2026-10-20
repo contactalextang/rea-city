@@ -6,6 +6,7 @@ import type { PropMeshes } from './PropMeshes'
 import type { RoadMarkings } from './RoadMarkings'
 import type { Signage } from './Signage'
 import { isReplaced } from './Landmarks'
+import { makeRoadMaterial } from './RoadMaterial'
 
 /**
  * 区块流式加载：以玩家所在块为中心的 5×5 为目标集合，每帧最多发起 1 次 fetch、构建 1 个块；
@@ -41,7 +42,7 @@ const tmpColor = new THREE.Color()
 
 export class ChunkManager {
   readonly group = new THREE.Group()
-  readonly roadMat = new THREE.MeshLambertMaterial({ color: 0x3b3b41, side: THREE.DoubleSide })
+  readonly roadMat = makeRoadMaterial({ side: THREE.DoubleSide })
   readonly walkMat = new THREE.MeshLambertMaterial({ color: 0x9d9d98, side: THREE.DoubleSide })
   readonly wallMat: THREE.MeshLambertMaterial
   private files = new Map<string, string>()

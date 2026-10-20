@@ -119,6 +119,8 @@ const GradeShader = {
     }`,
 }
 
+const LOW_MAX_PR = 1.25
+
 export class PostFX {
   readonly composer: EffectComposer
   private renderPass: RenderPass
@@ -132,7 +134,7 @@ export class PostFX {
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, readonly quality: Exclude<FxQuality, 'off'>) {
     const size = renderer.getSize(new THREE.Vector2())
     this.w = size.x; this.h = size.y
-    const pr = renderer.getPixelRatio()
+    const pr = this.pixelRatio()
     const rt = new THREE.WebGLRenderTarget(Math.max(1, size.x * pr), Math.max(1, size.y * pr), { type: THREE.HalfFloatType, samples: 4 })
     // high：渲染目标带深度纹理，GTAO 直接复用（不再额外渲染一遍法线/深度）
     if (quality === 'high') rt.depthTexture = new THREE.DepthTexture(1, 1)
@@ -173,11 +175,17 @@ export class PostFX {
     this.setSize(this.w, this.h)
   }
 
+  /** 后期分辨率倍率：low 档在高 DPI 屏封顶 1.25×（手机/视网膜屏省填充率），high 档跟随 renderer */
+  private pixelRatio() {
+    const pr = this.renderer.getPixelRatio()
+    return this.quality === 'low' ? Math.min(pr, LOW_MAX_PR) : pr
+  }
+
   setSize(w: number, h: number) {
     this.w = w; this.h = h
-    this.composer.setPixelRatio(this.renderer.getPixelRatio())
+    const pr = this.pixelRatio()
+    this.composer.setPixelRatio(pr)
     this.composer.setSize(w, h)
-    const pr = this.renderer.getPixelRatio()
     this.grade.uniforms.uResolution.value.set(w * pr, h * pr)
   }
 

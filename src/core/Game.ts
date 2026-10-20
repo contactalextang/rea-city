@@ -967,7 +967,7 @@ export class Game {
         for (const p of self.peds.peds) if (p.active && self.peds.chars[p.idx]) { const k = self.peds.chars[p.idx].current ?? '-'; clips[k] = (clips[k] ?? 0) + 1 }
         return {
           mode: self.charLib ? 'gltf' : 'box', playerClip: pc?.current ?? null, playerSpec: pc?.spec ?? null, playerVisible: self.player.group.visible,
-          tint: pc ? pc.mesh.material.emissive.getHexString() : null,
+          tint: pc ? (pc.mesh.material as THREE.MeshStandardMaterial).emissive.getHexString() : null,
           gunVisible: self.player.showGun, name: self.playerName, pedLod: { ...self.peds.lodStats }, pedClips: clips,
           pedSpecs: new Set(self.peds.chars.map((c) => c.spec.parts.body + c.spec.colors.top)).size,
         }
@@ -1077,6 +1077,21 @@ export class Game {
         const s = self.source
         return { kind: s.kind, stats: { ...s.stats, firstLoadMs: s.firstLoadMs ?? 0, loadMs: self.readyAt ? Math.round(self.readyAt - self.bootAt) : -1, labels: self.poiMarkers?.visibleLabels ?? 0 }, bounds: { ...s.bounds } }
       },
+      /** 文字街景（sg 世界）：统计 + 按 key 前缀查激活招牌位置（截图定位用） */
+      get signs() {
+        const sg = (self.source as { signs?: import('../world/Signage').Signage | null }).signs
+        return sg ? {
+          stats: sg.stats,
+          find: (prefix: string, limit?: number) => sg.find(prefix, limit),
+          /** 站到第 i 块（key 前缀）招牌正前方 dist 米、面朝招牌 */
+          view: (prefix: string, i = 0, dist = 9) => {
+            const g = sg.find(prefix, i + 1)[i]; if (!g) return null
+            const yaw = Math.atan2(-g.nx, -g.nz)
+            self.player.place(g.x + g.nx * dist, g.z + g.nz * dist, yaw); self.cam.snap(yaw)
+            return g
+          },
+        } : null
+      },
       /** 传送到某 POI 门口（下车、面向门口朝向）；返回是否成功 */
       teleportTo(poiId: string) {
         const p = self.pois.byId(poiId); if (!p) return false
@@ -1103,7 +1118,7 @@ export class Game {
       weather: {
         /** 调试：手动指定天气并锁定 lockHours 游戏小时（默认 3），调时钟/整点不会重掷 */
         set(s: 'clear' | 'cloudy' | 'storm', lockHours = 3) { self.weather.set(s, true, lockHours) },
-        get state() { return self.weather.state }, get locked() { return self.weather.locked }, get gloom() { return self.weather.gloom }, get rain() { return self.weather.rainIntensity },
+        get state() { return self.weather.state }, get locked() { return self.weather.locked }, get gloom() { return self.weather.gloom }, get rain() { return self.weather.rainIntensity }, get wet() { return self.weather.wet }, get flash() { return self.dayNight.flash },
       },
       needs: {
         get hunger() { return self.needs.hunger }, get energy() { return self.needs.energy },
