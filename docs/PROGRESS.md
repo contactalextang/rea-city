@@ -56,6 +56,7 @@
 - [x] P7.4 音频：去掉背景“嘭嘭”（NPC 撞人不再出声，撞击音阈值 4 + 0.35 s 去抖，车流底噪调轻）；新增 Music.ts 程序合成背景音乐（步行氛围乐 / 驾车车载电台交叉淡化，夜间更暗，通缉压低），手机设置“音乐 开/关”，`?music=0`
 
 ## 后续
+- [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
 - [ ] 后续可选：步行道图/天桥可走、桥梁抬高、五脚基、OneMap 补 HDB 层数
 
 ## 日志
@@ -67,3 +68,5 @@
 - 2026-10-20 Phase 7 完成（bd81256 等）：F 上客 20/20 不再被甩下车（根因：一帧多物理步时按键边沿重复）；天气手动锁定 3 h 且跳时不重掷、进存档；构建无体积警告（three 626 kB 单独分包）。
   遗留：单向路车道偏在一侧（lanePoint 对单行道仍按 DRIVE_SIDE 偏移，与路面对称铺设不一致）；约 47/170 公交站碰撞体在车行道内；个别建筑足迹压进 primary 路（约 570,250）；调试钩子 weather.set 现默认锁 3 h（lockHours=0 取消）。
 - 2026-10-20 P7.4 音频：步行 40 s 撞击音 0 次；上车 radio、下车 ambient；音乐开关持久化。
+- 2026-10-20 外部道具模型试验：threejsassets 免费 GLB（Draco）经 `npm run props:build` 解压合并为 props.glb（103 KB，含 shade-tree 549 三角 / metropolis-street-tree-01 392 三角）；`?props=glb` 替换 tree 池几何，查看页 120 fps 无变化，树三角面约 40→549/棵。许可证禁止单独再分发模型文件——仓库若公开需排除 public/assets/props/。
+- 2026-10-20 新行道树设为默认，`?props=glb` 改为 `?props=proc` 反向开关。

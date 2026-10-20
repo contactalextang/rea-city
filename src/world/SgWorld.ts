@@ -4,6 +4,7 @@ import { StaticWorld } from './Colliders'
 import { decodeSkyline, type Manifest } from './ChunkFormat'
 import { CLS_COLORS } from './BuildingMesh'
 import { PropMeshes } from './PropMeshes'
+import { loadPropModels } from './PropModels'
 import { RoadMarkings } from './RoadMarkings'
 import { ChunkManager, type ChunkStats } from './ChunkManager'
 import { Landmarks, skylineHidden } from './Landmarks'
@@ -110,6 +111,12 @@ export class SgWorld implements WorldSource {
     const counts = this.manifest.chunks.map((c) => c.props).sort((a, b) => b - a)
     const bound = counts.slice(0, 49).reduce((s, n) => s + n, 0) || 4096
     this.props = new PropMeshes(this.graph, Math.max(1024, bound))
+    // 行道树默认换成 threejsassets 低模（shade-tree 高 7.1 m，缩到程序化树的 6.45 m）；?props=proc 或加载失败保留程序化树
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('props') !== 'proc') {
+      const props = this.props
+      loadPropModels().then((m) => { const g = m.get('shade-tree'); if (g) props.useModel('tree', g, 6.45 / 7.09) })
+        .catch((e) => console.warn('[props] 外部模型加载失败，保留程序化道具', e))
+    }
     this.marks = new RoadMarkings()
     const signsOff = typeof location !== 'undefined' && new URLSearchParams(location.search).get('signs') === '0'
     if (!signsOff) this.signs = new Signage(this.graph, graph as GraphData & NamedGraphData, this.pois, this.manifest.grid)

@@ -18,7 +18,8 @@
     "geo:pois": "node scripts/geo/07-pois.ts",
     "geo:roadmesh": "node scripts/geo/08-roadmesh.ts",
     "geo:chunks": "node scripts/geo/09-chunks.ts",
-    "char:build": "node scripts/char/build.ts"
+    "char:build": "node scripts/char/build.ts",
+    "props:build": "node scripts/props/build.ts"
   },
   "keywords": [],
   "author": "",

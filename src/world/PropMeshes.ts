@@ -78,8 +78,15 @@ function makeGeometries(): Record<PoolName, THREE.BufferGeometry> {
 
 class Pool {
   mesh: THREE.InstancedMesh
-  constructor(readonly name: PoolName, readonly geo: THREE.BufferGeometry, readonly mat: THREE.Material, capacity: number, readonly colorable: boolean) {
+  constructor(readonly name: PoolName, public geo: THREE.BufferGeometry, readonly mat: THREE.Material, capacity: number, readonly colorable: boolean) {
     this.mesh = this.make(capacity)
+  }
+  /** 换几何（外部模型加载完成后）；实例矩阵不动 */
+  setGeometry(g: THREE.BufferGeometry) {
+    const old = this.geo
+    this.geo = g
+    this.mesh.geometry = g
+    old.dispose()
   }
   private make(capacity: number) {
     const m = new THREE.InstancedMesh(this.geo, this.mat, capacity)
@@ -156,6 +163,13 @@ export class PropMeshes {
     scene.userData.lamps = this.pools.lamp.mesh
     scene.userData.lampHead = LAMP_HEAD.clone()
     scene.userData.signalLights = this.signalLights
+  }
+
+  /** 用外部模型替换某池的几何，按 scale 统一缩放（原点须在地面、+z 朝前） */
+  useModel(pool: PoolName, geo: THREE.BufferGeometry, scale = 1) {
+    const g = geo.clone()
+    if (scale !== 1) g.scale(scale, scale, scale)
+    this.pools[pool].setGeometry(g)
   }
 
   get stats() {

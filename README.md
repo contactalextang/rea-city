@@ -36,6 +36,7 @@ node --test scripts/test/*.test.ts   # 单元测试（碰撞、分块编解码�
 | `music=0` | 关闭背景音乐（手机设置页也可开关；步行为轻柔氛围乐，驾车切换为车载电台） |
 | `law=real` | 执法改回接近原版的严格度（默认 `relaxed`：闯红灯宽限/冷却、扣 6 分，小额碰撞不立即出警，警察更慢、被捕需贴住 4 s） |
 | `signs=0` | 关闭文字街景（路名牌、招牌、站牌等） |
+| `props=proc` | 行道树改回程序化圆锥树（默认用 threejsassets 低模阔叶树，低配可用此项省约 30 万三角面） |
 | `timeSpeed=N` | 游戏时钟倍速 |
 
 ## 操作
@@ -114,6 +115,8 @@ node --test scripts/test/*.test.ts   # 单元测试（碰撞、分块编解码�
 
 角色资产：`npm run char:build` 把 Quaternius Ultimate Modular Men / Women（放在 `data/assets-eval/`）打包成 `public/assets/characters/characters.glb` + `catalog.json`（46 个部件、24 段动画、14 个预设），说明见 `scripts/char/README.md`。
 
+道具模型：`npm run props:build` 把 threejsassets.com 免费模型（Draco GLB，放在 `data/assets-eval/threejsassets/`，需登录下载）解压合并成 `public/assets/props/props.glb`（运行时不需要 Draco 解码器）。
+
 ## 代码结构
 
 ```
@@ -173,4 +176,5 @@ launcher/make-app.sh launcher/icon-mac-1024.png /Applications
 - 地图数据 © OpenStreetMap contributors，[ODbL 1.0](https://www.openstreetmap.org/copyright)。
 - Contains information from the Land Transport Authority (LTA DataMall), Urban Redevelopment Authority (URA), Housing & Development Board (HDB) and National Environment Agency (NEA), accessed from data.gov.sg / LTA DataMall, made available under the [Singapore Open Data Licence v1.0](https://data.gov.sg/open-data-licence)。本项目与上述机构无关，亦不代表其背书。
 - 角色模型：Quaternius — Ultimate Modular Men / Women，CC0 1.0（原文见 `public/assets/characters/LICENSE-quaternius.txt`）。
-- 其余几何（建筑、车辆、地标、道具）、音效（WebAudio 合成）与代码均为本项目原创。
+- 行道树模型：threejsassets.com — Shade Tree / Metropolis Street Tree 01，Free Commercial License（不得单独再分发模型文件，见 `public/assets/props/LICENSE-threejsassets.txt`）。
+- 其余几何（建筑、车辆、地标、其余道具）、音效（WebAudio 合成）与代码均为本项目原创。
