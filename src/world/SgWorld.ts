@@ -7,6 +7,7 @@ import { PropMeshes } from './PropMeshes'
 import { RoadMarkings } from './RoadMarkings'
 import { ChunkManager, type ChunkStats } from './ChunkManager'
 import { Landmarks, skylineHidden } from './Landmarks'
+import { Signage, type NamedGraphData } from './Signage'
 import type { WorldSource } from './WorldSource'
 import type { Poi } from '../systems/Poi'
 
@@ -63,6 +64,8 @@ export class SgWorld implements WorldSource {
   marks!: RoadMarkings
   skyline: THREE.Mesh | null = null
   landmarks: Landmarks | null = null
+  /** 文字类街景（路名牌 / 楼号 / 招牌 / LOOK RIGHT），?signs=0 关闭 */
+  signs: Signage | null = null
   /** 天际线里因地标替换丢弃的三角数 */
   skylineDropped = 0
   /** 首个 5×5 全部构建完成的时间戳（performance.now），统计首屏用 */
@@ -108,7 +111,9 @@ export class SgWorld implements WorldSource {
     const bound = counts.slice(0, 49).reduce((s, n) => s + n, 0) || 4096
     this.props = new PropMeshes(this.graph, Math.max(1024, bound))
     this.marks = new RoadMarkings()
-    this.chunks = new ChunkManager(this.manifest, this.baseUrl, this.world, this.props, this.marks)
+    const signsOff = typeof location !== 'undefined' && new URLSearchParams(location.search).get('signs') === '0'
+    if (!signsOff) this.signs = new Signage(this.graph, graph as GraphData & NamedGraphData, this.pois, this.manifest.grid)
+    this.chunks = new ChunkManager(this.manifest, this.baseUrl, this.world, this.props, this.marks, this.signs)
     this.addWalls()
   }
 
@@ -184,6 +189,7 @@ export class SgWorld implements WorldSource {
     scene.add(this.group)
     this.props.attach(scene)
     this.marks.attach(scene)
+    this.signs?.attach(scene)
     this.chunks.attach(scene)
     // 地标（须在 DayNight.attachWorld 之前：它在那时读取 scene.userData.windows）
     this.landmarks = new Landmarks(this.landuse?.water ?? null)
@@ -213,6 +219,7 @@ export class SgWorld implements WorldSource {
     this.landmarks?.dispose()
     this.props.dispose()
     this.marks.dispose()
+    this.signs?.dispose()
     this.skyline?.geometry.dispose()
     this.groundTex.dispose()
     this.group.removeFromParent()

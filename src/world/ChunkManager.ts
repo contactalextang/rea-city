@@ -4,12 +4,14 @@ import { polyBody, type StaticBody, type StaticWorld } from './Colliders'
 import { GeomSink, appendBuilding, buildingColor, makeWallMaterial } from './BuildingMesh'
 import type { PropMeshes } from './PropMeshes'
 import type { RoadMarkings } from './RoadMarkings'
+import type { Signage } from './Signage'
 import { isReplaced } from './Landmarks'
 
 /**
  * 区块流式加载：以玩家所在块为中心的 5×5 为目标集合，每帧最多发起 1 次 fetch、构建 1 个块；
  * 离开 7×7 的块卸载（释放几何、world.removeChunk、道具/标线实例移除）。
- * 每块产物：路面 Mesh（y=0）、人行道 Mesh（y=0.12）、建筑合并 Mesh（窗格贴图 + 顶点色）、碰撞体、道具实例、标线实例。
+ * 每块产物：路面 Mesh（y=0）、人行道 Mesh（y=0.12）、建筑合并 Mesh（窗格贴图 + 顶点色）、碰撞体、道具实例、标线实例、
+ * 文字招牌（Signage，可选：只在玩家周围 5×5 块激活）。
  */
 export const LOAD_RADIUS = 2
 export const UNLOAD_RADIUS = 3
@@ -58,6 +60,7 @@ export class ChunkManager {
     private world: StaticWorld,
     private props: PropMeshes,
     private marks: RoadMarkings,
+    private signs: Signage | null = null,
   ) {
     this.group.name = 'chunks'
     for (const c of manifest.chunks) this.files.set(`${c.i}_${c.j}`, c.file)
@@ -92,6 +95,7 @@ export class ChunkManager {
       this.lastCenter = center
       this.recomputeWanted(ci, cj)
       this.unloadFar(ci, cj)
+      this.signs?.setCenter(ci, cj)
     }
     // 1. 发起一次 fetch（按距离排序的待取列表里第一个未取的）
     for (const key of this.wanted) {
@@ -109,6 +113,7 @@ export class ChunkManager {
     }
     this.props.flush()
     this.marks.flush()
+    this.signs?.flush()
   }
 
   private recomputeWanted(ci: number, cj: number) {
@@ -200,6 +205,7 @@ export class ChunkManager {
     }
     this.props.addChunk(key, c.props, bodies)
     this.marks.addChunk(key, c.marks)
+    this.signs?.addChunk(key, c)
     this.world.addChunk(key, bodies)
     for (const m of meshes) this.group.add(m)
     this.built.set(key, { key, meshes, tris, buildings: c.buildings.length, props: c.props.length })
@@ -213,6 +219,7 @@ export class ChunkManager {
     this.world.removeChunk(key)
     this.props.removeChunk(key)
     this.marks.removeChunk(key)
+    this.signs?.removeChunk(key)
   }
 
   /** 全部卸载（切换世界时） */
@@ -220,7 +227,7 @@ export class ChunkManager {
     for (const key of [...this.built.keys()]) this.unload(key)
     this.decoded.clear()
     this.wanted = []
-    this.props.flush(); this.marks.flush()
+    this.props.flush(); this.marks.flush(); this.signs?.flush()
     this.roadMat.dispose(); this.walkMat.dispose(); this.wallMat.dispose()
     this.group.removeFromParent()
   }

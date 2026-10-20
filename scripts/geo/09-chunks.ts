@@ -175,6 +175,7 @@ function main(): void {
   // ---------------- 建筑（按质心归块） ----------------
   const clsCount: Record<string, number> = {};
   let namedBuildings = 0;
+  let blkNames = 0;
   for (const b of buildings) {
     if (b.ring.length < 6) continue;
     const [cx, cz] = centroidFlat(b.ring);
@@ -199,6 +200,12 @@ function main(): void {
     };
     c.buildings.push(cb);
     clsCount[b.cls] = (clsCount[b.cls] ?? 0) + 1;
+    // 组屋楼号：以 `blk:<建筑 id>=<楼号>` 追加进名称表（不占 nameIdx，旧解码器照常读出、建筑名语义不变），
+    // 运行时 Signage 据此在山墙画大号楼号
+    if (cls === 1 && b.blk) {
+      c.names.push(`blk:${b.id}=${b.blk}`);
+      blkNames++;
+    }
   }
 
   // ---------------- 道具（按位置归块） ----------------
@@ -367,7 +374,7 @@ function main(): void {
   const sizeOf = (f: string) => Math.max(0, fileSize(resolve(OUT_DIR, f)));
   const dataBytes = totalChunkBytes + skyBuf.byteLength + sizeOf('graph.json') + sizeOf('pois.json') + sizeOf('landuse.json') + sizeOf('manifest.json');
   const pngBytes = sizeOf('ground.png') + sizeOf('minimap.png');
-  log(`建筑 ${buildings.length}（有名 ${namedBuildings}）${JSON.stringify(clsCount)}；道具 ${propCount}；标线 ${markCount}；三角 路面 ${roadTris} + 人行道 ${walkTris}`);
+  log(`建筑 ${buildings.length}（有名 ${namedBuildings}，组屋楼号 ${blkNames}）${JSON.stringify(clsCount)}；道具 ${propCount}；标线 ${markCount}；三角 路面 ${roadTris} + 人行道 ${walkTris}`);
   log(`总大小（不含 png）${fmtBytes(dataBytes)}${dataBytes > 15 * 1024 * 1024 ? '  超过 15 MB 目标！' : ''}；png ${fmtBytes(pngBytes)}；输出目录 ${OUT_DIR}`);
   log(`耗时 ${((performance.now() - t0) / 1000).toFixed(1)} s`);
   const summary = {
@@ -379,6 +386,7 @@ function main(): void {
     skyline: { buildings: skyBuildings, tris: skyCls.length / 3, bytes: skyBuf.byteLength },
     buildings: buildings.length,
     namedBuildings,
+    blkNames,
     byCls: clsCount,
     props: propCount,
     propSkipped,
