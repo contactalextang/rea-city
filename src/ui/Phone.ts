@@ -15,6 +15,8 @@ export interface PhoneHost {
   stopJob(): void
   buy(asset: AssetId, amount: number): void
   sell(asset: AssetId): void
+  /** 打开衣柜（换装）；false = 不可用 */
+  wardrobe(): boolean
 }
 export interface PhoneStatus {
   timeText: string
@@ -69,7 +71,7 @@ export class Phone {
   private app(name: string) {
     switch (name) {
       case 'work': this.showSub(this.sub === 'work' ? null : 'work'); break
-      case 'char': this.host.toast('角色定制即将推出'); break
+      case 'char': if (!this.host.wardrobe()) this.host.toast('方块角色模式（?chars=box）不支持换装'); break
       case 'map': this.showSub(this.sub === 'map' ? null : 'map'); break
       case 'settings': this.showSub(this.sub === 'settings' ? null : 'settings'); break
       case 'save': this.host.save(); break

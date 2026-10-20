@@ -37,8 +37,12 @@ import { Panels } from '../ui/Panels'
 import { Phone } from '../ui/Phone'
 import * as Save from '../systems/Save'
 import { saveSettings } from './Settings'
+import { CharacterLibrary } from '../characters/CharacterLibrary'
+import { identitySpec } from '../characters/presets'
+import { Creator, loadCreatorResult, saveCreatorResult, type CreatorResult } from '../ui/Creator'
 
-type State = 'intro' | 'play' | 'dead' | 'busted' | 'won' | 'panel'
+/** creator：开局建角色（世界暂停，只渲染建角色界面） */
+type State = 'intro' | 'creator' | 'play' | 'dead' | 'busted' | 'won' | 'panel'
 const playingNow = (s: State) => s === 'play' || s === 'won'
 const tmpBoxes: AABB[] = []
 const c0 = { x: 0, z: 0 }, c1 = { x: 0, z: 0 }
@@ -107,6 +111,25 @@ export class Game {
   private phoneTimer = 0
   /** 自己家的门口（昏倒/开局传送点） */
   private homeDoor = { x: 0, z: 0, yaw: Math.PI / 2 }
+  /** 骨骼角色库（chars=box 或加载失败时为 null → 盒子人回退） */
+  charLib: CharacterLibrary | null = null
+  /** 已保存的建角色结果（localStorage['rea.character']） */
+  private creatorSaved: CreatorResult | null = null
+  /** 开始游戏前需要走建角色流程 */
+  private needCreator = false
+  /** 当前打开的建角色/衣柜界面（打开期间主循环只跑它） */
+  private creatorUi: Creator | null = null
+  /** 建角色界面的 DOM 容器：拦截 mousedown，避免点按钮时触发指针锁定 */
+  private uiLayer: HTMLDivElement
+  playerName = ''
+  /** 测试：固定相机 [x,y,z,lookX,lookY,lookZ]（玩家局部坐标），null = 正常追尾 */
+  private camShotRel: number[] | null = null
+  private get camShot(): number[] | null {
+    const r = this.camShotRel; if (!r) return null
+    // 相对玩家局部坐标（+Z 前、+X 左），随玩家朝向旋转
+    const x = this.player.x, z = this.player.z, c = Math.cos(this.player.yaw), sn = Math.sin(this.player.yaw)
+    return [x + r[0] * c + r[2] * sn, r[1], z - r[0] * sn + r[2] * c, x + r[3] * c + r[5] * sn, r[4], z - r[3] * sn + r[5] * c]
+  }
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
@@ -118,9 +141,19 @@ export class Game {
     this.scene.background = new THREE.Color(0xa9c9e8)
     this.scene.fog = new THREE.Fog(0xa9c9e8, 150, 380)   // 之后每帧由 DayNight 更新
     this.cam = new ChaseCamera(window.innerWidth / window.innerHeight)
+    // 已建角色：身份以建角色结果为准（URL ?role= 仍可临时覆盖，便于测试）
+    const q = new URLSearchParams(location.search)
+    this.creatorSaved = loadCreatorResult()
+    if (this.creatorSaved && !q.has('role') && !q.has('fresh')) this.settings.role = this.creatorSaved.role
+    this.playerName = this.creatorSaved?.name ?? ''
     this.role = ROLES[this.settings.role]
     this.player.money = this.role.cash
     this.hud.setGun(this.role.systems.gun)
+    this.player.showGun = this.role.systems.gun
+    this.uiLayer = document.createElement('div')
+    this.uiLayer.className = 'creator-layer'
+    this.uiLayer.addEventListener('mousedown', (e) => e.stopPropagation())
+    document.body.appendChild(this.uiLayer)   // 放在 body 末尾：盖住 HUD
     this.clock = new Clock(this.settings.timeSpeed)
     this.dayNight = new DayNight(this.scene, this.renderer, this.settings)   // 创建半球光/太阳光
     this.needs = new Needs(this.clock, this.role.needsRate)
@@ -140,6 +173,7 @@ export class Game {
       stopJob: () => this.jobs.stop(),
       buy: (asset, amount) => this.jobs.buy(asset, amount),
       sell: (asset) => this.jobs.sell(asset),
+      wardrobe: () => this.openWardrobe(),
     })
 
     // 世界数据源：默认真实新加坡（异步加载烘焙数据），?world=grid 为方格城回归基线
@@ -160,7 +194,12 @@ export class Game {
   /** 世界就绪后构建依赖路网/碰撞/POI 的全部系统（顺序：路网 → 静态网格 → 实体/系统 → 灯光约定 → 出生点） */
   private async init() {
     const src = this.source
-    await src.ready
+    // 世界数据与角色库并行加载；?chars=box 或角色库加载失败 → 盒子人回退
+    const libP = this.settings.chars === 'gltf'
+      ? CharacterLibrary.load().catch((e: unknown) => { console.warn('[REA] 角色库加载失败，回退方块角色：', e); return null })
+      : Promise.resolve(null)
+    const [, lib] = await Promise.all([src.ready, libP])
+    this.charLib = lib
     const sg = src.kind === 'sg'
     this.graph = src.graph
     this.world = src.world
@@ -177,8 +216,14 @@ export class Game {
     // 红绿灯灯具：真实城市的对象由 PropMeshes 持有（mesh 随区块增删更换，每帧读 .mesh）
     this.signalLights = (this.scene.userData.signalLights as SignalLights | undefined) ?? null
 
+    const q = new URLSearchParams(location.search)
+    if (lib) {
+      const cr = this.creatorSaved
+      this.player.useCharacter(lib, cr && cr.role === this.role.id ? cr.spec : identitySpec(this.role.id))
+      this.needCreator = !cr || q.has('fresh') || q.has('creator')
+    }
     this.scene.add(this.player.group)
-    this.peds = new Pedestrians(this.scene, this.events)
+    this.peds = new Pedestrians(this.scene, this.events, lib)
     this.trafficAI = new TrafficAI(this.peds)
     this.policeAI = new PoliceAI(this.peds)
     this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, pursuitLevel: 0, settings: this.settings, clock: this.clock, signals: this.signals, role: this.role, pois: this.pois, needs: this.needs, law: this.law, events: this.events }
@@ -192,6 +237,7 @@ export class Game {
       teleport: (x, z, yaw) => { this.player.place(x, z, yaw); this.cam.snap(yaw) },
       save: () => this.saveGame(false),
       parkTaxi: (x, z, yaw) => this.spawner.parkTaxiNear(this.ctx, x, z, yaw),
+      wardrobe: () => this.openWardrobe(),
     })
     this.interactions.jobs = this.jobs
     this.quests = new Quests(this.ctx)
@@ -213,8 +259,10 @@ export class Game {
     this.homeDoor = door(this.pois.byId(this.role.home))
     this.player.place(this.homeDoor.x, this.homeDoor.z, this.homeDoor.yaw)
     // 存档：同身份且未带 ?fresh=1 则读档；存档来自另一个世界时不恢复位置
-    const fresh = new URLSearchParams(location.search).has('fresh')
-    const saved = fresh ? null : Save.load()
+    const fresh = q.has('fresh')
+    let saved = fresh ? null : Save.load()
+    // 存档身份与建角色结果不一致：以建角色为准，清掉旧存档
+    if (saved && this.creatorSaved && !q.has('role') && saved.role !== this.creatorSaved.role) { Save.clear(); saved = null }
     if (saved && saved.role === this.role.id) {
       Save.apply(this.ctx, saved); this.jobs.restore(saved.jobs); this.quests.init(saved.quests)
       if ((saved.world ?? 'grid') !== src.kind) this.player.place(this.homeDoor.x, this.homeDoor.z, this.homeDoor.yaw)
@@ -285,6 +333,18 @@ export class Game {
       const dt = Math.min(0.1, (now - this.last) / 1000)
       this.last = now
       if (!this.ready) { this.fitViewport(); return }   // 世界加载中：只显示覆盖层
+      const hudEl = document.getElementById('hud')
+      const uiOpen = !!this.creatorUi?.isOpen
+      if (hudEl && (hudEl.style.visibility === 'hidden') !== uiOpen) hudEl.style.visibility = uiOpen ? 'hidden' : ''
+      if (uiOpen && this.creatorUi) {
+        // 建角色 / 衣柜：世界模拟暂停，HUD 隐藏，只更新并渲染界面（界面自己铺满底色）
+        this.fitViewport()
+        this.creatorUi.update(dt)
+        this.creatorUi.render()
+        this.input.takeMouse()
+        this.input.endFrame()
+        return
+      }
       this.acc += dt
       let steps = 0
       while (this.acc >= FIXED_DT && steps < 5) { this.step(FIXED_DT); this.acc -= FIXED_DT; steps++ }
@@ -298,6 +358,7 @@ export class Game {
 
   private beginPlay() {
     if (!this.ready) return
+    if (this.needCreator && this.charLib) { void this.runCreator(this.charLib); return }
     this.state = 'play'
     this.unlockHintAt = this.time
     this.hud.hideOverlay()
@@ -306,6 +367,74 @@ export class Game {
     this.cam.snap(this.player.yaw)
     this.cam.camera.position.set(this.player.x - Math.sin(this.player.yaw) * 6, 3, this.player.z - Math.cos(this.player.yaw) * 6)
     this.hud.toast('E 进入地点 · Tab 手机 · F 上车 · 黄色标记接任务', 4)
+  }
+
+  /**
+   * 开局建角色：确认后保存结果；身份与当前不同 → 写入设置、清旧存档、去掉 URL 里的 fresh/creator/role 后重新加载
+   * （出生点/现金/枪/工作任务都按身份在 init 里构建，重载最可靠）；相同 → 换上外观直接开始。
+   */
+  private async runCreator(lib: CharacterLibrary) {
+    if (this.creatorUi) return
+    this.state = 'creator'
+    this.hud.hideOverlay()
+    this.hud.attribution('')
+    if (document.pointerLockElement) document.exitPointerLock()
+    const q = new URLSearchParams(location.search)
+    const initial = q.has('creator') && this.creatorSaved ? this.creatorSaved : undefined
+    const ui = new Creator({ renderer: this.renderer, lib, mode: 'new', container: this.uiLayer, initial })
+    this.creatorUi = ui
+    const r = await ui.open()
+    ui.dispose()
+    this.creatorUi = null
+    this.input.endFrame()   // 确认用的 Enter 不再传给游戏（否则会触发全屏）
+    if (!r) { this.state = 'intro'; this.hud.showOverlay('REA CITY', '', '', true, '按任意键或点击开始'); return }
+    saveCreatorResult(r)
+    this.creatorSaved = r
+    this.playerName = r.name
+    for (const k of ['fresh', 'creator', 'role']) q.delete(k)
+    const url = location.pathname + (q.toString() ? `?${q}` : '') + location.hash
+    const saved = Save.load()
+    if (saved && saved.role !== r.role) Save.clear()
+    if (r.role !== this.role.id) {
+      this.settings.role = r.role
+      saveSettings(this.settings)
+      this.hud.showOverlay('REA CITY', `以${ROLES[r.role].title}身份进入新加坡…`, '', false, '')
+      location.replace(url)
+      return
+    }
+    history.replaceState(null, '', url)
+    this.player.setSpec(r.spec)
+    this.needCreator = false
+    this.beginPlay()
+  }
+
+  /** 衣柜：只改外观（不能换身份）；期间 state='panel'，世界暂停。返回 false = 不可用 */
+  openWardrobe(): boolean {
+    const lib = this.charLib
+    if (!lib || !this.player.char) return false
+    if (this.creatorUi || (this.state !== 'play' && this.state !== 'panel')) return true
+    this.panels.hide()
+    this.interactions.current = null
+    this.phone.set(false)
+    if (document.pointerLockElement) document.exitPointerLock()
+    this.state = 'panel'
+    const ui = new Creator({ renderer: this.renderer, lib, mode: 'wardrobe', container: this.uiLayer, initial: { role: this.role.id, spec: this.player.char.spec, name: this.playerName || undefined } })
+    this.creatorUi = ui
+    void ui.open().then((r) => {
+      ui.dispose()
+      this.creatorUi = null
+      this.input.endFrame()
+      if (r) {
+        this.player.setSpec(r.spec)
+        this.playerName = r.name
+        this.creatorSaved = { role: this.role.id, spec: r.spec, name: r.name }
+        saveCreatorResult(this.creatorSaved)
+        this.hud.toast('换装完成', 2)
+      }
+      this.state = 'play'
+      this.unlockHintAt = this.time
+    })
+    return true
   }
 
   /** 在某个门口附近的车道上停一辆空车 */
@@ -384,6 +513,7 @@ export class Game {
       if (input.anyKeyPressed || input.clicked) this.beginPlay()
       return
     }
+    if (this.state === 'creator') return
     if (this.state === 'panel') {
       // 面板：世界暂停，只响应 Esc / 关闭按钮；数值变化仍刷新 HUD
       if (input.justPressed('Escape')) this.closePanel()
@@ -457,7 +587,8 @@ export class Game {
     // 相机与同步
     const target = this.player.vehicle ?? this.player
     const moving = this.player.inVehicle ? Math.abs(this.player.vehicle!.speed) > 1 : Math.hypot(this.player.vx, this.player.vz) > 0.5
-    this.cam.update(dt, this.player.inVehicle ? 'car' : 'foot', target, this.player.vehicle?.speed ?? 0, this.time, moving, this.state === 'play' && (this.input.locked || this.forceAim))
+    if (this.camShot) { this.cam.camera.position.fromArray(this.camShot, 0); this.cam.camera.lookAt(this.camShot[3], this.camShot[4], this.camShot[5]) }
+    else this.cam.update(dt, this.player.inVehicle ? 'car' : 'foot', target, this.player.vehicle?.speed ?? 0, this.time, moving, this.state === 'play' && (this.input.locked || this.forceAim))
     this.player.sync()
     for (const v of this.vehicles) if (v.active) v.sync(this.time)
     this.jobs.sync(this.time); this.quests.sync(this.time)
@@ -490,6 +621,7 @@ export class Game {
   }
 
   private shoot() {
+    this.player.onShoot()
     const hit = this.weapon.fire(this.ctx, this.peds, this.cam.camera, this.player.muzzle(this.muzzleTmp))
     this.audio.gunshot()
     this.peds.scare(this.player.worldX, this.player.worldZ, 28)
@@ -665,6 +797,12 @@ export class Game {
     this.frames++; this.fpsTimer += dt
     if (this.fpsTimer >= 0.5) { this.fps = this.frames / this.fpsTimer; this.frames = 0; this.fpsTimer = 0 }
     if (this.signalLights) this.signals.applyToMesh(this.signalLights.mesh, this.signalLights.edgeIds)
+    // 骨骼动画按渲染帧推进（面板暂停时冻结）；行人 LOD 用相机位置与视锥
+    if (this.state !== 'panel') {
+      this.player.animate(dt)
+      this.cam.camera.updateMatrixWorld()
+      this.peds.animate(dt, this.cam.camera)
+    }
     this.renderer.render(this.scene, this.cam.camera)
   }
 
@@ -673,7 +811,48 @@ export class Game {
     ;(window as unknown as { __game: unknown }).__game = {
       get ready() { return self.ready },
       get state() { return self.state },
-      get stats() { return { fps: self.fps, peds: self.peds.activeCount, cars: self.vehicles.filter((v) => v.active).length, drawCalls: self.renderer.info.render.calls, time: self.time } },
+      get stats() { return { fps: self.fps, peds: self.peds.activeCount, cars: self.vehicles.filter((v) => v.active).length, drawCalls: self.renderer.info.render.calls, triangles: self.renderer.info.render.triangles, time: self.time } },
+      /** 骨骼角色：玩家当前动画 / 外观 / 行人 LOD 与动画分布 */
+      get chars() {
+        const pc = self.player.char
+        const clips: Record<string, number> = {}
+        for (const p of self.peds.peds) if (p.active && self.peds.chars[p.idx]) { const k = self.peds.chars[p.idx].current ?? '-'; clips[k] = (clips[k] ?? 0) + 1 }
+        return {
+          mode: self.charLib ? 'gltf' : 'box', playerClip: pc?.current ?? null, playerSpec: pc?.spec ?? null, playerVisible: self.player.group.visible,
+          tint: pc ? pc.mesh.material instanceof THREE.MeshLambertMaterial ? pc.mesh.material.emissive.getHexString() : null : null,
+          gunVisible: self.player.showGun, name: self.playerName, pedLod: { ...self.peds.lodStats }, pedClips: clips,
+          pedSpecs: new Set(self.peds.chars.map((c) => c.spec.parts.body + c.spec.colors.top)).size,
+        }
+      },
+      creator: {
+        get open() { return !!self.creatorUi?.isOpen },
+        get ui() { return self.creatorUi },
+        state() { return self.creatorUi?.state() ?? null },
+      },
+      wardrobe() { return self.openWardrobe() },
+      /** 测试：相机固定在玩家相对位置看向相对点；null 恢复 */
+      camShot(rel: number[] | null) { self.camShotRel = rel },
+      /** 测试：把所有活动行人挪到玩家 r 米内的人行道上（压测 LOD / 截图） */
+      gatherPeds(r = 30) {
+        const px = self.player.worldX, pz = self.player.worldZ, tmp = { x: 0, z: 0 }
+        let n = 0
+        for (const p of self.peds.peds) {
+          if (!p.active || p.state === 'hail') continue
+          for (let k = 0; k < 20; k++) {
+            const e = self.graph.randomEdgeNear(px, pz, r)
+            if (!e) break
+            const t = Math.random() * e.length
+            self.graph.sidewalkPoint(e, t, tmp)
+            if (Math.hypot(tmp.x - px, tmp.z - pz) > r) continue
+            p.x = tmp.x; p.z = tmp.z; p.edge = e; p.t = t; p.state = 'walk'; n++
+            break
+          }
+        }
+        return n
+      },
+      pedInfo(i: number) { const p = self.peds.peds[i], c = self.peds.chars[i]; return { active: p.active, state: p.state, x: p.x, z: p.z, clip: c?.current ?? null, visible: c?.group.visible ?? null } },
+      /** 测试：哪些行人在招手 / 招手者的动画 */
+      get hailing() { return self.peds.peds.filter((p) => p.active && p.state === 'hail').map((p) => ({ idx: p.idx, clip: self.peds.chars[p.idx]?.current ?? null, visible: self.peds.chars[p.idx]?.group.visible ?? null })) },
       get player() { return { x: self.player.worldX, z: self.player.worldZ, health: self.player.health, money: self.player.money, inVehicle: self.player.inVehicle, speed: self.player.vehicle?.speed ?? 0 } },
       get wanted() { return { stars: self.law.stars, heat: self.law.pursuitLevel, demerits: self.law.demerits, fines: self.law.fines } },
       get role() { return self.role },

@@ -9,7 +9,7 @@ export interface Settings {
   role: RoleId               // 玩家身份（见 data/roles.ts）
 }
 
-export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'box', shadows: true, role: DEFAULT_ROLE }
+export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'gltf', shadows: true, role: DEFAULT_ROLE }
 const KEY = 'rea.settings'
 
 const parseBool = (v: string) => !(v === '0' || v === 'false' || v === 'off' || v === 'no')
@@ -19,7 +19,12 @@ export function loadSettings(search = typeof location !== 'undefined' ? location
   const s: Settings = { ...DEFAULT_SETTINGS }
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) apply(s, JSON.parse(raw) as Record<string, unknown>)
+    if (raw) {
+      // chars 只认 URL（?chars=box 回退），旧版本存过的 chars:'box' 不再生效
+      const stored = JSON.parse(raw) as Record<string, unknown>
+      delete stored.chars
+      apply(s, stored)
+    }
   } catch { /* 隐私模式或数据损坏：忽略 */ }
   const q = new URLSearchParams(search)
   const fromUrl: Record<string, unknown> = {}

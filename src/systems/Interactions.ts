@@ -14,6 +14,8 @@ export interface InteractionHost {
   teleport(x: number, z: number, yaw: number): void
   save(): void
   parkTaxi(x: number, z: number, yaw: number): Vehicle | null
+  /** 打开衣柜（换装）；返回 false 表示不可用（盒子人模式） */
+  wardrobe(): boolean
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`
@@ -152,7 +154,7 @@ export class Interactions {
           this.close()
         } },
         { label: '存档', onClick: () => { this.host.save(); this.host.toast('已存档'); this.refresh() } },
-        { label: '换装', note: '即将推出', disabled: true, onClick: () => {} },
+        { label: '换装', note: '衣柜', onClick: () => { if (!this.host.wardrobe()) this.host.toast('方块角色模式（?chars=box）不支持换装', 2.5) } },
         { label: '离开', onClick: () => this.close() },
       ],
     }

@@ -5,8 +5,16 @@ import { circleBody } from '../physics/Collision'
 import type { AABB, StaticWorld } from '../world/Colliders'
 import type { Vehicle } from './Vehicle'
 import type { Input } from '../core/Input'
+import type { CharacterLibrary } from '../characters/CharacterLibrary'
+import { CharacterInstance } from '../characters/CharacterInstance'
+import type { CharacterSpec } from '../characters/CharacterSpec'
 
 const tmpBoxes: AABB[] = []
+const tmpV = new THREE.Vector3()
+/** 右手骨候选名（three 会去掉节点名里的 . 和 :，按顺序找第一个存在的） */
+const HAND_BONES = ['Fist.R', 'FistR', 'Hand.R', 'HandR', 'WristR', 'Wrist.R', 'LowerArmR']
+/** 速度阈值：低于 WALK_MIN 视为静止，高于 RUN_MIN 播 Run */
+const WALK_MIN = 0.3, RUN_MIN = 5
 
 /** 玩家：步行控制、上下车、血量与金钱 */
 export class Player implements Body {
@@ -31,6 +39,13 @@ export class Player implements Body {
   speedMul = 1
   /** 本步是否在奔跑（Needs 额外耗精力） */
   running = false
+  /** 骨骼角色（chars=gltf 且角色库加载成功）；null = 盒子人 */
+  char: CharacterInstance | null = null
+  /** 盒子人部件（骨骼角色启用后从 group 移除） */
+  private box = new THREE.Group()
+  private handBone: THREE.Bone | null = null
+  private shootT = 0
+  private tinted = false
 
   constructor() {
     this.skinMat = new THREE.MeshLambertMaterial({ color: 0xf1c7a3 })
@@ -45,8 +60,38 @@ export class Player implements Body {
     this.gun = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.34), new THREE.MeshLambertMaterial({ color: 0x1c1c1c }))
     this.gun.position.set(0.36, 1.0, 0.3)
     const cap = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.36), new THREE.MeshLambertMaterial({ color: 0xc0392b })); cap.position.set(0, 1.79, 0.02)
-    this.group.add(this.legs, torso, head, armL, armR, cap, this.gun)
+    this.box.add(this.legs, torso, head, armL, armR, cap, this.gun)
+    this.group.add(this.box)
   }
+
+  /** 换成骨骼角色：盒子部件移出 group；枪改为挂在右手骨位置（每帧在 animate 里跟随） */
+  useCharacter(lib: CharacterLibrary, spec: CharacterSpec) {
+    if (this.char) { this.char.setSpec(spec); return }
+    this.char = new CharacterInstance(lib, spec)
+    this.char.mesh.name = 'player'
+    this.group.remove(this.box)
+    this.group.add(this.char.group)
+    for (const n of HAND_BONES) {
+      const b = this.char.skeleton.bones.find((x) => x.name === n)
+      if (b) { this.handBone = b; break }
+    }
+    // 小黑盒手枪：直接挂在 player.group 下，按手骨世界坐标摆放、朝向跟随身体（不受骨骼缩放/朝向影响）
+    this.box.remove(this.gun)
+    this.gun.geometry.dispose()
+    this.gun.geometry = new THREE.BoxGeometry(0.05, 0.1, 0.22)
+    this.group.add(this.gun)
+    this.char.play('Idle', { fade: 0 })
+  }
+
+  /** 换装：只换外观几何，动画状态不变 */
+  setSpec(spec: CharacterSpec) { this.char?.setSpec(spec) }
+  get spec(): CharacterSpec | null { return this.char?.spec ?? null }
+
+  /** 枪可见（只有能开枪的身份显示） */
+  showGun = true
+
+  /** 开枪瞬间：播一次 Shoot（静止瞄准时） */
+  onShoot() { this.shootT = 0.3 }
 
   get inVehicle() { return this.vehicle !== null }
   get worldX() { return this.vehicle ? this.vehicle.x : this.x }
@@ -155,6 +200,7 @@ export class Player implements Body {
     if (this.vehicle) return
     this.group.position.set(this.x, this.y, this.z)
     this.group.rotation.y = this.yaw
+    if (this.char) return
     const moving = Math.hypot(this.vx, this.vz) > 0.3
     this.legs.rotation.x = moving ? Math.sin(this.phase * 3) * 0.5 : 0
     this.group.position.y += moving ? Math.abs(Math.sin(this.phase * 3)) * 0.06 : 0
@@ -165,11 +211,51 @@ export class Player implements Body {
     this.gun.position.set(0.36, this.aiming ? 1.3 : 1.0, this.aiming ? 0.62 : 0.3)
   }
 
+  /**
+   * 骨骼角色动画状态机（每帧一次，帧 dt）：
+   * 死亡 Death（定格）> 瞄准（静止 Aim / 开枪瞬间 Shoot，移动 RunShoot）> 跑 Run > 走 Walk（timeScale 随速度 0.8–1.3）> Idle。
+   * 跳跃不换动画（保持当前动作，group 随 y 抬高）。受伤 emissive 闪红。
+   */
+  animate(dt: number) {
+    const c = this.char
+    if (!c || this.vehicle) return
+    this.shootT = Math.max(0, this.shootT - dt)
+    const speed = Math.hypot(this.vx, this.vz)
+    if (this.health <= 0) {
+      if (c.current !== 'Death') c.play('Death', { loop: false, fade: 0.2 })
+    } else if (this.aiming) {
+      if (speed > 1.2) c.play('RunShoot', { timeScale: Math.min(1.3, Math.max(0.8, speed / 6)) })
+      else if (this.shootT > 0) { if (c.current !== 'Shoot') c.play('Shoot', { loop: false, fade: 0.05 }) }
+      else if (c.current !== 'Shoot' || c.finished) c.play('Aim', { fade: 0.12 })
+    } else if (this.y > 0.05 && c.current !== 'Death') {
+      // 空中：保持当前动画
+    } else if (speed > RUN_MIN) c.play('Run', { timeScale: Math.min(1.3, Math.max(0.8, speed / 7.5)) })
+    else if (speed > WALK_MIN) c.play('Walk', { timeScale: Math.min(1.3, Math.max(0.8, speed / 3.0)) })
+    else c.play('Idle', { fade: 0.25 })
+    const hurt = this.hurtTimer > 0
+    if (hurt !== this.tinted) { this.tinted = hurt; c.setTint(hurt ? 0xff2a2a : null, 0.6) }
+    c.update(dt, 0)
+    // 枪跟手：手骨世界坐标 → group 局部；朝向沿身体前方
+    this.gun.visible = this.showGun
+    if (this.showGun && this.handBone) {
+      this.group.updateMatrixWorld()
+      this.handBone.getWorldPosition(tmpV)
+      this.group.worldToLocal(tmpV)
+      this.gun.position.set(tmpV.x, tmpV.y, tmpV.z + 0.08)
+      this.gun.rotation.set(0, 0, 0)
+    }
+  }
+
   /** 枪口世界坐标 */
   muzzle(out: THREE.Vector3) {
     if (this.vehicle) {
       const v = this.vehicle
       return out.set(v.x - Math.cos(v.yaw) * 1.0, 1.25, v.z + Math.sin(v.yaw) * 1.0)
+    }
+    if (this.char && this.handBone) {
+      // 手骨世界坐标 + 身体前向 0.25 m
+      this.handBone.getWorldPosition(out)
+      return out.set(out.x + Math.sin(this.yaw) * 0.25, out.y, out.z + Math.cos(this.yaw) * 0.25)
     }
     const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw)
     const rx = -fz, rz = fx
