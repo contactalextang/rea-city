@@ -335,6 +335,9 @@ export class Vehicle implements VehicleBody, Body {
   group = new THREE.Group()
   /** 巴士线路号（非巴士为 null） */
   readonly route: string | null = null
+  /** 前灯高度 / 车头前灯纵向位置（车身坐标，NightLights 放车灯光源与路面光锥） */
+  readonly headY: number
+  readonly headZ: number
   private circleOffs: readonly number[]
   private bodyMat: THREE.MeshLambertMaterial
   private tilt = new THREE.Group()
@@ -349,6 +352,8 @@ export class Vehicle implements VehicleBody, Body {
     this.circleCount = this.circleOffs.length
     this.halfLen = bus ? BUS_LEN / 2 : CAR_LEN / 2
     this.baseColor = new THREE.Color(color)
+    if (bus) { this.headY = 0.72; this.headZ = BUS_LEN / 2 + 0.05 }
+    else { const [hy, hz] = SPECS[model as Exclude<CarModel, 'bus'>].head; this.headY = hy; this.headZ = hz + 0.05 }
     this.bodyMat = new THREE.MeshLambertMaterial({ color, vertexColors: true })
     const { detailMat } = sharedMats()
     let body: THREE.BufferGeometry, detail: THREE.BufferGeometry

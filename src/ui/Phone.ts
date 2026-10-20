@@ -10,6 +10,7 @@ export interface PhoneHost {
   setShadows(on: boolean): void
   setMusic(on: boolean): void
   setFx(q: FxQuality): void
+  setBrightness(v: number): void
   save(): void
   load(): void
   restart(): void
@@ -35,6 +36,7 @@ export interface PhoneStatus {
   shadows: boolean
   music: boolean
   fx: FxQuality
+  brightness: number
   work: JobsView
   quest: { title: string; step: string } | null
 }
@@ -122,6 +124,8 @@ export class Phone {
     // 内置子页也走注册表
     this.registerSub('work', '', (_r, force) => this.refreshWork(force), $('phone-sub-work'))
     this.registerSub('map', '', () => this.host.drawMap(this.mapCanvas), $('phone-sub-map'))
+    const br = $('phone-bright') as HTMLInputElement
+    br.addEventListener('input', () => { const v = Number(br.value); host.setBrightness(v); if (this.status) this.status.brightness = v; $('phone-bright-v').textContent = `${Math.round(v * 100)}%` })
     this.registerSub('settings', '', () => this.refreshSettings(), $('phone-sub-settings'))
   }
 
@@ -188,6 +192,9 @@ export class Phone {
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-shadows]')) b.classList.toggle('on', (b.dataset.shadows === '1') === st.shadows)
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-music]')) b.classList.toggle('on', (b.dataset.music === '1') === st.music)
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-fx]')) b.classList.toggle('on', b.dataset.fx === st.fx)
+    const br = $('phone-bright') as HTMLInputElement
+    if (document.activeElement !== br) br.value = String(st.brightness)
+    $('phone-bright-v').textContent = `${Math.round(st.brightness * 100)}%`
   }
 
   /** 工作页：内容签名不变就不重建 DOM，避免点击时按钮被替换 */

@@ -10,11 +10,14 @@ export interface Settings {
   role: RoleId               // 玩家身份（见 data/roles.ts）
   lawStrictness: LawStrictness   // 执法松紧：relaxed 默认宽松 / real 接近真实（见 systems/Law.ts LAW_TUNING）
   fx: FxQuality              // 后期画质：high（GTAO+泛光+调色）/ low（半分辨率泛光+调色）/ off（直出，仍 AgX）
+  brightness: number         // 画面亮度倍率 0.7–1.6（乘到曝光；?bright=1.2）
 }
+export const BRIGHTNESS_MIN = 0.7, BRIGHTNESS_MAX = 1.6
+export const clampBrightness = (n: number) => Math.min(BRIGHTNESS_MAX, Math.max(BRIGHTNESS_MIN, n))
 export type FxQuality = 'high' | 'low' | 'off'
 export type LawStrictness = 'relaxed' | 'real'
 
-export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'gltf', shadows: true, music: true, role: DEFAULT_ROLE, lawStrictness: 'relaxed', fx: 'high' }
+export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'gltf', shadows: true, music: true, role: DEFAULT_ROLE, lawStrictness: 'relaxed', fx: 'high', brightness: 1 }
 const KEY = 'rea.settings'
 
 const parseBool = (v: string) => !(v === '0' || v === 'false' || v === 'off' || v === 'no')
@@ -51,5 +54,7 @@ function apply(s: Settings, src: Record<string, unknown>) {
   for (const v of [src.lawStrictness, src.law]) if (v === 'relaxed' || v === 'real') s.lawStrictness = v
   if (src.music !== undefined) s.music = typeof src.music === 'boolean' ? src.music : parseBool(String(src.music))
   if (src.fx === 'high' || src.fx === 'low' || src.fx === 'off') s.fx = src.fx
+  // ?bright=1.2 是 ?brightness=1.2 的简写
+  for (const v of [src.brightness, src.bright]) if (v !== undefined && v !== '') { const n = Number(v); if (Number.isFinite(n)) s.brightness = clampBrightness(n) }
   if (src.shadows !== undefined) s.shadows = typeof src.shadows === 'boolean' ? src.shadows : parseBool(String(src.shadows))
 }

@@ -6,6 +6,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { defaultGrade, type GradeParams } from '../core/PostFX'
 import { LOOK } from '../core/LookUniforms'
 import { agx, agxInverse } from '../core/AgX'
+import { NightLights } from './NightLights'
 
 /**
  * 昼夜系统：太阳/月光方向光（阴影跟随玩家）、半球光、天空/雾/曝光色表、
@@ -32,25 +33,25 @@ interface Key {
 interface Look { con: number; sat: number; shT: number; hiT: number; split: number; vig: number; grain: number; chroma: number; bloom: number; bTh: number; rim: number }
 
 // AgX 抬暗部、压高光与饱和：调色里对比 1.1+/饱和 1.25 补回；RoomEnvironment 补的是中性漫反射（强度 1 时约等于 1× 反照率），
-// 远亮于原半球光的有效亮度，故半球光调低、夜间 envI 只给 ≈0.04，否则夜里墙面被照成灰褐色
-const G_NIGHT: Look = { con: 1.15, sat: 1.25, shT: 0x1fa0e0, hiT: 0xff6ab4, split: 0.55, vig: 0.4, grain: 0.035, chroma: 1.4, bloom: 0.95, bTh: 0.9, rim: 0.8 }
+// 远亮于原半球光的有效亮度，故夜间 envI 只给 ≈0.05（否则墙面被照成灰褐色）；夜间亮度改由偏冷蓝的半球光 + 曝光 + 路灯点光（NightLights）补
+const G_NIGHT: Look = { con: 1.05, sat: 1.2, shT: 0x1fa0e0, hiT: 0xff7aa0, split: 0.4, vig: 0.22, grain: 0.03, chroma: 1.2, bloom: 0.9, bTh: 0.95, rim: 0.8 }
 const G_DAY: Look = { con: 1.2, sat: 1.4, shT: 0x8098c0, hiT: 0xffead2, split: 0.1, vig: 0.18, grain: 0.015, chroma: 0.4, bloom: 0.12, bTh: 2.2, rim: 0.15 }
 const G_DUSK: Look = { con: 1.15, sat: 1.35, shT: 0x5a68a8, hiT: 0xffa05a, split: 0.38, vig: 0.3, grain: 0.022, chroma: 0.7, bloom: 0.4, bTh: 1.3, rim: 0.35 }
-const G_DUSK2: Look = { con: 1.12, sat: 1.2, shT: 0x4a5ab0, hiT: 0xff7a6a, split: 0.42, vig: 0.34, grain: 0.028, chroma: 1.0, bloom: 0.65, bTh: 1.0, rim: 0.55 }
+const G_DUSK2: Look = { con: 1.1, sat: 1.2, shT: 0x4a5ab0, hiT: 0xff7a6a, split: 0.42, vig: 0.28, grain: 0.028, chroma: 1.0, bloom: 0.65, bTh: 1.0, rim: 0.55 }
 const G_DAWN: Look = { con: 1.08, sat: 1.15, shT: 0x6a70b0, hiT: 0xffb890, split: 0.3, vig: 0.28, grain: 0.025, chroma: 0.8, bloom: 0.45, bTh: 1.1, rim: 0.5 }
-const NIGHT: Omit<Key, 'h'> = { sky: 0x0a1020, fog: 0x0c1428, hemiSky: 0x2a3d6b, hemiGround: 0x15161a, hemiI: 0.3, sun: 0x8ea4dc, sunI: 0.22, exposure: 0.85, fogNear: 90, fogFar: 300, envI: 0.04, g: G_NIGHT }
+const NIGHT: Omit<Key, 'h'> = { sky: 0x0e1830, fog: 0x141e3a, hemiSky: 0x4a6cb8, hemiGround: 0x1a1c24, hemiI: 0.44, sun: 0x8ea8e8, sunI: 0.22, exposure: 0.82, fogNear: 90, fogFar: 300, envI: 0.05, g: G_NIGHT }
 const DAY: Omit<Key, 'h'> = { sky: 0xa9c9e8, fog: 0xa9c9e8, hemiSky: 0xdfefff, hemiGround: 0x6b6b60, hemiI: 0.45, sun: 0xfff2dd, sunI: 1.6, exposure: 0.8, fogNear: 150, fogFar: 380, envI: 0.3, g: G_DAY }
 const KEYS: Key[] = [
   { h: 0, ...NIGHT },
   { h: 5.5, ...NIGHT },
-  { h: 6.4, sky: 0x7d7fa6, fog: 0xb09aa8, hemiSky: 0x9aa3c8, hemiGround: 0x4a4040, hemiI: 0.45, sun: 0xffb080, sunI: 0.25, exposure: 0.88, fogNear: 110, fogFar: 320, envI: 0.15, g: G_DAWN },
+  { h: 6.4, sky: 0x7d7fa6, fog: 0xb09aa8, hemiSky: 0x9aa3c8, hemiGround: 0x4a4040, hemiI: 0.5, sun: 0xffb080, sunI: 0.25, exposure: 0.9, fogNear: 110, fogFar: 320, envI: 0.15, g: G_DAWN },
   { h: 7.0, sky: 0xe9a87c, fog: 0xf0c09a, hemiSky: 0xffc9a0, hemiGround: 0x5a4a40, hemiI: 0.48, sun: 0xffa060, sunI: 0.6, exposure: 0.82, fogNear: 120, fogFar: 340, envI: 0.18, g: { ...G_DUSK, split: 0.3, bloom: 0.3 } },
   { h: 8.0, sky: 0xa9c9e8, fog: 0xc8d4e6, hemiSky: 0xdfefff, hemiGround: 0x6b6b60, hemiI: 0.48, sun: 0xffe0bb, sunI: 1.3, exposure: 0.8, fogNear: 150, fogFar: 380, envI: 0.28, g: { ...G_DAY, split: 0.16 } },
   { h: 12, ...DAY },
   { h: 17.5, ...DAY, sun: 0xffe2bb, sunI: 1.35, g: { ...G_DAY, split: 0.18, hiT: 0xffdcb4 } },
   { h: 18.6, sky: 0xe08a52, fog: 0xeaa070, hemiSky: 0xffb27a, hemiGround: 0x5a4a40, hemiI: 0.42, sun: 0xff9a4a, sunI: 0.95, exposure: 0.78, fogNear: 120, fogFar: 340, envI: 0.14, g: G_DUSK },
   { h: 19.1, sky: 0xb05a48, fog: 0xc07a60, hemiSky: 0xe0906a, hemiGround: 0x3a3030, hemiI: 0.38, sun: 0xff7a3a, sunI: 0.4, exposure: 0.8, fogNear: 110, fogFar: 320, envI: 0.1, g: G_DUSK2 },
-  { h: 19.6, sky: 0x3c3458, fog: 0x4a405c, hemiSky: 0x5c5a86, hemiGround: 0x25222a, hemiI: 0.34, sun: 0x8a7aa0, sunI: 0.1, exposure: 0.82, fogNear: 100, fogFar: 310, envI: 0.07, g: { ...G_DUSK2, shT: 0x3a80c8, hiT: 0xff6a9a, bloom: 0.8, bTh: 0.9, rim: 0.7 } },
+  { h: 19.6, sky: 0x3c3458, fog: 0x4a405c, hemiSky: 0x5c62a0, hemiGround: 0x22222c, hemiI: 0.44, sun: 0x8a8ab8, sunI: 0.16, exposure: 0.86, fogNear: 100, fogFar: 310, envI: 0.07, g: { ...G_DUSK2, shT: 0x3a80c8, hiT: 0xff6a9a, bloom: 0.8, bTh: 0.9, rim: 0.7 } },
   { h: 20.4, ...NIGHT },
   { h: 24, ...NIGHT },
 ]
@@ -98,8 +99,11 @@ export class DayNight {
   private lampSrc: THREE.InstancedMesh | null = null
   private lampHead = new THREE.Vector3(0, 5, 0)
   private lampVer = -1
+  /** 路灯点光池 + 车前灯（构造时固定数量加进场景） */
+  readonly nightLights: NightLights
+  private lampHeads: Float32Array = new Float32Array(0)
 
-  constructor(private scene: THREE.Scene, private renderer: THREE.WebGLRenderer, settings: Settings) {
+  constructor(private scene: THREE.Scene, private renderer: THREE.WebGLRenderer, private settings: Settings) {
     this.shadowsOn = settings.shadows
     renderer.shadowMap.enabled = this.shadowsOn
     renderer.shadowMap.type = THREE.PCFShadowMap   // r186 已移除 PCFSoft，PCF 即为软阴影
@@ -129,6 +133,9 @@ export class DayNight {
     sh.bias = -0.0004
     sh.normalBias = 0.6
     scene.add(this.sun, this.sun.target)
+
+    // 夜间真实光源：数量开局固定（high 8 盏路灯点光，low/off 4 盏），之后只改强度，不触发着色器重编译
+    this.nightLights = new NightLights(scene, settings.fx === 'high' ? 8 : 4)
 
     if (!scene.background) scene.background = new THREE.Color(0xa9c9e8)
     if (!scene.fog) scene.fog = new THREE.Fog(0xa9c9e8, 150, 380)
@@ -189,11 +196,13 @@ export class DayNight {
       return c.lerp(out, gloom)
     }
     gloomTint(this.cSky, this.tmpA); gloomTint(this.cFog, this.tmpA); gloomTint(this.cHemiSky, this.tmpA)
-    // 夜间（night≈1）暴雨不再一味压暗：城市灯光被低云反射（天光），半球光/环境光反而略抬、曝光不降，墙面不至于全黑
+    // 夜间（night≈1）暴雨不再一味压暗：城市灯光被低云反射（天光），半球光不降、曝光不降，墙面不至于全黑；
+    // 但湿路面镜面反射 + 路灯点光/车灯已经很亮，半球光略收，避免暴雨夜比晴夜还亮
     const night = clamp((0.3 - this.envI) / 0.26, 0, 1)
     this.cHemiGround.multiplyScalar(1 - 0.4 * gloom * (1 - night))
-    this.hemiI *= 1 - 0.4 * gloom * (1 - night)
-    this.hemiI += 0.06 * gloom * night
+    this.hemiI *= 1 - 0.4 * gloom * (1 - night) - 0.12 * gloom * night
+    // 夜间暴雨雾很近（22 m 起）：夜雾色比晴夜（已提亮）再压一些，否则整条街被灰粉色雾罩白
+    this.cFog.multiplyScalar(1 - 0.3 * gloom * night)
     // 夜里暴雨月光几乎全灭：否则湿路面（低粗糙度）上会出现一大团月光镜面高光，被泛光放大成白斑
     this.sunI *= 1 - (0.85 + 0.13 * night) * gloom
     this.exposure *= 1 - 0.12 * gloom * (1 - night)
@@ -214,11 +223,13 @@ export class DayNight {
 
     const bg = this.scene.background as THREE.Color
     const fog = this.scene.fog as THREE.Fog
-    if (this.hdrSky) { this.toHdr(this.cSky, this.exposure, bg); this.toHdr(this.cFog, this.exposure, fog.color) }
+    // 玩家亮度设置乘到曝光；天空/雾按最终曝光反解，亮度滑杆只提亮场景、天空色不变（与 fx=off 直出一致）
+    const exposure = this.exposure * clamp(this.settings.brightness ?? 1, 0.5, 2)
+    if (this.hdrSky) { this.toHdr(this.cSky, exposure, bg); this.toHdr(this.cFog, exposure, fog.color) }
     else { bg.copy(this.cSky); fog.color.copy(this.cFog) }
     fog.near = this.fogNear * this.fogScale; fog.far = this.fogFar * this.fogScale
     this.hemi.color.copy(this.cHemiSky); this.hemi.groundColor.copy(this.cHemiGround); this.hemi.intensity = this.hemiI
-    this.renderer.toneMappingExposure = this.exposure
+    this.renderer.toneMappingExposure = exposure
     this.scene.environmentIntensity = this.envI
     // 角色边缘光：白天取天空色、夜间霓虹；暴雨时略增
     LOOK.uRimColor.value.copy(this.cSky).lerp(NEON_RIM, clamp((this.rim - 0.15) / 0.65, 0, 1))
@@ -245,7 +256,7 @@ export class DayNight {
     if (this.haloMat) { this.haloMat.uniforms.uOpacity.value = this.lights; this.halo!.visible = this.lights > 0.01 }
     if (this.poolMat) {
       const u = this.poolMat.uniforms
-      u.uOpacity.value = 0.55 * this.lights; u.uWet.value = clamp(this.wet, 0, 1)
+      u.uOpacity.value = 0.42 * this.lights; u.uWet.value = clamp(this.wet, 0, 1)
       this.pool!.visible = this.lights > 0.01
     }
 
@@ -253,6 +264,10 @@ export class DayNight {
     const ud = this.scene.userData
     const lamps = ud.lamps as THREE.InstancedMesh | undefined
     if (lamps && this.lampSrc && (lamps !== this.lampSrc || ((ud.lampsVersion as number | undefined) ?? 0) !== this.lampVer)) this.buildLampGlow(lamps)
+
+    // 路灯点光 + 车前灯：夜间灯光开启度；车灯在暴雨（阴沉）白天也开
+    const head = clamp(Math.max(this.lights, (gloom - 0.3) / 0.4), 0, 1)
+    this.nightLights.update(dt, px, pz, ctx.cam.camera, ctx.vehicles, pl.vehicle, this.lights, head, this.wet, ctx.world)
 
     // 新生成的动态物体（车辆）补阴影标记
     if (this.shadowsOn) for (const v of ctx.vehicles) if (!v.group.userData.shadowDone) this.applyShadowFlags(v.group)
@@ -310,14 +325,18 @@ export class DayNight {
     }
     const head = this.lampHead
     const q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1)
+    if (this.lampHeads.length < n * 3) this.lampHeads = new Float32Array(cap * 3)
+    const hp = this.lampHeads
     for (let i = 0; i < n; i++) {
       lamps.getMatrixAt(i, this.tmpM)
       this.tmpV.copy(head).applyMatrix4(this.tmpM)
+      hp[i * 3] = this.tmpV.x; hp[i * 3 + 1] = this.tmpV.y; hp[i * 3 + 2] = this.tmpV.z
       this.halo.setMatrixAt(i, this.tmpM.compose(this.tmpV, q, s))
       this.tmpV.y = 0.15   // 高于人行道（0.12），否则人行道上的灯下光池/倒影被遮住
       this.pool.setMatrixAt(i, this.tmpM.compose(this.tmpV, q, s))
     }
     this.halo.count = n; this.pool.count = n
+    this.nightLights.setLamps(hp, n)
     this.halo.instanceMatrix.needsUpdate = true
     this.pool.instanceMatrix.needsUpdate = true
   }
@@ -345,10 +364,10 @@ export class DayNight {
         }`,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
     })
-    // 地面光池 + 湿地倒影：同一个实例四边形，顶点着色器把它沿"灯→相机"方向拉长（干燥时就是半径 4.5 m 的圆形光池），
+    // 地面光池 + 湿地倒影：同一个实例四边形，顶点着色器把它沿"灯→相机"方向拉长（干燥时就是半径 7 m 的圆形光池），
     // 片元里解析计算圆形光池 + 一条朝相机的高斯条纹（灯头在湿路面上的拉长倒影，HDR 供泛光抓取）。不增加 draw call。
     this.poolMat = new THREE.ShaderMaterial({
-      uniforms: { uOpacity: { value: 0 }, uWet: { value: 0 }, uColor: { value: new THREE.Color(0xffc77a) }, uStreak: { value: new THREE.Color(0xffd79a).multiplyScalar(1.7) }, uR: { value: 4.5 }, uFar: { value: 170 } },
+      uniforms: { uOpacity: { value: 0 }, uWet: { value: 0 }, uColor: { value: new THREE.Color(0xffc77a) }, uStreak: { value: new THREE.Color(0xffd79a).multiplyScalar(1.7) }, uR: { value: 7 }, uFar: { value: 170 } },
       vertexShader: `
         uniform float uWet, uR;
         varying vec2 vLocal;      // x = 沿"灯→相机"距离，y = 横向距离（米）
@@ -381,7 +400,7 @@ export class DayNight {
           float da = (vLocal.x - vC) / vL;
           float streak = exp(-(vLocal.y * vLocal.y) / (w * w)) * exp(-da * da) * uWet * smoothstep(10.0, 22.0, vD);
           float fade = 1.0 - smoothstep(uFar * 0.55, uFar, vD);
-          vec3 col = uColor * pool * uOpacity * (1.0 + 0.4 * uWet) + uStreak * streak * uOpacity * 1.1;
+          vec3 col = uColor * pool * uOpacity * (1.0 + 0.15 * uWet) + uStreak * streak * uOpacity * 1.6;
           gl_FragColor = vec4(col * fade, 1.0);
         }`,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide,

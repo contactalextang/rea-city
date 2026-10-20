@@ -4,7 +4,7 @@ import { Input } from './Input'
 import { ChaseCamera } from './Camera'
 import { EventBus, type Ctx } from './Context'
 import type { RoadGraph, P2 } from '../world/RoadGraph'
-import { loadSettings, type Settings } from './Settings'
+import { clampBrightness, loadSettings, type Settings } from './Settings'
 import type { StaticWorld, AABB } from '../world/Colliders'
 import type { WorldSource } from '../world/WorldSource'
 import { SgWorld } from '../world/SgWorld'
@@ -214,6 +214,7 @@ export class Game {
       setShadows: (on) => { this.settings.shadows = on; this.dayNight.setShadows(on); saveSettings(this.settings); this.hud.toast(on ? '阴影已开启' : '阴影已关闭') },
       setMusic: (on) => { this.settings.music = on; this.audio.setMusic(on); saveSettings(this.settings); this.hud.toast(on ? '音乐已开启' : '音乐已关闭') },
       setFx: (q) => this.setFx(q),
+      setBrightness: (v) => { this.settings.brightness = clampBrightness(v); saveSettings(this.settings) },
       save: () => this.saveGame(true),
       load: () => this.loadGame(),
       restart: () => { Save.clear(); const q = new URLSearchParams(location.search); q.set('fresh', '1'); location.search = q.toString() },
@@ -1031,7 +1032,7 @@ export class Game {
     if (this.phone.open && this.phoneTimer >= 0.25) {
       this.phoneTimer = 0
       const q = this.quests.active ? { title: this.quests.active.title, step: this.quests.stepLabel() } : null
-      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, mood: this.needs.mood, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, music: this.settings.music, fx: this.settings.fx, work: this.jobs.view(), quest: q })
+      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, mood: this.needs.mood, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, music: this.settings.music, fx: this.settings.fx, brightness: this.settings.brightness, work: this.jobs.view(), quest: q })
     }
     const speedKmh = pl.vehicle ? pl.vehicle.speed * 3.6 : null
     const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
@@ -1237,6 +1238,8 @@ export class Game {
       inside(x: number, z: number) { return self.world.contains(x, z) },
       get settings() { return self.settings },
       /** 后期画质：fx.set('high'|'low'|'off')；fx.grade 当前调色参数 */
+      bright: { set(v: number) { self.settings.brightness = clampBrightness(v) }, get value() { return self.settings.brightness } },
+      get nightLights() { return self.dayNight.nightLights.stats },
       fx: { set(q: FxQuality) { self.setFx(q) }, get quality() { return self.postfx?.quality ?? 'off' }, get grade() { return self.dayNight.grade }, get exposure() { return self.renderer.toneMappingExposure }, get envIntensity() { return self.scene.environmentIntensity } },
       audio: { get state() { return self.audio.state }, get musicMode() { return self.audio.musicMode }, get crashCount() { return self.audio.crashCount } },
       clock: {
