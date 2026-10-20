@@ -7,6 +7,8 @@ export class Clock {
   day = 1
   hour = 7.5
   speed: number
+  /** 跳时计数：set/skip 每次 +1，让按整点触发的系统分辨“跳过去的时间”和“真实走过的时间” */
+  jumpSeq = 0
 
   constructor(speed = 1) { this.speed = speed }
 
@@ -20,9 +22,10 @@ export class Clock {
     this.hour = hour
     if (day !== undefined) this.day = Math.max(1, Math.floor(day))
     this.normalize()
+    this.jumpSeq++
   }
 
-  skip(hours: number) { this.hour += hours; this.normalize() }
+  skip(hours: number) { this.hour += hours; this.normalize(); this.jumpSeq++ }
 
   /** 以天为单位的连续时间（第 1 天 0 点 = 1.0），用于按小时触发事件 */
   get absHours() { return (this.day - 1) * 24 + this.hour }

@@ -79,6 +79,7 @@ export class RoadGraph {
       const e: RoadEdge = {
         id: this.edges.length, from, to, reverse: null, pts, cum, length,
         lanes: d.lanes, laneW: d.laneW, kind: d.kind, speedLimit: d.speedLimit, oneway: d.oneway, crossings: d.crossings.slice(),
+        // 缺省先按单向推算；双向边在下面链接 reverse 后按双向总宽重算
         sidewalkOff: d.sidewalkOff ?? (d.lanes * d.laneW / 2 + SIDEWALK_W / 2),
         // y 轴朝上的右手系里，朝向 (dx,dz) 的右侧是 (-dz, dx)
         dx, dz, rx: -dz, rz: dx,
@@ -90,6 +91,9 @@ export class RoadGraph {
       const e = byEdgeId.get(d.id)!, r = byEdgeId.get(d.reverse)
       if (!r) throw new Error(`RoadGraph: 边 ${d.id} 的反向边 ${d.reverse} 不存在`)
       e.reverse = r
+      // 路面按双向总宽（两向车道数之和）以中线对称铺设，人行道中心在总宽一半外 SIDEWALK_W/2；
+      // 只改缺省值，数据里显式给了 sidewalkOff 的不动
+      if (d.sidewalkOff === undefined) e.sidewalkOff = (e.lanes + r.lanes) * e.laneW / 2 + SIDEWALK_W / 2
     }
     // 方格城索引表
     if (this.nodes.length && this.nodes.every((n) => n.i >= 0 && n.j >= 0)) {

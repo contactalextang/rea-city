@@ -1,5 +1,4 @@
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { CharacterSpec, Role, Slot } from './CharacterSpec'
 import { specKey } from './CharacterSpec'
 
@@ -118,9 +117,10 @@ export class CharacterLibrary {
 
   private static async doLoad(url: string): Promise<CharacterLibrary> {
     const base = url.endsWith('/') ? url : url + '/'
+    // GLTFLoader 按需动态加载：只有走骨骼角色时才下载，不进首屏 chunk
     const [catalog, gltf] = await Promise.all([
       fetch(base + 'catalog.json').then((r) => { if (!r.ok) throw new Error(`catalog.json HTTP ${r.status}`); return r.json() as Promise<Catalog> }),
-      new GLTFLoader().loadAsync(base + 'characters.glb'),
+      import('three/addons/loaders/GLTFLoader.js').then(({ GLTFLoader }) => new GLTFLoader().loadAsync(base + 'characters.glb')),
     ])
     return new CharacterLibrary(catalog, gltf.scene, gltf.animations)
   }

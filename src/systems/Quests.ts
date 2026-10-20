@@ -276,5 +276,9 @@ export class Quests {
     if (!this.active) return this.resultTimer > 0 ? { title: this.result === 'win' ? '任务完成' : '任务失败', desc: '', timer: '' } : null
     return { title: `${this.active.title}（${this.step + 1}/${this.active.steps.length}）`, desc: this.stepLabel(), timer: this.active.timeLimit ? `${Math.ceil(this.timer)}s` : '' }
   }
-  sync(t: number) { this.targetMarker.sync(t); for (const m of this.giverMarkers.values()) m.sync(t) }
+  /** hideTarget：有工作目标在进行时隐藏任务光柱（只藏模型，targetPoint 不受影响），避免同时出现两根品红光柱 */
+  sync(t: number, hideTarget = false) {
+    for (const c of this.targetMarker.group.children) c.visible = !hideTarget
+    this.targetMarker.sync(t); for (const m of this.giverMarkers.values()) m.sync(t)
+  }
 }

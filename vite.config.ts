@@ -11,6 +11,21 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: false,
-    rollupOptions: { input },
+    // three 核心压缩前约 630 kB、本身不可再拆；阈值放到 700 kB，超出仍会报警
+    chunkSizeWarningLimit: 700,
+    rolldownOptions: {
+      input,
+      output: {
+        // 第三方库单独成块并起可读名字：three 核心 → three-*.js，three/examples 工具 → three-addons-*.js；
+        // loaders（GLTFLoader）不进组，随 CharacterLibrary 的动态 import 单独成块按需加载
+        codeSplitting: {
+          groups: [
+            // 核心先认领（优先级高），否则 addons 组会把它依赖的核心一并卷进去
+            { name: 'three', test: /[\\/]node_modules[\\/]three[\\/]build[\\/]/, priority: 2 },
+            { name: 'three-addons', test: /[\\/]node_modules[\\/]three[\\/]examples[\\/]jsm[\\/](?!loaders[\\/])/, priority: 1 },
+          ],
+        },
+      },
+    },
   },
 })

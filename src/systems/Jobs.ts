@@ -1,19 +1,19 @@
 import type { Ctx } from '../core/Context'
 import type { RoleId } from '../data/roles'
-import type { P2 } from '../world/RoadGraph'
+import type { P2, RoadEdge } from '../world/RoadGraph'
 import type { Poi } from './Poi'
 import type { PanelButton } from '../ui/Panels'
 import type { Pedestrians, Ped } from '../entities/Pedestrians'
 import type { Vehicle } from '../entities/Vehicle'
-import { Marker } from '../world/Marker'
+import { Marker, TARGET_COLOR } from '../world/Marker'
 import { JOB_TEXT, JOB_PARAMS, ASSETS, type AssetId, type JobText } from '../data/jobs'
 import { ECONOMY } from '../data/menus'
-import { rand, pick, type VehicleKind } from '../config'
+import { rand, pick, CAR_WID, type VehicleKind } from '../config'
 
 /**
  * 工作系统：按身份提供可开工/下班的工作（的士、外卖、偷车、收保护费、赶会议…）
  * 与被动工作（打卡、工地、投资、加班：只在工作页显示状态/在 POI 面板加按钮）。
- * 目标点用 Marker 光柱（黄 = 去取/接，蓝 = 送达），并通过 targetPoint 交给小地图。
+ * 目标点用 Marker 光柱（黄 = 去取/接，品红 = 送达），并通过 targetPoint 交给小地图。
  */
 export interface Job {
   id: string
@@ -124,7 +124,7 @@ class GangSteal extends BaseJob {
     this.timer = JOB_PARAMS.steal.timeLimit; this.phase = 'find'; this.car = null
     this.fence = pick([...ctx.pois.byType('shop'), ...ctx.pois.byType('landmark')])
     this.pickTarget(ctx)
-    this.J.toast(this.car ? '目标车已标记（蓝柱），抢到后开去销赃点' : '附近没有合适的车，等一下…', 3)
+    this.J.toast(this.car ? '目标车已标记（粉柱），抢到后开去销赃点' : '附近没有合适的车，等一下…', 3)
   }
   private pickTarget(ctx: Ctx) {
     const px = ctx.player.worldX, pz = ctx.player.worldZ
@@ -151,7 +151,7 @@ class GangSteal extends BaseJob {
   }
   hudText() {
     const t = this.car
-    if (this.phase === 'find') return t ? `抢蓝柱标记的车（${this.pdist(this.J.ctx, t)} m）` : '寻找目标车…'
+    if (this.phase === 'find') return t ? `抢粉柱标记的车（${this.pdist(this.J.ctx, t)} m）` : '寻找目标车…'
     return `开到 ${this.fence!.name}（${this.pdist(this.J.ctx, this.fence!.door)} m）`
   }
   timeLeft() { return this.timer }
@@ -274,6 +274,8 @@ class GoldInvest extends BaseJob {
     if (parts.length) this.J.toast(`投资结算：${parts.join(' · ')}`, 4)
   }
   status() { const s = this.J.stats; return `持仓 $${(s.invest.fixed + s.invest.index + s.invest.crypto).toFixed(2)}` }
+  /** 被动目标：最近的办公楼（投资在办公楼面板操作） */
+  target() { const pl = this.J.ctx.player; return this.J.ctx.pois.nearest(pl.worldX, pl.worldZ, Infinity, ['office'])?.door ?? null }
   buy(ctx: Ctx, asset: AssetId, amount: number) {
     if (amount <= 0) return false
     if (ctx.player.money < amount) { this.J.toast('现金不够'); return false }
@@ -307,6 +309,13 @@ class WhiteShift extends BaseJob {
     if (h < 9.5) return `现在去办公楼打卡 · 日薪 $${salary}`
     if (h < 12) return `迟到打卡（薪资减半 $${salary / 2}）· 12:00 前`
     return '今天已过打卡时间 · 明天 09:00'
+  }
+  /** 被动目标：今天还能打卡（未打卡且 12:00 前）时指向最近的办公楼 */
+  target() {
+    const ctx = this.J.ctx
+    if (this.J.stats.lastShiftDay === ctx.clock.day || ctx.clock.hour >= 12) return null
+    const pl = ctx.player
+    return ctx.pois.nearest(pl.worldX, pl.worldZ, Infinity, ['office'])?.door ?? null
   }
 }
 
@@ -355,42 +364,90 @@ class BlueTaxi extends BaseJob {
   available(ctx: Ctx) { return ctx.player.vehicle?.kind === 'taxi' ? true : '需要先坐在的士里（的士站租车）' }
   protected begin(ctx: Ctx) {
     this.taxi = ctx.player.vehicle
-    this.phase = 'wait'; this.nextTimer = 0
+    this.phase = 'wait'; this.nextTimer = 0; this.toastAt = -1
     this.J.toast('开工！等乘客招手（黄柱）', 3)
   }
   protected end(_ctx: Ctx) {
     if (this.passenger && this.passenger.state === 'hail') this.J.peds.unhail(this.passenger)
     this.passenger = null; this.dest = null; this.phase = 'wait'
   }
-  /** 从 40–150 m 内的行人里挑一位招手；没有就在人行道上生成一位 */
+  /**
+   * 从 40–150 m 内的行人里挑一位招手；没有就在人行道上生成一位。
+   * 只选单向 ≤ 2 车道、靠外侧车道停下就够得着的路（宽路/对侧人行道够不着）；优先与的士同向的边——人行道在行驶侧（靠左），顺路靠边就能接。
+   */
   private findPassenger(ctx: Ctx) {
     const T = JOB_PARAMS.taxi
     const px = ctx.player.worldX, pz = ctx.player.worldZ
-    const cands = this.J.peds.peds.filter((p) => { if (!p.active || p.state !== 'walk') return false; const d = Math.hypot(p.x - px, p.z - pz); return d >= T.hailMin && d <= T.hailMax })
-    let p: Ped | null = cands.length ? pick(cands) : null
+    const yaw = this.taxi?.yaw ?? 0, fx = Math.sin(yaw), fz = Math.cos(yaw)
+    const dir = { x: 0, z: 0 }
+    // 停在本向最外侧车道中心时车身到人行道中心的距离要留 0.5 m 余量（排除对向车道更多的不对称双向路：本向外侧还空着一截路面）
+    const kerbGap = (e: RoadEdge) => e.sidewalkOff - (e.lanes - 0.5) * e.laneW - CAR_WID / 2
+    const okEdge = (e: RoadEdge | null): e is RoadEdge => !!e && e.lanes <= 2 && e.kind !== 'expressway' && e.kind !== 'trunk' && kerbGap(e) <= T.pickupRadius - 0.5
+    const sameSide = (e: RoadEdge, t: number) => { ctx.graph.dirAt(e, t, dir); return dir.x * fx + dir.z * fz > 0.3 }
+    const cands = this.J.peds.peds.filter((p) => { if (!p.active || p.state !== 'walk' || !okEdge(p.edge)) return false; const d = Math.hypot(p.x - px, p.z - pz); return d >= T.hailMin && d <= T.hailMax })
+    const aligned = cands.filter((p) => sameSide(p.edge!, p.t))
+    let p: Ped | null = aligned.length ? pick(aligned) : cands.length ? pick(cands) : null
     if (!p) {
       const tmp = { x: 0, z: 0 }
+      let fallback: { e: RoadEdge; t: number } | null = null
       for (let k = 0; k < 40 && !p; k++) {
         const e = ctx.graph.randomEdgeNear(px, pz, T.hailMax, ['expressway', 'trunk'])
         if (!e) break
-        if (e.length < 14) continue
+        if (e.length < 14 || !okEdge(e)) continue
         const t = rand(6, e.length - 6)
         ctx.graph.sidewalkPoint(e, t, tmp)
         const d = Math.hypot(tmp.x - px, tmp.z - pz)
         if (d < T.hailMin || d > T.hailMax) continue
+        if (!sameSide(e, t)) { fallback ??= { e, t }; continue }
         p = this.J.peds.spawnOnEdge(e, t, ctx)
       }
+      if (!p && fallback) p = this.J.peds.spawnOnEdge(fallback.e, fallback.t, ctx)
     }
     if (!p) { this.nextTimer = 1; return }
     this.J.peds.hail(p)
     this.passenger = p; this.phase = 'hail'
     this.J.yellow.set(p)
-    this.J.toast('有人招手（黄柱），开过去 4 m 内按 F 上客', 3)
+    this.J.toast(`有人招手（黄柱），靠到 ${JOB_PARAMS.taxi.pickupRadius} m 内按 F 上客`, 3)
   }
+  /** 玩家换到另一辆的士（租车/抢车）时接管为本单的车 */
+  private adoptTaxi(ctx: Ctx) {
+    const v = ctx.player.vehicle
+    if (!v || v === this.taxi || v.kind !== 'taxi' || v.wrecked) return
+    this.taxi = v
+    this.lastX = v.x; this.lastZ = v.z   // 里程从新车位置继续算，不跳变
+  }
+  /** 乘客到车身的距离：车身取前后轴线段为芯、车宽一半为半径的胶囊 */
+  private bodyDist(t: Vehicle, p: P2) {
+    const fx = Math.sin(t.yaw), fz = Math.cos(t.yaw), h = t.halfLen - CAR_WID / 2
+    const s = Math.max(-h, Math.min(h, (p.x - t.x) * fx + (p.z - t.z) * fz))
+    return Math.max(0, Math.hypot(p.x - (t.x + fx * s), p.z - (t.z + fz * s)) - CAR_WID / 2)
+  }
+  /** 乘客是否在上客范围内 */
+  get canBoard() {
+    const ctx = this.J.ctx, t = this.taxi, p = this.passenger
+    return this.active && this.phase === 'hail' && !!t && !!p && ctx.player.vehicle === t && this.bodyDist(t, p) <= JOB_PARAMS.taxi.pickupRadius
+  }
+  /** 限频提示（按住/连按 F 不刷屏） */
+  private toastAt = -1
+  private hint(ctx: Ctx, s: string) { if (ctx.time - this.toastAt < 0.8) return; this.toastAt = ctx.time; this.J.toast(s, 2) }
+  /**
+   * F 键：坐在本单的士里时，招手阶段的 F 一律吞掉（够不着只提示，不会把玩家甩下车）；
+   * 载客阶段车速 > 2 m/s 也吞掉 F，防止行驶中误下车。其余情况返回 false 交给上下车。
+   */
   keyF(ctx: Ctx) {
-    if (!this.active || this.phase !== 'hail' || !this.passenger || ctx.player.vehicle !== this.taxi) return false
-    const t = this.taxi!, p = this.passenger
-    if (Math.hypot(t.x - p.x, t.z - p.z) > JOB_PARAMS.taxi.pickupRadius) return false
+    if (!this.active) return false
+    this.adoptTaxi(ctx)
+    const t = this.taxi
+    if (!t || ctx.player.vehicle !== t) return false
+    if (this.phase === 'ride') {
+      if (t.absSpeed > 2) { this.hint(ctx, '载客中，先停车再按 F 下车'); return true }
+      return false
+    }
+    if (this.phase !== 'hail') return false
+    const p = this.passenger
+    if (!p) return true
+    const gap = this.bodyDist(t, p)
+    if (gap > JOB_PARAMS.taxi.pickupRadius) { this.hint(ctx, `乘客在 ${Math.round(gap)} m 外，靠近再按 F`); return true }
     this.J.peds.board(p)
     this.passenger = null
     // 目的地：≥120 m、且门口贴近车道（车停路上能进到达半径）的随机 POI；没有就退回任意 ≥120 m，再没有取最远的
@@ -406,6 +463,7 @@ class BlueTaxi extends BaseJob {
     return true
   }
   update(dt: number, ctx: Ctx) {
+    this.adoptTaxi(ctx)
     const t = this.taxi!
     if (t.wrecked || !t.active) { this.J.toast('的士报废，收工了', 3); this.stop(ctx); return }
     if (this.phase === 'wait') { this.nextTimer -= dt; if (this.nextTimer <= 0) this.findPassenger(ctx); return }
@@ -434,7 +492,12 @@ class BlueTaxi extends BaseJob {
   }
   hudText() {
     if (this.phase === 'wait') return '等待下一位乘客…'
-    if (this.phase === 'hail') return `乘客在 ${this.pdist(this.J.ctx, this.passenger!)} m 外招手 · 停到 4 m 内按 F`
+    if (this.phase === 'hail') {
+      const t = this.taxi, p = this.passenger!
+      if (this.canBoard) return '乘客就在车旁 · 按 F 上客'
+      const gap = t && this.J.ctx.player.vehicle === t ? Math.round(this.bodyDist(t, p)) : this.pdist(this.J.ctx, p)
+      return `乘客在 ${gap} m 外招手 · 靠到 ${JOB_PARAMS.taxi.pickupRadius} m 内按 F`
+    }
     const d = this.dest!, T = JOB_PARAMS.taxi
     const head = `送到 ${d.name}（${this.pdist(this.J.ctx, d.door)} m）· 已行驶 ${(this.odometer / 1000).toFixed(2)} km`
     if (this.taxi && dist2(this.taxi, d.door) <= T.arriveRadius) {
@@ -511,7 +574,7 @@ export class Jobs {
   all: Job[]
   active: Job | null = null
   stats: JobStats = defaultStats()
-  blue = new Marker(0x3ea6ff)
+  blue = new Marker(TARGET_COLOR)
   yellow = new Marker(0xffd33d)
   toast: (s: string, sec?: number) => void = () => {}
   closePanel: () => void = () => {}
@@ -594,6 +657,13 @@ export class Jobs {
   }
   /** 小地图目标点 */
   get targetPoint(): P2 | null { return this.active?.target?.() ?? this.blue.point ?? this.yellow.point }
+  /** 被动工作的目标（白领打卡 / 金领投资 → 最近办公楼）：没有进行中的工作与任务时给小地图兜底 */
+  get passiveTarget(): P2 | null {
+    for (const j of this.all) if (j.passive && j.roles.includes(this.ctx.role.id)) { const p = j.target?.(); if (p) return p }
+    return null
+  }
+  /** 的士招手乘客已在上客范围内（HUD 提示「按 F 上客」） */
+  get canBoardTaxi() { return this.active === this.taxi && this.taxi.canBoard }
   get taxiRating() { return this.stats.taxiTrips ? this.stats.taxiRatingSum / this.stats.taxiTrips : null }
   get lastTrip() { return this.taxi.lastTrip }
   get taxiState() { return this.taxi.state }

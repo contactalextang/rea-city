@@ -216,7 +216,8 @@ export class Pedestrians {
             if (d2 >= rr * rr) continue
             const d = Math.sqrt(d2) || 0.001
             const vs = v.absSpeed
-            if (vs > 2.5) {
+            // 招手乘客（的士单）只推开不撞倒：车贴边靠过来时常擦到，撞倒会让这单直接作废
+            if (vs > 2.5 && p.state !== 'hail') {
               this.knockDown(p, v.vx + (ex / d) * 3, v.vz + (ez / d) * 3)
               this.events.emit('vehicleHitPed', { v, speed: vs })
             } else {

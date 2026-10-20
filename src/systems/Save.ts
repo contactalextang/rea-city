@@ -2,6 +2,7 @@ import type { Ctx } from '../core/Context'
 import { isRoleId, type RoleId } from '../data/roles'
 import type { JobsSave } from './Jobs'
 import type { QuestsSave } from './Quests'
+import type { WeatherSave } from './Weather'
 
 export const SAVE_KEY = 'rea.save'
 
@@ -22,9 +23,11 @@ export interface SaveData {
   /** 工作统计（今日收入/的士评分/投资持仓）与任务进度；旧存档可缺省 */
   jobs?: JobsSave
   quests?: QuestsSave
+  /** 天气（状态 + 自然剩余 + 手动锁定剩余）；旧存档可缺省 */
+  weather?: WeatherSave
   savedAt: number
 }
-export interface SaveExtra { jobs?: JobsSave; quests?: QuestsSave }
+export interface SaveExtra { jobs?: JobsSave; quests?: QuestsSave; weather?: WeatherSave }
 
 /** 把当前状态写入 localStorage；返回写入的数据（失败返回 null） */
 export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
@@ -34,7 +37,7 @@ export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
     x: pl.worldX, z: pl.worldZ, yaw: pl.vehicle ? pl.vehicle.yaw : pl.yaw, inVehicle: false,
     needs: { hunger: ctx.needs.hunger, energy: ctx.needs.energy },
     law: { demerits: law.demerits, fines: law.fines, arrests: law.arrests, licenseSuspendedUntilDay: law.licenseSuspendedUntilDay },
-    jobs: extra.jobs, quests: extra.quests,
+    jobs: extra.jobs, quests: extra.quests, weather: extra.weather,
     savedAt: Date.now(),
   }
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)) } catch { return null }

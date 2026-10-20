@@ -2,11 +2,14 @@ import * as THREE from 'three'
 import type { Ctx } from '../core/Context'
 import type { DayNight } from './DayNight'
 import type { Audio } from './Audio'
-import { rand, clamp, GAME_HOUR_SEC } from '../config'
+import { rand, clamp } from '../config'
 
 export type WeatherState = 'clear' | 'cloudy' | 'storm'
 const GLOOM: Record<WeatherState, number> = { clear: 0, cloudy: 0.4, storm: 1 }
 export const WEATHER_LABEL: Record<WeatherState, string> = { clear: '晴', cloudy: '多云', storm: '雷雨' }
+export const isWeatherState = (s: unknown): s is WeatherState => s === 'clear' || s === 'cloudy' || s === 'storm'
+/** 存档里的天气：状态 + 自然剩余时长 + 手动锁定剩余（游戏小时） */
+export interface WeatherSave { state: WeatherState; remainHours: number; lockHours: number }
 
 const RAIN_COUNT = 4000
 const RAIN_BOX = 40
@@ -14,6 +17,8 @@ const RAIN_BOX = 40
 /**
  * 天气系统：clear/cloudy/storm 马尔可夫转移（每游戏小时抽一次，午后雷雨峰值），
  * 雨滴（LineSegments + shader 循环下落，零 CPU 更新）、闪电与雷声、雨声、路面变深。
+ * 跳时（吃饭/睡觉/读档/调试 clock.set）不抽签；手动 set(…, true) 的天气锁定若干游戏小时，
+ * 锁只按真实流逝的游戏时间消耗，期间既不抽签也不自然过期。
  */
 export class Weather {
   state: WeatherState = 'clear'
@@ -21,6 +26,10 @@ export class Weather {
   gloom = 0
   private remainHours = 0          // 当前状态剩余时长（游戏小时），0 表示按小时随机抽
   private lastHourTick = -1
+  private lastJumpSeq = -1
+  private lastAbs = -1
+  /** 手动锁定剩余（游戏小时）；> 0 时不抽签、不自然过期 */
+  private lockHours = 0
   private rain: THREE.LineSegments
   private rainMat: THREE.ShaderMaterial
   private rainLevel = 0
@@ -75,7 +84,9 @@ export class Weather {
     this.roadBase = this.roads.map((m) => m.color.clone())
   }
 
-  set(state: WeatherState) {
+  /** 切换天气；manual = 手动指定（调试/剧情），锁定 lockHours 游戏小时不被整点抽签与自然过期改掉 */
+  set(state: WeatherState, manual = false, lockHours = 3) {
+    if (manual) this.lockHours = Math.max(0, lockHours)
     if (state === this.state) return
     this.state = state
     if (state === 'storm') { this.remainHours = rand(0.5, 1.5); this.lightningIn = rand(1, 4) }
@@ -84,17 +95,34 @@ export class Weather {
   }
 
   get rainIntensity() { return this.rainLevel }
+  get locked() { return this.lockHours > 0 }
+
+  serialize(): WeatherSave { return { state: this.state, remainHours: this.remainHours, lockHours: this.lockHours } }
+  /** 读档恢复（旧存档无天气字段时保持现状）；阴沉/雨量直接到位，不从晴天慢慢渐变 */
+  restore(d: WeatherSave | undefined) {
+    if (!d || !isWeatherState(d.state)) return
+    this.state = d.state
+    this.remainHours = Math.max(0, Number(d.remainHours) || 0)
+    this.lockHours = Math.max(0, Number(d.lockHours) || 0)
+    this.gloom = GLOOM[d.state]
+    this.rainLevel = d.state === 'storm' ? 1 : 0
+  }
 
   update(dt: number, ctx: Ctx) {
     const clock = ctx.clock
-    // 每游戏小时抽一次转移
-    const tick = Math.floor(clock.absHours)
+    // 每游戏小时抽一次转移；跳时（jumpSeq 变了）只同步整点、不抽签
+    const abs = clock.absHours, tick = Math.floor(abs)
+    // 真实流逝的游戏时间（面板暂停时为 0，跳时不算）：消耗手动锁与自然时长
+    let gameHoursDt = this.lastAbs >= 0 ? Math.max(0, abs - this.lastAbs) : 0
+    this.lastAbs = abs
+    if (clock.jumpSeq !== this.lastJumpSeq) { this.lastJumpSeq = clock.jumpSeq; this.lastHourTick = tick; gameHoursDt = 0 }
     if (tick !== this.lastHourTick) {
-      if (this.lastHourTick >= 0) this.roll(clock.hour)
+      if (this.lastHourTick >= 0 && this.lockHours <= 0) this.roll(clock.hour)
       this.lastHourTick = tick
     }
-    const gameHoursDt = (dt * clock.speed) / GAME_HOUR_SEC
-    if (this.remainHours > 0) {
+    // 锁定期间不自然过期
+    if (this.lockHours > 0) this.lockHours = Math.max(0, this.lockHours - gameHoursDt)
+    else if (this.remainHours > 0) {
       this.remainHours -= gameHoursDt
       if (this.remainHours <= 0) this.set(this.state === 'storm' ? 'cloudy' : 'clear')
     }

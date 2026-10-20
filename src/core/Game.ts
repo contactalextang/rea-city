@@ -264,7 +264,7 @@ export class Game {
     // 存档身份与建角色结果不一致：以建角色为准，清掉旧存档
     if (saved && this.creatorSaved && !q.has('role') && saved.role !== this.creatorSaved.role) { Save.clear(); saved = null }
     if (saved && saved.role === this.role.id) {
-      Save.apply(this.ctx, saved); this.jobs.restore(saved.jobs); this.quests.init(saved.quests)
+      Save.apply(this.ctx, saved); this.jobs.restore(saved.jobs); this.quests.init(saved.quests); this.weather.restore(saved.weather)
       if ((saved.world ?? 'grid') !== src.kind) this.player.place(this.homeDoor.x, this.homeDoor.z, this.homeDoor.yaw)
       console.info(`[REA] 读取存档：第${saved.day}天 $${saved.money}`)
     } else this.quests.init(null)
@@ -357,11 +357,15 @@ export class Game {
       }
       this.acc += dt
       let steps = 0
-      while (this.acc >= FIXED_DT && steps < 5) { this.step(FIXED_DT); this.acc -= FIXED_DT; steps++ }
+      while (this.acc >= FIXED_DT && steps < 5) {
+        this.step(FIXED_DT); this.acc -= FIXED_DT; steps++
+        // 按键边沿（justPressed / anyKeyPressed / clicked）只给本帧第一个物理步：
+        // 一帧补跑多步时若每步都看到同一次按下，F 会先上客再下车、Tab 手机开了又关、Enter 全屏切两次。
+        // 0 步帧（高刷新率下 acc 不足一步）不清除，边沿留给下一帧，避免丢键；render() 不读边沿。
+        if (steps === 1) this.input.endFrame()
+      }
       if (steps === 5) this.acc = 0
       this.render(dt)
-      // 只有真正跑过物理步才清除按键边沿，避免高刷新率下丢键
-      if (steps > 0) this.input.endFrame()
     }
     requestAnimationFrame(loop)
   }
@@ -472,7 +476,7 @@ export class Game {
   }
 
   saveGame(announce: boolean) {
-    const ok = Save.save(this.ctx, { jobs: this.jobs.serialize(), quests: this.quests.serialize() })
+    const ok = Save.save(this.ctx, { jobs: this.jobs.serialize(), quests: this.quests.serialize(), weather: this.weather.serialize() })
     if (announce) this.hud.toast(ok ? '已存档' : '存档失败（浏览器禁止本地存储）')
     return ok !== null
   }
@@ -482,7 +486,7 @@ export class Game {
     if (d.role !== this.role.id) { this.hud.toast(`存档身份是 ${ROLES[d.role].title}，与当前不同`); return false }
     this.jobs.stop()
     Save.apply(this.ctx, d)
-    this.jobs.restore(d.jobs); this.quests.init(d.quests)
+    this.jobs.restore(d.jobs); this.quests.init(d.quests); this.weather.restore(d.weather)
     this.law.reset()
     this.cam.snap(this.player.yaw)
     this.hud.toast(`已读档 · 第${d.day}天 ${this.clock.hhmm}`)
@@ -602,7 +606,7 @@ export class Game {
     else this.cam.update(dt, this.player.inVehicle ? 'car' : 'foot', target, this.player.vehicle?.speed ?? 0, this.time, moving, this.state === 'play' && (this.input.locked || this.forceAim), this.player.vehicle?.halfLen ?? 2.3)
     this.player.sync()
     for (const v of this.vehicles) if (v.active) v.sync(this.time)
-    this.jobs.sync(this.time); this.quests.sync(this.time)
+    this.jobs.sync(this.time); this.quests.sync(this.time, this.jobs.targetPoint !== null)
     this.updateHud(dt)
   }
 
@@ -779,6 +783,7 @@ export class Game {
     if (this.state === 'play') {
       if (this.phone.open) hint = null
       else if (!this.input.locked && this.time - this.unlockHintAt < 4) hint = '点击画面锁定鼠标，转动视角（Esc 解锁）'
+      else if (this.jobs.canBoardTaxi) hint = '按 F 上客'
       else if (this.interactions.hint) hint = this.interactions.hint
       else if (!pl.inVehicle && pl.findNearbyVehicle(this.vehicles)) hint = '按 F 上车'
       else if (pl.vehicle?.wrecked) hint = '车已报废，按 F 下车'
@@ -795,8 +800,9 @@ export class Game {
     const police: P2[] = []
     let policeDist = Infinity
     for (const v of this.vehicles) if (v.active && v.driver === 'police') { police.push(v); policeDist = Math.min(policeDist, Math.hypot(v.x - pl.worldX, v.z - pl.worldZ)) }
-    const target = this.jobs.targetPoint ?? this.quests.targetPoint
-    this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, target, this.quests.starts, police, this.quests.carPoint, this.hospital, this.pois.all)
+    // 目标优先级：进行中的工作 > 任务 > 被动工作（打卡/投资 → 最近办公楼）
+    const target = this.jobs.targetPoint ?? this.quests.targetPoint ?? this.jobs.passiveTarget
+    this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, target, this.quests.starts, police, this.quests.carPoint, this.hospital, this.pois.all, pl.health)
     this.phoneTimer += dt
     if (this.phone.open && this.phoneTimer >= 0.25) {
       this.phoneTimer = 0
@@ -922,7 +928,7 @@ export class Game {
         start(id: string) { return self.jobs.start(id) },
         stop() { self.jobs.stop() },
         get active() { return self.jobs.active?.id ?? null },
-        get state() { return { stats: self.jobs.stats, taxi: self.jobs.taxiState, lastTrip: self.jobs.lastTrip, stealTarget: self.jobs.stealTarget, target: self.jobs.targetPoint, hud: self.jobs.hudCard() } },
+        get state() { return { stats: self.jobs.stats, taxi: self.jobs.taxiState, lastTrip: self.jobs.lastTrip, stealTarget: self.jobs.stealTarget, target: self.jobs.targetPoint, passiveTarget: self.jobs.passiveTarget, canBoard: self.jobs.canBoardTaxi, hud: self.jobs.hudCard() } },
         buy(asset: AssetId, amount: number) { return self.jobs.buy(asset, amount) },
         sell(asset: AssetId) { return self.jobs.sell(asset) },
         fare(dist: number, wait: number, peak: boolean, rating: number) { return taxiFare(dist, wait, peak, rating) },
@@ -987,8 +993,9 @@ export class Game {
         get speed() { return self.clock.speed }, set speed(v: number) { self.clock.speed = v },
       },
       weather: {
-        set(s: 'clear' | 'cloudy' | 'storm') { self.weather.set(s) },
-        get state() { return self.weather.state }, get gloom() { return self.weather.gloom }, get rain() { return self.weather.rainIntensity },
+        /** 调试：手动指定天气并锁定 lockHours 游戏小时（默认 3），调时钟/整点不会重掷 */
+        set(s: 'clear' | 'cloudy' | 'storm', lockHours = 3) { self.weather.set(s, true, lockHours) },
+        get state() { return self.weather.state }, get locked() { return self.weather.locked }, get gloom() { return self.weather.gloom }, get rain() { return self.weather.rainIntensity },
       },
       needs: {
         get hunger() { return self.needs.hunger }, get energy() { return self.needs.energy },

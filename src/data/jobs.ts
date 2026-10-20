@@ -11,7 +11,7 @@ export const JOB_TEXT: JobText[] = [
   { id: 'gold_invest', title: '投资', roles: ['gold'], desc: '定存 / 指数 / 加密货币，每天 07:00 结算。' },
   { id: 'white_shift', title: '上班', roles: ['white', 'gold'], desc: '09:00–18:00 到办公楼门口按 E 打卡，干到下班领薪。' },
   { id: 'white_overtime', title: '加班', roles: ['white'], desc: '18:00–22:00 在办公楼门口按 E 加班 2 小时，+$80。' },
-  { id: 'blue_taxi', title: '的士载客', roles: ['blue'], desc: '在的士里开工：接招手乘客（4 m 内按 F），送到目的地按表计费。' },
+  { id: 'blue_taxi', title: '的士载客', roles: ['blue'], desc: '在的士里开工：接招手乘客（靠边停到 3 m 内按 F），送到目的地按表计费。' },
   { id: 'blue_delivery', title: '外卖', roles: ['blue'], desc: '接单后去小贩中心取餐（E），限时送到住家/办公楼。$6 + $1/km，超时 $3。' },
   { id: 'blue_site', title: '工地搬运', roles: ['blue'], desc: '到工地门口按 E，搬一小时建材现结 $18。' },
 ]
@@ -25,7 +25,8 @@ export const JOB_PARAMS = {
   taxi: {
     base: 4.4, baseKm: 1000, unitM: 400, unitFare: 0.26, waitSec: 45, waitFare: 0.26,
     peakMul: 1.25, peaks: [[7, 9.5], [18, 24]] as [number, number][],
-    tipRating: 4, tip: 0.1, pickupRadius: 4, hailMin: 40, hailMax: 150, arriveRadius: 8, arriveSpeed: 1.5, settleSec: 3, crashImpulse: 4,
+    tipRating: 4, tip: 0.1, pickupRadius: 3, hailMin: 40, hailMax: 150, arriveRadius: 8, arriveSpeed: 1.5, settleSec: 3, crashImpulse: 4,
+    /** pickupRadius：乘客到车身（前后轴胶囊）的距离上限，不是到车中心 */
     /** 目的地门口到最近车道中心线的最大距离：超过的 POI（门在楼里/离路太远）不当目的地，否则车停不进 arriveRadius */
     destLaneMax: 6,
   },
