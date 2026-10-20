@@ -47,6 +47,8 @@ import { saveSettings } from './Settings'
 import { PostFX } from './PostFX'
 import type { FxQuality } from './Settings'
 import { CharacterLibrary } from '../characters/CharacterLibrary'
+import type { GamePlugin } from '../activities/Plugin'
+import { installActivities } from '../activities'
 import { identitySpec } from '../characters/presets'
 import { Creator, loadCreatorResult, saveCreatorResult, type CreatorResult } from '../ui/Creator'
 
@@ -122,6 +124,9 @@ export class Game {
   activity!: Activity
   /** P10.D 注入：竞技场会话工厂（null = 竞技场未实现，enterArena 返回 false） */
   arenaFactory: ArenaFactory | null = null
+  /** P10 娱乐插件（赌场 / 赛车 / 夜店 / 竞技场），见 activities/Plugin.ts */
+  readonly plugins: GamePlugin[] = []
+  private pluginSaves: Record<string, unknown> = {}
   /** 当前竞技场会话（state='arena' 时非空） */
   arena: ArenaSession | null = null
   /** 打开活动时来源的 POI（returnToPanel 用） */
@@ -311,6 +316,7 @@ export class Game {
     this.phone.registerView('shop', '商店', () => this.assets.view())
     this.phone.registerView('biz', '生意', () => this.business.view())
     this.phone.registerView('wallet', '钱包', () => this.wallet.view())
+    installActivities(this)
     // 升级装备：防弹衣减伤（所有玩家受伤都经 Player.damage）
     const rawDamage = this.player.damage.bind(this.player)
     this.player.damage = (n: number) => rawDamage(n * (1 - this.assets.effects().armor))
@@ -594,6 +600,15 @@ export class Game {
   private restorePhase8(d: Save.SaveData | null) {
     this.progress.restore(d?.progress); this.assets.restore(d?.assets); this.business.restore(d?.biz)
     restoreLedger(d?.wallet)
+    this.pluginSaves = { ...(d?.plugins ?? {}) }
+    for (const pl of this.plugins) pl.restore?.(this.pluginSaves[pl.id])
+  }
+
+  /** 注册娱乐插件：面板按钮 / 手机页立即接上；存档在 restorePhase8 / saveGame 统一处理 */
+  addPlugin(pl: GamePlugin) {
+    this.plugins.push(pl)
+    if (pl.poiButtons) this.interactions.addProvider((p) => pl.poiButtons!(p))
+    if (pl.app) { const a = pl.app; this.phone.registerView(a.name, a.title, () => a.view()) }
   }
 
   // ---------- P10 活动 / 竞技场 ----------
@@ -643,8 +658,13 @@ export class Game {
     this.input.endFrame()
   }
 
+  private pluginSnapshot() {
+    for (const pl of this.plugins) if (pl.serialize) this.pluginSaves[pl.id] = pl.serialize()
+    return this.pluginSaves
+  }
+
   saveGame(announce: boolean) {
-    const ok = Save.save(this.ctx, { jobs: this.jobs.serialize(), quests: this.quests.serialize(), weather: this.weather.serialize(), progress: this.progress.serialize(), assets: this.assets.serialize(), biz: this.business.serialize(), wallet: serializeLedger() })
+    const ok = Save.save(this.ctx, { jobs: this.jobs.serialize(), quests: this.quests.serialize(), weather: this.weather.serialize(), progress: this.progress.serialize(), assets: this.assets.serialize(), biz: this.business.serialize(), wallet: serializeLedger(), plugins: this.pluginSnapshot() })
     if (announce) this.hud.toast(ok ? '已存档' : '存档失败（浏览器禁止本地存储）')
     return ok !== null
   }
@@ -763,6 +783,7 @@ export class Game {
     this.assets.update(dt)
     this.business.update(dt)
     this.progress.update(dt)
+    for (const pl of this.plugins) pl.update?.(dt)
 
     if (playing) {
       if (this.player.health <= 0) this.enterState('dead')
@@ -824,6 +845,7 @@ export class Game {
     this.needs.addMood(busted ? MOOD.busted : MOOD.dead)
     // 黑帮产业：被捕 / 倒下时各处钱柜被卷走
     this.business.onBustOrDeath()
+    for (const pl of this.plugins) pl.onBustOrDeath?.()
     // 主住所是买下的房产 → 在那里醒来；否则倒下 → 医院门口，被捕 → 警署门口
     const ownHome = this.ownHomeSpawn
     const d = ownHome ? this.homeSpawn() : busted ? this.policeDoor : this.hospitalDoor
@@ -1003,7 +1025,7 @@ export class Game {
     let policeDist = Infinity
     for (const v of this.vehicles) if (v.active && v.driver === 'police') { police.push(v); policeDist = Math.min(policeDist, Math.hypot(v.x - pl.worldX, v.z - pl.worldZ)) }
     // 目标优先级：进行中的工作 > 任务 > 被动工作（打卡/投资 → 最近办公楼）
-    const target = this.jobs.targetPoint ?? this.quests.targetPoint ?? this.business.navTarget ?? this.jobs.passiveTarget
+    const target = this.pluginTarget() ?? this.jobs.targetPoint ?? this.quests.targetPoint ?? this.business.navTarget ?? this.jobs.passiveTarget
     this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, target, this.quests.starts, police, this.quests.carPoint, this.hospital, this.pois.all, pl.health, this.business.points())
     this.phoneTimer += dt
     if (this.phone.open && this.phoneTimer >= 0.25) {
@@ -1021,8 +1043,14 @@ export class Game {
     this.audio.ambient(this.ctx, dt)
   }
 
+  private pluginTarget() {
+    for (const pl of this.plugins) { const t = pl.navTarget?.(); if (t) return t }
+    return null
+  }
+
   /** HUD 底部任务卡：进行中的工作优先，任务作为副行 */
   private missionCard() {
+    for (const pl of this.plugins) { const c = pl.hudCard?.(); if (c) return c }
     const job = this.jobs.hudCard(), quest = this.quests.hudCard()
     if (job) return { ...job, sub: quest && this.quests.active ? `任务：${quest.desc}` : undefined }
     return quest
@@ -1289,6 +1317,8 @@ export class Game {
       get shop() { return self.assets.debug },
       get biz() { return self.business.debugApi() },
       save() { return self.saveGame(false) },
+      /** P10 插件测试钩子：__game.plug.casino / race / club / arena */
+      get plug() { const o: Record<string, unknown> = {}; for (const pl of self.plugins) o[pl.id] = pl.debug?.() ?? pl; return o },
       load() { return self.loadGame() },
       get dayNight() { const d = self.dayNight; return { sunIntensity: d.sun.intensity, hemiIntensity: d.hemi.intensity, lights: d.lights, gloom: d.gloom, shadows: self.renderer.shadowMap.enabled, sunDir: d.sun.position.clone().sub(d.sun.target.position).normalize().toArray().map((n) => +n.toFixed(2)) } },
     }

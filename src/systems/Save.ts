@@ -38,9 +38,11 @@ export interface SaveData {
   biz?: BizSave
   /** P10：钱包分类账（今日 / 累计各类别收支）；旧存档缺省 → 空账本 */
   wallet?: LedgerSave
+  /** P10 娱乐插件存档，键 = GamePlugin.id */
+  plugins?: Record<string, unknown>
   savedAt: number
 }
-export interface SaveExtra { jobs?: JobsSave; quests?: QuestsSave; weather?: WeatherSave; progress?: ProgressSave; assets?: AssetsSave; biz?: BizSave; wallet?: LedgerSave }
+export interface SaveExtra { jobs?: JobsSave; quests?: QuestsSave; weather?: WeatherSave; progress?: ProgressSave; assets?: AssetsSave; biz?: BizSave; wallet?: LedgerSave; plugins?: Record<string, unknown> }
 
 /** 把当前状态写入 localStorage；返回写入的数据（失败返回 null） */
 export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
@@ -51,7 +53,7 @@ export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
     needs: { hunger: ctx.needs.hunger, energy: ctx.needs.energy, mood: Math.round(ctx.needs.mood * 10) / 10 },
     law: { demerits: law.demerits, fines: law.fines, arrests: law.arrests, licenseSuspendedUntilDay: law.licenseSuspendedUntilDay },
     jobs: extra.jobs, quests: extra.quests, weather: extra.weather,
-    progress: extra.progress, assets: extra.assets, biz: extra.biz, wallet: extra.wallet,
+    progress: extra.progress, assets: extra.assets, biz: extra.biz, wallet: extra.wallet, plugins: extra.plugins,
     savedAt: Date.now(),
   }
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)) } catch { return null }
