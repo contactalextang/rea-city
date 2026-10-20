@@ -4,6 +4,8 @@ import type { Panels, PanelSpec, PanelButton } from '../ui/Panels'
 import { HAWKER_MENU, SHOP_MENU, ECONOMY, type MenuItem } from '../data/menus'
 import { POI_LABEL, type Poi } from './Poi'
 import type { Jobs } from './Jobs'
+import type { RestBonus } from './Assets'
+import { spend } from './Wallet'
 
 export const INTERACT_DIST = 3.5
 
@@ -16,7 +18,13 @@ export interface InteractionHost {
   parkTaxi(x: number, z: number, yaw: number): Vehicle | null
   /** 打开衣柜（换装）；返回 false 表示不可用（盒子人模式） */
   wardrobe(): boolean
+  /** 这个住家 POI 是否归玩家（身份自带的家，或买下的房产） */
+  ownsHome(poiId: string): boolean
+  /** 在这个住家睡觉的加成；null = 按原数值（饱食 −20） */
+  restBonus(poiId: string): RestBonus | null
 }
+/** 按钮提供者：给某个 POI 面板追加按钮（工作 / 资产 / 产业…） */
+export type ButtonProvider = (poi: Poi) => PanelButton[]
 
 const money = (n: number) => `$${n.toFixed(2)}`
 
@@ -26,8 +34,10 @@ export class Interactions {
   near: Poi | null = null
   current: Poi | null = null
   private taxiRentedDay = -1
-  /** 工作系统：给面板追加与工作相关的按钮（收保护费 / 取餐 / 加班 / 开工） */
+  /** 工作系统（的士站「租车并开工」用）；它的面板按钮通过 addProvider 注册 */
   jobs: Jobs | null = null
+  /** 面板按钮提供者（工作 / 资产 / 产业），按注册顺序插在「离开」之前 */
+  private providers: ButtonProvider[] = []
 
   constructor(private ctx: Ctx, private panels: Panels, private host: InteractionHost) {}
 
@@ -46,10 +56,12 @@ export class Interactions {
   /** 行为改变了数值后刷新面板 */
   private refresh() { if (this.current) this.panels.show(this.build(this.current)) }
   close() { this.current = null; this.host.closePanel() }
+  /** 注册按钮提供者 */
+  addProvider(fn: ButtonProvider) { this.providers.push(fn) }
 
   private build(poi: Poi): PanelSpec {
     const spec = this.buildBase(poi)
-    const extra = this.jobs?.poiButtons(poi) ?? []
+    const extra = this.providers.flatMap((fn) => fn(poi))
     if (extra.length) spec.buttons.splice(Math.max(0, spec.buttons.length - 1), 0, ...extra)
     return spec
   }
@@ -79,13 +91,11 @@ export class Interactions {
 
   // ---------- 小贩中心 / 商店 ----------
   private menuPanel(poi: Poi, menu: MenuItem[], note: string): PanelSpec {
-    const pl = this.ctx.player
     const buttons: PanelButton[] = menu.map((m) => ({
       label: m.name,
       note: `${money(m.price)} · 饱食 +${m.hunger}${m.energy ? ` 精力 +${m.energy}` : ''}`,
       onClick: () => {
-        if (pl.money < m.price) { this.host.toast('钱不够了'); return }
-        pl.money = Math.round((pl.money - m.price) * 100) / 100
+        if (!spend(this.ctx, m.price, m.name)) { this.host.toast('钱不够了'); return }
         this.ctx.clock.skip((poi.type === 'hawker' ? 20 : 5) / 60)
         this.ctx.needs.sync()
         this.ctx.needs.add(m.hunger, m.energy ?? 0)
@@ -104,7 +114,6 @@ export class Interactions {
     return Math.min(ECONOMY.mrtCap, Math.round((ECONOMY.mrtBase + km * ECONOMY.mrtPerKm) * 100) / 100)
   }
   private mrtPanel(poi: Poi): PanelSpec {
-    const pl = this.ctx.player
     const others = this.ctx.pois.byType('mrt').filter((p) => p.id !== poi.id)
     const buttons: PanelButton[] = others.map((p) => {
       const dist = Math.hypot(p.door.x - poi.door.x, p.door.z - poi.door.z)
@@ -114,8 +123,7 @@ export class Interactions {
         label: `→ ${p.name}`,
         note: `${money(fare)} · ${(dist / 1000).toFixed(1)} km · 约 ${minutes} 分钟`,
         onClick: () => {
-          if (pl.money < fare) { this.host.toast('余额不足，先去充值吧'); return }
-          pl.money = Math.round((pl.money - fare) * 100) / 100
+          if (!spend(this.ctx, fare, 'mrt')) { this.host.toast('余额不足，先去充值吧'); return }
           this.ctx.clock.skip(dist / 1000 / ECONOMY.mrtSpeedKmh + 5 / 60)
           this.ctx.needs.sync()
           this.host.teleport(p.door.x, p.door.z, p.door.yaw)
@@ -131,25 +139,29 @@ export class Interactions {
   // ---------- 家 ----------
   private homePanel(poi: Poi): PanelSpec {
     const role = this.ctx.role
-    if (poi.id !== role.home) {
+    if (!this.host.ownsHome(poi.id)) {
       return { title: poi.name, subtitle: '住家', lines: ['这不是你家。'], buttons: [{ label: '离开', onClick: () => this.close() }] }
     }
     const clock = this.ctx.clock
     const rent = role.systems.rent ? (ECONOMY.rent[role.id] ?? 0) : 0
     const lines = [this.status()]
     if (rent) lines.push(`房租 ${money(rent)}/天，每过一夜结算`)
+    // 自有房产：饥饿少扣、次日 XP 加成（默认 = 原数值）
+    const bonus = this.host.restBonus(poi.id)
+    const hungerCost = bonus?.hunger ?? 20
+    const xpMul = bonus?.xpMul ?? 1
     return {
       title: poi.name, subtitle: '住家', lines,
       buttons: [
-        { label: '睡觉到 07:00', note: '精力 100 · 饱食 −20', onClick: () => {
+        { label: '睡觉到 07:00', note: `精力 100 · 饱食 −${hungerCost}${xpMul > 1 ? ` · 明天 XP +${Math.round((xpMul - 1) * 100)}%` : ''}`, onClick: () => {
           const hours = clock.hour < 7 ? 7 - clock.hour : 24 - clock.hour + 7
           clock.skip(hours)
           clock.set(7, clock.day)
           this.ctx.needs.sync()
-          this.ctx.needs.set(this.ctx.needs.hunger - 20, 100)
+          this.ctx.needs.set(this.ctx.needs.hunger - hungerCost, 100)
           if (rent) { this.ctx.player.money -= rent; this.host.toast(`新的一天 · 房租 −${money(rent)}`, 3) }
           else this.host.toast('睡了个好觉', 2.5)
-          this.ctx.events.emit('slept', { day: clock.day })
+          this.ctx.events.emit('slept', { day: clock.day, xpMul })
           this.host.save()
           this.close()
         } },

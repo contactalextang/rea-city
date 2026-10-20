@@ -22,6 +22,11 @@
     .law { font-size: 12px; opacity: .85; margin-top: 2px; color: #ffb4b4; }
     .health { width: 180px; height: 10px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.5); border-radius: 5px; overflow: hidden; margin-top: 6px; }
     .health > div { height: 100%; width: 100%; background: #ff5f5f; transition: width .15s; }
+    .level { margin-top: 6px; font-size: 13px; font-weight: 700; color: #d8c4ff; letter-spacing: .5px; }
+    .level .xpbar { width: 180px; height: 4px; background: rgba(0,0,0,.5); border-radius: 2px; overflow: hidden; margin-top: 3px; }
+    .level .xpbar > div { height: 100%; width: 0; background: #b48cff; transition: width .3s; }
+    .ach { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); font-size: 16px; font-weight: 700; color: #fff; background: rgba(60,30,110,.8); border: 1px solid #b48cff; border-radius: 10px; padding: 8px 18px; opacity: 0; transition: opacity .3s; text-align: center; white-space: nowrap; }
+    .ach.show { opacity: 1; }
     .clock { margin-top: 6px; font-size: 13px; opacity: .9; letter-spacing: .5px; }
     .speed { margin-top: 8px; font-size: 13px; opacity: .85; }
     .hud-bc { position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%); text-align: center; font-size: 16px; }
@@ -109,6 +114,14 @@
     .phone .job button:hover { background: rgba(126,231,135,.25); border-color: #7ee787; }
     .phone .job button.stop { border-color: #ff5f5f; }
     .phone .job button.stop:hover { background: rgba(255,95,95,.3); }
+    .phone .apps button.on { background: rgba(126,231,135,.25); border-color: #7ee787; }
+    .phone .app .stat { font-size: 12px; opacity: .85; margin-bottom: 4px; line-height: 1.5; }
+    .phone .app .sect { font-size: 12px; font-weight: 700; opacity: .7; letter-spacing: 1px; margin: 12px 0 6px; }
+    .phone .app .empty { font-size: 13px; opacity: .7; padding: 18px 8px; text-align: center; border: 1px dashed rgba(255,255,255,.25); border-radius: 8px; margin-top: 8px; }
+    .phone .app .bar.xp .fill { background: #b48cff; }
+    .phone .app .job .jv { font-size: 12px; color: #7ee787; font-weight: 600; }
+    .phone .app .job .ja { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .phone .app .log { font-size: 11px; opacity: .75; line-height: 1.6; }
     .phone .invest { margin-top: 10px; }
     .phone .invest .asset { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.1); }
     .phone .invest .asset .an { flex: 1 1 100%; display: flex; justify-content: space-between; }
@@ -124,6 +137,7 @@
   <div id="hud">
     <div class="hud-tl">
       <div class="health"><div id="health"></div></div>
+      <div class="level" id="level"><span id="level-text">Lv1</span><div class="xpbar"><div id="xp-fill"></div></div></div>
       <div class="clock" id="clock"></div>
       <div class="speed" id="speed"></div>
     </div>
@@ -135,6 +149,7 @@
     <div class="hud-bc"><div class="mission" id="mission" style="display:none"><div class="title" id="mission-title"></div><div id="mission-desc"></div><div class="nav" id="mission-nav" style="display:none"></div><div class="timer" id="mission-timer"></div><div class="qsub" id="mission-sub" style="display:none"></div></div></div>
     <div class="hint" id="hint"></div>
     <div class="toast" id="toast"></div>
+    <div class="ach" id="ach"></div>
     <canvas id="minimap" width="200" height="200"></canvas>
     <div class="debug" id="debug"></div>
     <div class="crosshair" id="crosshair"></div>
@@ -158,6 +173,9 @@
     <div class="bar energy" id="phone-energy"><span>精力 <b></b></span><div class="track"><div class="fill"></div></div></div>
     <div class="apps">
       <button data-app="work">工作</button>
+      <button data-app="progress">成长</button>
+      <button data-app="shop">商店</button>
+      <button data-app="biz">生意</button>
       <button data-app="map">地图</button>
       <button data-app="char">角色</button>
       <button data-app="settings">设置</button>

@@ -14,6 +14,11 @@ export class Hud {
   private gun = true
   private vignetteOn = false
   private navHtml = ''
+  private levelText = ''
+  private xpPct = -1
+  private achEl = $('ach')
+  private achTimer = 0
+  private achQueue: string[] = []
 
   update(dt: number, health: number, money: number, stars: number, flash: number, speedKmh: number | null,
     mission: { title: string; desc: string; timer: string; sub?: string } | null, debug: string) {
@@ -34,6 +39,13 @@ export class Hud {
     } else m.style.display = 'none'
     this.toastTimer -= dt
     if (this.toastTimer <= 0) this.toastEl.classList.remove('show')
+    // 成就横幅：单独一条，排队逐个显示，不和普通 toast 互相覆盖
+    this.achTimer -= dt
+    if (this.achTimer <= 0) {
+      const next = this.achQueue.shift()
+      if (next) { this.achEl.textContent = next; this.achEl.classList.add('show'); this.achTimer = 3.5 }
+      else this.achEl.classList.remove('show')
+    }
     $('debug').textContent = debug
   }
 
@@ -50,6 +62,16 @@ export class Hud {
     this.navHtml = html
     const el = $('mission-nav'); el.innerHTML = html; el.style.display = html ? '' : 'none'
   }
+
+  /** 左上角血条下的等级：`Lv3 打手` + XP 条（pct 0–1） */
+  level(text: string, pct: number) {
+    if (text !== this.levelText) { this.levelText = text; $('level-text').textContent = text }
+    const p = Math.round(pct * 200) / 2
+    if (p !== this.xpPct) { this.xpPct = p; ($('xp-fill') as HTMLElement).style.width = `${p}%` }
+  }
+
+  /** 成就横幅（排队显示） */
+  achievement(text: string) { this.achQueue.push(text) }
 
   /** 左上角时钟/天气：如 `第1天 07:30 · 晴` */
   clock(text: string) {

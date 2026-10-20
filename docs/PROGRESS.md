@@ -55,6 +55,15 @@
 - [x] P7.V 四身份终验（开局均有品红目标与方位距离、无页面报错）+ 看板/README/记忆更新
 - [x] P7.4 音频：去掉背景“嘭嘭”（NPC 撞人不再出声，撞击音阈值 4 + 0.35 s 去抖，车流底噪调轻）；新增 Music.ts 程序合成背景音乐（步行氛围乐 / 驾车车载电台交叉淡化，夜间更暗，通缉压低），手机设置“音乐 开/关”，`?music=0`
 
+## Phase 8 — 成长与产业帝国（计划 ~/.claude/plans/glimmering-yawning-sprout.md）
+> 起因：试玩反馈"无聊、单调"；调研 GTA Online/GTA6、Schedule I、Roblox 放置类、FiveM RP 后，本轮只做 成长与消费 + 产业经营。
+- [x] P8.1 基础层：Wallet/净资产、Progress 等级头衔/XP/成就/终身统计、解锁表、Assets/Business 桩、事件、存档字段、手机三新应用、HUD 等级条
+- [ ] P8.2 商店与资产：车/房/升级目录、车库取车、自有房产睡觉、效果倍率（并行 P8.3）
+- [ ] P8.3 产业帝国：四身份产业表、每小时钱柜、收钱/升级/雇经理、07:00 风险事件、小地图金圈（并行 P8.2）
+- [ ] P8.4 整合与平衡：被捕/死亡联动、净资产显示、购买自动存档、econ-sim 平衡脚本
+- [ ] P8.5 帝国任务线：新步骤类型、story/empire 分层、每身份 4 任务、帝国总结
+- [ ] P8.V 四身份终验 + 看板/README/记忆
+
 ## 后续
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
 - [ ] 后续可选：步行道图/天桥可走、桥梁抬高、五脚基、OneMap 补 HDB 层数

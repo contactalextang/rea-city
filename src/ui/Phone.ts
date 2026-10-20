@@ -1,6 +1,7 @@
 import type { JobsView } from '../systems/Jobs'
 import type { AssetId } from '../data/jobs'
 import { INVEST_AMOUNTS } from '../data/jobs'
+import type { AppView } from '../core/Context'
 
 /** 手机抽屉（Tab）：状态、工作、地图、设置、存读档；游戏不暂停但屏蔽移动输入 */
 export interface PhoneHost {
@@ -35,7 +36,54 @@ export interface PhoneStatus {
 
 const $ = (id: string) => document.getElementById(id)!
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-type Sub = 'work' | 'map' | 'settings' | null
+/** 子页名：内置 work / map / settings，其余由 registerSub 注册（progress / shop / biz…） */
+type Sub = string | null
+/** 子页渲染回调：root 为子页内容容器；force = 刚打开（否则为定时刷新，可按签名跳过） */
+export type SubRender = (root: HTMLElement, force: boolean) => void
+
+const el = (tag: string, cls: string, text?: string) => { const d = document.createElement(tag); d.className = cls; if (text !== undefined) d.textContent = text; return d }
+
+/** 把通用 AppView 渲染进 root（成长 / 商店 / 生意页共用；卡片样式沿用工作页 .job） */
+export function renderAppView(root: HTMLElement, v: AppView) {
+  root.innerHTML = ''
+  for (const l of v.lines ?? []) root.appendChild(el('div', 'stat', l))
+  for (const b of v.bars ?? []) {
+    const bar = el('div', 'bar xp')
+    const head = el('span', '', `${b.label} `); head.appendChild(el('b', '', b.text ?? `${Math.round(b.pct * 100)}%`)); bar.appendChild(head)
+    const track = el('div', 'track'), fill = el('div', 'fill')
+    fill.style.width = `${Math.max(0, Math.min(1, b.pct)) * 100}%`
+    track.appendChild(fill); bar.appendChild(track); root.appendChild(bar)
+  }
+  if (v.empty) root.appendChild(el('div', 'empty', v.empty))
+  for (const sec of v.sections ?? []) {
+    root.appendChild(el('div', 'sect', sec.title))
+    for (const it of sec.items) {
+      const card = el('div', `job${it.tone === 'owned' ? ' active' : it.tone === 'locked' ? ' off' : ''}`)
+      const head = el('div', 'jt'); head.appendChild(el('span', '', it.title))
+      if (it.value) head.appendChild(el('span', 'jv', it.value))
+      card.appendChild(head)
+      if (it.desc) card.appendChild(el('div', 'jd', it.desc))
+      if (it.status) card.appendChild(el('div', 'js', it.status))
+      if (it.actions?.length) {
+        const row = el('div', 'ja')
+        for (const a of it.actions) {
+          const btn = el('button', '', a.label) as HTMLButtonElement
+          btn.disabled = !!a.disabled
+          btn.addEventListener('click', () => a.onClick())
+          row.appendChild(btn)
+        }
+        card.appendChild(row)
+      }
+      root.appendChild(card)
+    }
+  }
+  if (v.log?.length) {
+    root.appendChild(el('div', 'sect', '日志'))
+    const box = el('div', 'log')
+    for (const l of v.log) box.appendChild(el('div', '', l))
+    root.appendChild(box)
+  }
+}
 
 export class Phone {
   open = false
@@ -44,6 +92,8 @@ export class Phone {
   private mapCanvas = $('phone-map') as HTMLCanvasElement
   private status: PhoneStatus | null = null
   private workSig = ''
+  /** 注册的子页：名字 → { 内容容器, 渲染回调 } */
+  private subs = new Map<string, { box: HTMLElement; body: HTMLElement; render: SubRender }>()
 
   constructor(private host: PhoneHost) {
     this.root.addEventListener('mousedown', (e) => e.stopPropagation())
@@ -61,6 +111,36 @@ export class Phone {
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-music]')) {
       b.addEventListener('click', () => { host.setMusic(b.dataset.music === '1'); if (this.status) this.status.music = b.dataset.music === '1'; this.refreshSettings() })
     }
+    // 内置子页也走注册表
+    this.registerSub('work', '', (_r, force) => this.refreshWork(force), $('phone-sub-work'))
+    this.registerSub('map', '', () => this.host.drawMap(this.mapCanvas), $('phone-sub-map'))
+    this.registerSub('settings', '', () => this.refreshSettings(), $('phone-sub-settings'))
+  }
+
+  /**
+   * 注册子页：点 `data-app=name` 的应用按钮开关它；render 在打开时（force）和每次 update 时调用。
+   * box 缺省时自动在「Tab 关闭手机」提示前建一个 `.sub` 容器（标题 title）。
+   */
+  registerSub(name: string, title: string, render: SubRender, box?: HTMLElement) {
+    let body: HTMLElement
+    if (!box) {
+      box = el('div', 'sub work'); box.id = `phone-sub-${name}`
+      box.appendChild(el('h3', '', title))
+      body = el('div', 'app'); body.id = `phone-${name}`; box.appendChild(body)
+      this.root.insertBefore(box, this.root.querySelector('.tip'))
+    } else body = box
+    this.subs.set(name, { box, body, render })
+  }
+  /** 注册一个按 AppView 渲染的子页；内容签名不变就不重建 DOM（避免点击时按钮被替换） */
+  registerView(name: string, title: string, view: () => AppView) {
+    let sig = ''
+    this.registerSub(name, title, (root, force) => {
+      const v = view()
+      const s = JSON.stringify(v)
+      if (!force && s === sig) return
+      sig = s
+      renderAppView(root, v)
+    })
   }
 
   toggle() { this.set(!this.open) }
@@ -68,8 +148,7 @@ export class Phone {
     this.open = open
     this.root.classList.toggle('show', open)
     if (open && document.pointerLockElement) document.exitPointerLock()
-    if (open && this.sub === 'map') this.host.drawMap(this.mapCanvas)
-    if (open && this.sub === 'work') this.refreshWork(true)
+    if (open && this.sub) this.renderSub(this.sub, true)
   }
   get subPage() { return this.sub }
 
@@ -82,18 +161,18 @@ export class Phone {
       case 'save': this.host.save(); break
       case 'load': this.host.load(); break
       case 'restart': if (confirm('清除存档并重新开始？')) this.host.restart(); break
+      default: if (this.subs.has(name)) this.showSub(this.sub === name ? null : name)
     }
   }
 
   showSub(s: Sub) {
+    if (s && !this.subs.has(s)) s = null
     this.sub = s
-    $('phone-sub-work').classList.toggle('show', s === 'work')
-    $('phone-sub-map').classList.toggle('show', s === 'map')
-    $('phone-sub-settings').classList.toggle('show', s === 'settings')
-    if (s === 'map') this.host.drawMap(this.mapCanvas)
-    if (s === 'settings') this.refreshSettings()
-    if (s === 'work') this.refreshWork(true)
+    for (const [n, e] of this.subs) e.box.classList.toggle('show', n === s)
+    for (const b of this.root.querySelectorAll<HTMLButtonElement>('.apps button')) b.classList.toggle('on', b.dataset.app === s)
+    if (s) this.renderSub(s, true)
   }
+  private renderSub(name: string, force: boolean) { const e = this.subs.get(name); if (e) e.render(e.body, force) }
 
   private refreshSettings() {
     const st = this.status; if (!st) return
@@ -110,7 +189,6 @@ export class Phone {
     if (!force && sig === this.workSig) return
     this.workSig = sig
     const root = $('phone-work'); root.innerHTML = ''
-    const el = (tag: string, cls: string, text?: string) => { const d = document.createElement(tag); d.className = cls; if (text !== undefined) d.textContent = text; return d }
     const stat = el('div', 'stat')
     stat.textContent = `今日收入 $${fmt(w.todayIncome)}` + (w.taxiTrips ? ` · 的士 ${w.taxiTrips} 单 · 评分 ${w.taxiRating!.toFixed(1)}` : '')
     root.appendChild(stat)
@@ -173,8 +251,6 @@ export class Phone {
       el.classList.toggle('low', v < 20)
     }
     bar('phone-hunger', st.hunger); bar('phone-energy', st.energy)
-    if (this.sub === 'map') this.host.drawMap(this.mapCanvas)
-    if (this.sub === 'settings') this.refreshSettings()
-    if (this.sub === 'work') this.refreshWork()
+    if (this.sub) this.renderSub(this.sub, false)
   }
 }

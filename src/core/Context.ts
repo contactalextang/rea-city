@@ -12,6 +12,7 @@ import type { PoiRegistry } from '../systems/Poi'
 import type { Needs } from '../systems/Needs'
 import type { Law } from '../systems/Law'
 import type { Poi } from '../systems/Poi'
+import type { PanelButton } from '../ui/Panels'
 
 /** 各系统共享的只读上下文（由 Game 构造并填充） */
 export interface Ctx {
@@ -45,14 +46,60 @@ export interface GameEvents {
   carjack: { v: Vehicle; hadDriver: boolean }
   /** 在小贩中心/商店消费了一餐 */
   ate: { poi: Poi }
-  /** 在家睡到次日 */
-  slept: { day: number }
+  /** 在家睡到次日；xpMul = 自有房产的次日 XP 倍率（Assets.restBonus，缺省 1） */
+  slept: { day: number; xpMul?: number }
   /** 办公楼打卡上班（pay 为当日薪水） */
   clockIn: { day: number; pay: number }
   taxiRented: { v: Vehicle }
   /** 某项工作产生一笔收入（的士每单 / 保护费每家 / 一次性任务奖励） */
   jobDone: { job: string; amount: number }
   invested: { asset: string; amount: number }
+  /** 一次购买：商店物品（vehicle/property/upgrade）、产业（biz 买下 / bizTier 升级 / manager 雇经理） */
+  purchased: { kind: PurchaseKind; id: string; cost: number }
+  /** 产业收入入账：auto = 经理自动入账，否则为亲自收钱 */
+  bizIncome: { biz: string; amount: number; auto: boolean }
+  /** 产业每日风险事件；delta = 对现金/钱柜的影响（负数为损失） */
+  bizEvent: { biz: string; kind: 'raid' | 'boom' | 'slump' | 'inspection'; delta: number }
+  levelUp: { level: number }
+  achievement: { id: string }
+}
+export type PurchaseKind = 'vehicle' | 'property' | 'upgrade' | 'biz' | 'bizTier' | 'manager'
+
+/**
+ * 子系统契约（Assets / Business 等）：由 Game 每帧 update、把 poiButtons 注册给 Interactions、
+ * 手机应用页渲染 view()、存档时 serialize / 读档时 restore（旧存档缺字段时 s 为 undefined → 用默认值）。
+ */
+export interface Subsystem<S> {
+  update(dt: number): void
+  /** POI 面板追加的按钮（插在「离开」之前） */
+  poiButtons(poi: Poi): PanelButton[]
+  /** 手机应用页内容 */
+  view(): AppView
+  serialize(): S
+  restore(s?: S): void
+}
+
+/** 手机应用页的通用视图（Phone.renderAppView 渲染）：摘要行 + 进度条 + 分组卡片 + 日志 */
+export interface AppView {
+  lines?: string[]
+  bars?: { label: string; pct: number; text?: string }[]
+  sections?: AppSection[]
+  /** 底部日志（最近在前） */
+  log?: string[]
+  /** 空页提示（如「即将开放」） */
+  empty?: string
+}
+export interface AppSection { title: string; items: AppItem[] }
+export interface AppItem {
+  title: string
+  desc?: string
+  /** 右侧数值（价格 / 钱柜） */
+  value?: string
+  /** 黄色状态行（如「需要 Lv8」「钱柜 $120」） */
+  status?: string
+  /** owned 绿框、locked 半透明 */
+  tone?: 'owned' | 'locked'
+  actions?: { label: string; disabled?: boolean; onClick: () => void }[]
 }
 type Handler<K extends keyof GameEvents> = (e: GameEvents[K]) => void
 

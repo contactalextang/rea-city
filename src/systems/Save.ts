@@ -3,6 +3,9 @@ import { isRoleId, type RoleId } from '../data/roles'
 import type { JobsSave } from './Jobs'
 import type { QuestsSave } from './Quests'
 import type { WeatherSave } from './Weather'
+import type { ProgressSave } from './Progress'
+import type { AssetsSave } from './Assets'
+import type { BizSave } from './Business'
 
 export const SAVE_KEY = 'rea.save'
 
@@ -25,9 +28,13 @@ export interface SaveData {
   quests?: QuestsSave
   /** 天气（状态 + 自然剩余 + 手动锁定剩余）；旧存档可缺省 */
   weather?: WeatherSave
+  /** 成长（等级/XP/成就/终身统计）、资产、产业（Phase 8）；旧存档缺省 → 各系统用默认值，v 仍为 1 */
+  progress?: ProgressSave
+  assets?: AssetsSave
+  biz?: BizSave
   savedAt: number
 }
-export interface SaveExtra { jobs?: JobsSave; quests?: QuestsSave; weather?: WeatherSave }
+export interface SaveExtra { jobs?: JobsSave; quests?: QuestsSave; weather?: WeatherSave; progress?: ProgressSave; assets?: AssetsSave; biz?: BizSave }
 
 /** 把当前状态写入 localStorage；返回写入的数据（失败返回 null） */
 export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
@@ -38,6 +45,7 @@ export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
     needs: { hunger: ctx.needs.hunger, energy: ctx.needs.energy },
     law: { demerits: law.demerits, fines: law.fines, arrests: law.arrests, licenseSuspendedUntilDay: law.licenseSuspendedUntilDay },
     jobs: extra.jobs, quests: extra.quests, weather: extra.weather,
+    progress: extra.progress, assets: extra.assets, biz: extra.biz,
     savedAt: Date.now(),
   }
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)) } catch { return null }

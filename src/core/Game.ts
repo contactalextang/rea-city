@@ -36,6 +36,11 @@ import { Interactions } from '../systems/Interactions'
 import { Panels } from '../ui/Panels'
 import { Phone } from '../ui/Phone'
 import * as Save from '../systems/Save'
+import { Progress } from '../systems/Progress'
+import { Wallet } from '../systems/Wallet'
+import { Assets } from '../systems/Assets'
+import { Business } from '../systems/Business'
+import { ACHIEVEMENTS } from '../data/progression'
 import { saveSettings } from './Settings'
 import { CharacterLibrary } from '../characters/CharacterLibrary'
 import { identitySpec } from '../characters/presets'
@@ -72,6 +77,13 @@ export class Game {
   private signalLights: SignalLights | null = null
   jobs!: Jobs
   quests!: Quests
+  /** Phase 8：资产（车/房/升级）、产业、钱包（净资产）、成长（等级/成就/统计） */
+  assets!: Assets
+  business!: Business
+  wallet!: Wallet
+  progress!: Progress
+  /** 已发过任务 XP 的任务 id（比对 quests.done 找出新完成的任务） */
+  private questSeen = new Set<string>()
   audio = new Audio()
   weapon: Weapon
   private muzzleTmp = new THREE.Vector3()
@@ -239,10 +251,26 @@ export class Game {
       save: () => this.saveGame(false),
       parkTaxi: (x, z, yaw) => this.spawner.parkTaxiNear(this.ctx, x, z, yaw),
       wardrobe: () => this.openWardrobe(),
+      ownsHome: (id) => id === this.role.home || this.assets.ownsHome(id),
+      restBonus: (id) => this.assets.restBonus(id),
     })
     this.interactions.jobs = this.jobs
     this.quests = new Quests(this.ctx)
     this.quests.toast = (t, sec) => this.hud.toast(t, sec)
+    // Phase 8 子系统：资产 / 产业（P8.2 / P8.3 填实）→ 钱包 → 成长
+    this.assets = new Assets(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), spawner: this.spawner })
+    this.business = new Business(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false) })
+    this.wallet = new Wallet(this.ctx, () => { const v = this.jobs.stats.invest; return v.fixed + v.index + v.crypto }, this.assets, this.business)
+    this.progress = new Progress(this.ctx, { netWorth: () => this.wallet.netWorth(), bizCount: () => this.business.list().length })
+    this.interactions.addProvider((p) => this.jobs.poiButtons(p))
+    this.interactions.addProvider((p) => this.assets.poiButtons(p))
+    this.interactions.addProvider((p) => this.business.poiButtons(p))
+    this.phone.registerView('progress', '成长', () => this.progress.view())
+    this.phone.registerView('shop', '商店', () => this.assets.view())
+    this.phone.registerView('biz', '生意', () => this.business.view())
+    // 升级装备：防弹衣减伤（所有玩家受伤都经 Player.damage）
+    const rawDamage = this.player.damage.bind(this.player)
+    this.player.damage = (n: number) => rawDamage(n * (1 - this.assets.effects().armor))
 
     // 视距：真实城市雾放远到 ~900 m 看天际线，相机远裁剪面随之加大；方格城保持原值
     this.dayNight.fogScale = sg ? 900 / 380 : 1
@@ -266,9 +294,11 @@ export class Game {
     if (saved && this.creatorSaved && !q.has('role') && saved.role !== this.creatorSaved.role) { Save.clear(); saved = null }
     if (saved && saved.role === this.role.id) {
       Save.apply(this.ctx, saved); this.jobs.restore(saved.jobs); this.quests.init(saved.quests); this.weather.restore(saved.weather)
+      this.restorePhase8(saved)
       if ((saved.world ?? 'grid') !== src.kind) this.player.place(this.homeDoor.x, this.homeDoor.z, this.homeDoor.yaw)
       console.info(`[REA] 读取存档：第${saved.day}天 $${saved.money}`)
-    } else this.quests.init(null)
+    } else { this.quests.init(null); this.restorePhase8(null) }
+    this.progress.resync()
     this.parkCarNearDoor(this.player.x, this.player.z)
 
     this.wireEvents()
@@ -332,6 +362,13 @@ export class Game {
     })
     this.events.on('vehicleWrecked', ({ byPlayer }) => { if (byPlayer) this.law.crime('wreck', 0.5, this.ctx) })
     this.events.on('carjack', ({ hadDriver }) => { if (hadDriver) this.law.crime('carjack', 0.5, this.ctx) })
+    // 成长：升级 / 成就提示；的士小费升级（网约车 App）按倍率补发小费
+    this.events.on('levelUp', ({ level }) => { this.hud.toast(`升级！Lv${level} ${this.progress.title}`, 3) })
+    this.events.on('achievement', ({ id }) => { const a = ACHIEVEMENTS.find((x) => x.id === id); this.hud.achievement(`成就解锁 ★ ${a?.name ?? id}`) })
+    this.events.on('jobDone', ({ job, amount }) => {
+      const mul = this.assets.effects().taxiTipMul
+      if (job === 'blue_taxi' && mul > 1) this.wallet.earn(Math.round(amount * (mul - 1) * 100) / 100, 'taxiTip')
+    })
     this.events.on('playerHitByVehicle', ({ v, impulse }) => {
       this.player.damage(impulse * 2.2)
       this.player.vx += v.vx * 0.8; this.player.vz += v.vz * 0.8; this.player.vy = 3
@@ -478,8 +515,14 @@ export class Game {
     if (this.state === 'panel') { this.state = 'play'; this.unlockHintAt = this.time }
   }
 
+  /** 恢复成长 / 资产 / 产业（旧存档或新开局缺字段 → 默认值），并以当前已完成任务为基线 */
+  private restorePhase8(d: Save.SaveData | null) {
+    this.progress.restore(d?.progress); this.assets.restore(d?.assets); this.business.restore(d?.biz)
+    this.questSeen = new Set(this.quests.done)
+  }
+
   saveGame(announce: boolean) {
-    const ok = Save.save(this.ctx, { jobs: this.jobs.serialize(), quests: this.quests.serialize(), weather: this.weather.serialize() })
+    const ok = Save.save(this.ctx, { jobs: this.jobs.serialize(), quests: this.quests.serialize(), weather: this.weather.serialize(), progress: this.progress.serialize(), assets: this.assets.serialize(), biz: this.business.serialize() })
     if (announce) this.hud.toast(ok ? '已存档' : '存档失败（浏览器禁止本地存储）')
     return ok !== null
   }
@@ -490,6 +533,7 @@ export class Game {
     this.jobs.stop()
     Save.apply(this.ctx, d)
     this.jobs.restore(d.jobs); this.quests.init(d.quests); this.weather.restore(d.weather)
+    this.restorePhase8(d)
     this.law.reset()
     this.cam.snap(this.player.yaw)
     this.hud.toast(`已读档 · 第${d.day}天 ${this.clock.hhmm}`)
@@ -583,6 +627,13 @@ export class Game {
     this.spawner.update(dt, this.ctx, policeCountFor(this.law.policeStars))
     this.jobs.update(dt, this.ctx)
     this.quests.update(dt)
+    this.assets.update(dt)
+    this.business.update(dt)
+    // 新完成的任务 → XP（奖励的 1/5）
+    if (this.quests.done.size !== this.questSeen.size) {
+      for (const id of this.quests.done) if (!this.questSeen.has(id)) { this.questSeen.add(id); this.progress.questDone(this.quests.byId(id)?.reward ?? 0) }
+    }
+    this.progress.update(dt)
 
     if (playing) {
       if (this.player.health <= 0) this.enterState('dead')
@@ -815,6 +866,7 @@ export class Game {
     const speedKmh = pl.vehicle ? pl.vehicle.speed * 3.6 : null
     const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
     this.hud.update(dt, pl.health, pl.money, this.law.stars, this.law.flash, speedKmh, this.missionCard(), dbg)
+    this.hud.level(`Lv${this.progress.level} ${this.progress.title}`, this.progress.pct)
     this.audio.update(this.time, pl.inVehicle, pl.vehicle?.speed ?? 0, pl.vehicle?.controls.throttle ?? 0, this.law.policeStars, policeDist)
     this.audio.ambient(this.ctx, dt)
   }
@@ -1016,7 +1068,17 @@ export class Game {
         choose(index: number) { return self.panels.choose(index) },
         close() { self.closePanel() },
       },
-      phone: { get open() { return self.phone.open }, toggle() { self.phone.toggle() }, show(sub: 'work' | 'map' | 'settings' | null) { self.phone.set(true); self.phone.showSub(sub) } },
+      phone: { get open() { return self.phone.open }, get sub() { return self.phone.subPage }, toggle() { self.phone.toggle() }, show(sub: 'work' | 'map' | 'settings' | 'progress' | 'shop' | 'biz' | null) { self.phone.set(true); self.phone.showSub(sub) } },
+      /** 成长：等级 / XP / 头衔 / 终身统计 / 成就；addXp 测试加经验 */
+      progress: {
+        get level() { return self.progress.level }, get xp() { return self.progress.xp }, get need() { return self.progress.need },
+        get title() { return self.progress.title }, get stats() { return self.progress.stats },
+        get achievements() { return [...self.progress.achievements] },
+        addXp(n: number) { self.progress.addXp(n); return self.progress.level },
+      },
+      /** 测试：直接设置现金（不计入终身收支） */
+      money(n: number) { self.player.money = n; self.progress.resync(); return n },
+      get netWorth() { return self.wallet.netWorth() },
       save() { return self.saveGame(false) },
       load() { return self.loadGame() },
       get dayNight() { const d = self.dayNight; return { sunIntensity: d.sun.intensity, hemiIntensity: d.hemi.intensity, lights: d.lights, gloom: d.gloom, shadows: self.renderer.shadowMap.enabled, sunDir: d.sun.position.clone().sub(d.sun.target.position).normalize().toArray().map((n) => +n.toFixed(2)) } },
