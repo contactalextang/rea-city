@@ -33,8 +33,8 @@ export const VEHICLE_PARAMS = {
   taxi:    { accel: 9,  brake: 20, maxFwd: 30, maxRev: 8, drag: 0.10, rolling: 1.2, maxSteer: 3.0, grip: 0.80, gripDrift: 0.955 },
   /** 金领豪车：低矮跑车，加速与极速更高 */
   luxury:  { accel: 15, brake: 26, maxFwd: 42, maxRev: 9, drag: 0.08, rolling: 1.1, maxSteer: 3.1, grip: 0.85, gripDrift: 0.955 },
-  /** SBS/SMRT 单层巴士：笨重、转向慢 */
-  bus:     { accel: 5,  brake: 14, maxFwd: 22, maxRev: 5, drag: 0.10, rolling: 1.5, maxSteer: 2.2, grip: 0.86, gripDrift: 0.97 },
+  /** SBS/SMRT 单层巴士：笨重、转向慢（转向/刹车比早期版本放宽，避免路口转不过、刹不住） */
+  bus:     { accel: 5,  brake: 17, maxFwd: 22, maxRev: 5, drag: 0.10, rolling: 1.5, maxSteer: 2.6, grip: 0.86, gripDrift: 0.97 },
 }
 /** 的士涂装：Comfort 蓝 / CityCab 黄 / Strides 青柠 / TransCab 红 */
 export const TAXI_COLORS = [0x1f5fbf, 0xf2c516, 0x9acd32, 0xc0392b] as const

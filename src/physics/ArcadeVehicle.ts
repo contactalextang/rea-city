@@ -6,11 +6,11 @@ export interface VehicleBody {
 }
 export interface Controls { throttle: number; steer: number; handbrake: boolean }
 
-/** 速度对转向的钟形加权：低速弱（防原地打转）、中速强、高速再衰减 */
+/** 速度对转向的钟形加权：低速弱（防原地打转）、中速强、高速再衰减（12 m/s 起衰减，30 m/s 约剩一半，高速不飘） */
 export function steerFactor(speed: number) {
   const s = Math.abs(speed)
   const lowRamp = Math.min(s / 2.5, 1)
-  const highDecay = 1 / (1 + Math.max(0, s - 18) / 30)
+  const highDecay = 1 / (1 + Math.max(0, s - 12) / 20)
   return lowRamp * highDecay
 }
 

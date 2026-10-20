@@ -1,21 +1,58 @@
 import type { Ctx } from '../core/Context'
 import type { RoadEdge } from '../world/RoadGraph'
+import type { LawStrictness } from '../core/Settings'
 
 export type CrimeKind = 'shoot' | 'carjack' | 'hitPed' | 'hitPolice' | 'wreck' | 'shootVehicle' | 'hitVehicle'
 export type TrafficKind = 'speeding' | 'redLight' | 'collision' | 'hitPedTraffic'
 
 export const DEMERIT_LIMIT = 24
+
+/**
+ * 执法松紧可调参数（设置项 lawStrictness；默认 relaxed，?law=real 接近原版）。
+ * 信号簇同步、碰撞按车辆对去重、肇事方判定、簇内部边不设停止线属于 bug 修复，两档都生效。
+ */
+export interface LawTuning {
+  /** 闯红灯扣分 */
+  redLightPoints: number
+  /** 越线时红灯已持续不足此秒数不罚（黄灯刚转红的容错） */
+  redLightGrace: number
+  /** 同一路口簇闯红灯冷却（秒） */
+  redLightCooldown: number
+  /** 通缉身份撞 NPC 车的热度 */
+  hitVehicleHeat: number
+  /** 通缉身份撞 NPC 车是否还另开碰撞罚单（罚单会把热度直接抬到 1） */
+  wantedCollisionTicket: boolean
+  /** 通缉身份小额事件（< 此值）不立即出警，累计热度 ≥ 1 才出警；0 = 任何事件都出警 */
+  chaseMinCrime: number
+  /** 非通缉身份撞警车把热度抬到 2 的冷却（秒） */
+  hitPoliceCooldown: number
+  /** 玩家开巴士时碰撞计罪的冲量阈值倍率（巴士重、贴一下冲量就大） */
+  busImpulseMul: number
+  /** 热度开始衰减前需要的无事件秒数 / 附近无警车的距离 */
+  decayDelay: number
+  decayPoliceDist: number
+  /** 警车追撞速度（m/s） */
+  ramSpeed: number
+  /** 车内被警车贴住多少秒算被捕 */
+  bustTime: number
+}
+export const LAW_TUNING: Record<LawStrictness, LawTuning> = {
+  relaxed: { redLightPoints: 6, redLightGrace: 0.5, redLightCooldown: 10, hitVehicleHeat: 0.2, wantedCollisionTicket: false, chaseMinCrime: 0.5, hitPoliceCooldown: 5, busImpulseMul: 1.5, decayDelay: 8, decayPoliceDist: 50, ramSpeed: 30, bustTime: 4 },
+  real:    { redLightPoints: 12, redLightGrace: 0, redLightCooldown: 0, hitVehicleHeat: 0.34, wantedCollisionTicket: true, chaseMinCrime: 0, hitPoliceCooldown: 0, busImpulseMul: 1, decayDelay: 12, decayPoliceDist: 70, ramSpeed: 34, bustTime: 2.5 },
+}
+export const lawTuning = (ctx: Pick<Ctx, 'settings'>): LawTuning => LAW_TUNING[ctx.settings.lawStrictness] ?? LAW_TUNING.relaxed
+
 const TICKETS: Record<Exclude<TrafficKind, 'hitPedTraffic'>, { fine: number; points: number; label: string }> = {
   speeding: { fine: 150, points: 4, label: '超速' },
-  redLight: { fine: 200, points: 12, label: '闯红灯' },
+  redLight: { fine: 200, points: 12, label: '闯红灯' },   // points 实际取 LawTuning.redLightPoints
   collision: { fine: 300, points: 6, label: '碰撞' },
 }
 const CRIME_LABEL: Partial<Record<CrimeKind, string>> = { carjack: '抢车', wreck: '毁车', shoot: '开枪', shootVehicle: '开枪' }
 
 /**
  * 执法系统（取代 Wanted）：
- * - pursuitLevel 0~5 浮点热度，floor 为星级；12 s 无事件且 70 m 无警车则衰减
- * - 犯罪型：通缉身份累加热度并出警；其他身份降级为交通执法
+ * - pursuitLevel 0~5 浮点热度，floor 为星级；decayDelay 秒无事件且 decayPoliceDist 内无警车则衰减
+ * - 犯罪型：通缉身份累加热度并出警（宽松档小额事件攒够 1 星才出警）；其他身份降级为交通执法
  * - 交通型：罚单（扣钱 + 扣分）并把热度抬到 1；≥2 才出警（chase）
  */
 export class Law {
@@ -30,6 +67,9 @@ export class Law {
   private speedTimer = 0
   private lastSpeedTicket = -100
   private lastCollisionTicket = -100
+  private lastPoliceRaise = -100
+  /** 路口簇 id → 上次闯红灯罚单时刻 */
+  private redLightAt = new Map<number, number>()
   private prevEdge: RoadEdge | null = null
   private prevT = 0
   private toastFn: (text: string, seconds?: number) => void = () => {}
@@ -41,21 +81,25 @@ export class Law {
   get policeStars() { return this.chase ? this.stars : 0 }
   licenseSuspended(day: number) { return day < this.licenseSuspendedUntilDay }
 
-  /** 兼容旧 Wanted.addCrime：直接累加热度（通缉逻辑） */
-  addCrime(amount: number, time: number) {
+  /** 兼容旧 Wanted.addCrime：直接累加热度（通缉逻辑）；minChase>0 时小额事件攒够 1 星才出警 */
+  addCrime(amount: number, time: number, minChase = 0) {
     const before = this.stars
     this.pursuitLevel = Math.min(5, this.pursuitLevel + amount)
     this.lastCrime = time
-    if (amount > 0) this.chase = true
+    if (amount > 0 && (amount >= minChase || this.pursuitLevel >= 1)) this.chase = true
     if (this.stars > before) this.flash = 1
   }
 
   /** 犯罪型事件：按身份路由 */
   crime(kind: CrimeKind, weight: number, ctx: Ctx) {
-    if (ctx.role.systems.wanted) { this.addCrime(weight, ctx.time); return }
+    const tune = lawTuning(ctx)
+    if (ctx.role.systems.wanted) { this.addCrime(weight, ctx.time, tune.chaseMinCrime); return }
     switch (kind) {
       case 'hitPed': this.traffic('hitPedTraffic', ctx); break
-      case 'hitPolice': this.collision(ctx, true); this.raise(2, ctx.time); break
+      case 'hitPolice':
+        this.collision(ctx, true)
+        if (ctx.time - this.lastPoliceRaise >= tune.hitPoliceCooldown) { this.lastPoliceRaise = ctx.time; this.raise(2, ctx.time) }
+        break
       case 'hitVehicle': break                        // 已由 Game 走 collision()
       default: this.collision(ctx, false, CRIME_LABEL[kind])
     }
@@ -78,10 +122,11 @@ export class Law {
       return
     }
     const def = TICKETS[kind]
-    this.fines += def.fine; this.demerits += def.points
+    const points = kind === 'redLight' ? lawTuning(ctx).redLightPoints : def.points
+    this.fines += def.fine; this.demerits += points
     ctx.player.money -= def.fine
     this.raise(kind === 'redLight' && this.policeDist(ctx) < 80 ? 2 : 1, t)
-    this.toastFn(`罚单 $${def.fine} · ${label ?? def.label} +${def.points} 分`, 3)
+    this.toastFn(`罚单 $${def.fine} · ${label ?? def.label} +${points} 分`, 3)
     if (this.demerits >= DEMERIT_LIMIT) {
       this.licenseSuspendedUntilDay = ctx.clock.day + 1
       this.demerits = 0
@@ -113,14 +158,18 @@ export class Law {
     this.flash = Math.max(0, this.flash - dt)
     this.detectTraffic(dt, ctx)
     if (this.pursuitLevel <= 0) { this.chase = false; return }
-    if (ctx.time - this.lastCrime < 12) return
-    if (this.policeDist(ctx) < 70) return
+    const tune = lawTuning(ctx)
+    if (ctx.time - this.lastCrime < tune.decayDelay) return
+    if (this.policeDist(ctx) < tune.decayPoliceDist) return
     // 每 10 秒掉一星；不满一星的热度更快清零
     this.pursuitLevel = Math.max(0, this.pursuitLevel - dt * (this.pursuitLevel < 1 ? 0.25 : 0.1))
     if (this.pursuitLevel <= 0) this.chase = false
   }
 
-  /** 玩家在车内：超速（连续 2 s 且 80 m 内有警车）与闯红灯（红灯相位越过停止线） */
+  /**
+   * 玩家在车内：超速（连续 2 s 且 80 m 内有警车）与闯红灯（红灯相位越过停止线）。
+   * 闯红灯只看从簇外进入路口的边（簇内部短边没有停止线）；红灯刚亮 redLightGrace 秒内越线不罚；同一路口簇冷却。
+   */
   private detectTraffic(dt: number, ctx: Ctx) {
     const v = ctx.player.vehicle
     if (!v || v.wrecked) { this.prevEdge = null; this.speedTimer = 0; return }
@@ -133,7 +182,16 @@ export class Law {
       this.traffic('speeding', ctx)
     }
     const stop = e.length - e.to.jr
-    if (e === this.prevEdge && e.to.signal && this.prevT < stop && lane.t >= stop && ctx.signals.phaseFor(e) === 'red') this.traffic('redLight', ctx)
+    const sig = ctx.signals
+    if (e === this.prevEdge && e.to.signal && this.prevT < stop && lane.t >= stop && !sig.isInternalEdge(e) && sig.phaseFor(e) === 'red') {
+      const tune = lawTuning(ctx)
+      const cluster = sig.clusterOf(e.to.id)
+      const last = this.redLightAt.get(cluster) ?? -Infinity
+      if (sig.redElapsed(e) >= tune.redLightGrace && ctx.time - last >= tune.redLightCooldown) {
+        this.redLightAt.set(cluster, ctx.time)
+        this.traffic('redLight', ctx)
+      }
+    }
     this.prevEdge = e; this.prevT = lane.t
   }
 }

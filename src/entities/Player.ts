@@ -114,9 +114,10 @@ export class Player implements Body {
         c.throttle = input.axis('KeyS', 'KeyW') + input.axis('ArrowDown', 'ArrowUp')
         c.steer = input.axis('KeyA', 'KeyD') + input.axis('ArrowLeft', 'ArrowRight')
         c.throttle = clamp(c.throttle, -1, 1)
-        // 键盘转向做平滑：打满约 0.15s，回正更快，避免一按就甩
+        // 键盘转向做平滑：低速打满约 0.15 s，速度越高打方向越慢（30 m/s 约 0.4 s），回正始终较快，避免一按就甩
         const want = clamp(c.steer, -1, 1)
-        const rate = Math.abs(want) > Math.abs(this.steerCur) ? 7 : 12
+        const sp = Math.abs(this.vehicle.speed)
+        const rate = Math.abs(want) > Math.abs(this.steerCur) ? 7 / (1 + Math.max(0, sp - 8) / 12) : 12
         this.steerCur += clamp(want - this.steerCur, -rate * dt, rate * dt)
         c.steer = this.steerCur
         c.handbrake = input.down('Space')

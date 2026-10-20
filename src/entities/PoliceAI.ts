@@ -6,6 +6,7 @@ import { steerTowards, throttleFor, obstacleAhead } from './TrafficAI'
 import type { Pedestrians } from './Pedestrians'
 import { rayBody } from '../physics/Collision'
 import type { StaticBody } from '../world/Colliders'
+import { lawTuning } from '../systems/Law'
 
 export interface PoliceState {
   edge: RoadEdge; nextEdge: RoadEdge | null
@@ -50,6 +51,8 @@ export class PoliceAI {
     const playerEdge = playerLane.edge
     // 追捕目标路口：玩家所在路段离玩家更近的一端（真实城市单行道长，只取起点常要绕一大圈）
     const playerNode = playerLane.t < playerEdge.length / 2 ? playerEdge.from : playerEdge.to
+    // 追撞速度：宽松档 30 m/s（与普通车极速持平，玩家开得好能甩掉），real 档 34
+    const ramSpeed = lawTuning(ctx).ramSpeed
     for (const v of ctx.vehicles) {
       if (!v.active || v.driver !== 'police' || v.wrecked) continue
       const s = v.ai as PoliceState
@@ -78,10 +81,10 @@ export class PoliceAI {
         const ahead = ((px - v.x) * fx + (pz - v.z) * fz) / Math.max(1, dist)
         const playerSlow = Math.hypot(pl.worldVX, pl.worldVZ) < 3
         // 玩家车停着：靠上去围堵（准备逮捕）而不是反复撞
-        targetSpeed = pl.inVehicle ? (playerSlow && dist < 12 ? clamp(dist * 0.9, 1, 8) : 34) : clamp(dist * 1.3, 2, 16)
+        targetSpeed = pl.inVehicle ? (playerSlow && dist < 12 ? clamp(dist * 0.9, 1, 8) : ramSpeed) : clamp(dist * 1.3, 2, 16)
         // 目标在侧后方：减速掉头
         if (ahead < 0.3) targetSpeed = Math.min(targetSpeed, 7)
-        if (pl.inVehicle && dist < 8 && !playerSlow) targetSpeed = 34
+        if (pl.inVehicle && dist < 8 && !playerSlow) targetSpeed = ramSpeed
         v.controls.throttle = throttleFor(v, targetSpeed)
         if (!pl.inVehicle && dist < 7) v.controls.throttle = clamp(v.controls.throttle, -1, 0.3)
       } else {

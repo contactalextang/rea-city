@@ -17,7 +17,7 @@ import { Pedestrians } from '../entities/Pedestrians'
 import { TrafficAI, releaseToken } from '../entities/TrafficAI'
 import { PoliceAI } from '../entities/PoliceAI'
 import { Spawner, policeCountFor } from '../systems/Spawner'
-import { Law, type TrafficKind } from '../systems/Law'
+import { Law, lawTuning, type TrafficKind } from '../systems/Law'
 import { Signals, type Phase, type SignalLights } from '../systems/Signals'
 import { ROLES, type RoleDef } from '../data/roles'
 import { Jobs, taxiFare } from '../systems/Jobs'
@@ -310,10 +310,20 @@ export class Game {
       const mine = a.driver === 'player' ? a : b.driver === 'player' ? b : null
       if (!mine) return
       const other = mine === a ? b : a
-      other.lastHitByPlayer = this.time
-      if (other.kind === 'police') { if (impulse > 3) this.law.crime('hitPolice', 1, this.ctx) }
-      else if (impulse > 4) { this.law.crime('hitVehicle', 0.34, this.ctx); this.law.collision(this.ctx) }
       if (impulse > 12) this.player.damage((impulse - 12) * 0.8)
+      // 被撞（对方更快地冲向玩家 / 警车追撞）只扣血不计罪；同一辆车 3 s 内只计一次
+      if (!this.hitByPlayerFault) return
+      other.lastHitByPlayer = this.time
+      if (this.time - (this.crimeHitAt.get(other) ?? -100) < 3) return
+      const tune = lawTuning(this.ctx)
+      const mul = mine.kind === 'bus' ? tune.busImpulseMul : 1
+      if (other.kind === 'police') {
+        if (impulse > 3 * mul) { this.crimeHitAt.set(other, this.time); this.law.crime('hitPolice', 1, this.ctx) }
+      } else if (impulse > 4 * mul) {
+        this.crimeHitAt.set(other, this.time)
+        this.law.crime('hitVehicle', tune.hitVehicleHeat, this.ctx)
+        if (!this.role.systems.wanted || tune.wantedCollisionTicket) this.law.collision(this.ctx)
+      }
     })
     this.events.on('vehicleHitStatic', ({ v, impulse }) => {
       if (v.driver === 'player' && impulse > 14) this.player.damage((impulse - 14) * 0.8)
@@ -574,9 +584,9 @@ export class Game {
         const near = this.vehicles.some((v) => v.active && v.driver === 'police' && !v.wrecked && v.absSpeed < 8 && Math.hypot(v.x - pl.worldX, v.z - pl.worldZ) < (pl.inVehicle ? 6.5 : 3.4))
         if (!pl.inVehicle && near) this.enterState('busted')
         else if (pl.inVehicle && near && pl.vehicle!.absSpeed < 4) {
-          // 在车里几乎不动且被警车贴住约 2.5 秒 → 被拖下车逮捕
+          // 在车里几乎不动且被警车贴住一段时间（宽松 4 s / real 2.5 s）→ 被拖下车逮捕
           this.bustTimer += dt
-          if (this.bustTimer > 2.5) this.enterState('busted')
+          if (this.bustTimer > lawTuning(this.ctx).bustTime) this.enterState('busted')
         } else this.bustTimer = Math.max(0, this.bustTimer - dt * 0.5)
       } else this.bustTimer = 0
       if (this.quests.allDone && !this.wonShown) {
@@ -658,52 +668,77 @@ export class Game {
     this.events.emit('carjack', { v, hadDriver })
   }
 
+  /** 当前这次 vehicleHitVehicle 里玩家是否肇事（resolveCollisions 发事件前写入，事件同步处理） */
+  private hitByPlayerFault = true
+  /** 对方车 → 上次因撞它计罪的时刻（3 s 冷却） */
+  private crimeHitAt = new WeakMap<Vehicle, number>()
+
+  /**
+   * 肇事方判定（用碰撞前速度）：玩家车朝对方的接近速度 < 对方朝玩家的接近速度 → 玩家是被撞的一方；
+   * 追撞模式（ram）的警车撞上来也不算玩家的错。
+   */
+  private playerAtFault(a: Vehicle, b: Vehicle, avx: number, avz: number, bvx: number, bvz: number) {
+    const mineA = a.driver === 'player'
+    const other = mineA ? b : a
+    if (other.driver === 'police' && (other.ai as { mode?: string } | null)?.mode === 'ram') return false
+    let nx = b.x - a.x, nz = b.z - a.z
+    const d = Math.hypot(nx, nz) || 1
+    nx /= d; nz /= d
+    const aClose = avx * nx + avz * nz, bClose = -(bvx * nx + bvz * nz)   // 各自朝对方的速度分量
+    return mineA ? aClose >= bClose : bClose >= aClose
+  }
+
   private resolveCollisions() {
     const V = this.vehicles
-    // 车 vs 静态
+    // 车 vs 静态：每辆车每帧只按最大冲量结算一次伤害/事件（多个碰撞圆同时擦到不重复计）
     for (const v of V) {
       if (!v.active || v.kinematic) continue
+      let maxImp = 0
       for (let i = 0; i < v.circleCount; i++) {
         v.circle(i, c0)
         for (const b of this.world.query(c0.x, c0.z, v.radius, tmpBoxes)) {
           const c = circleBody(c0.x, c0.z, v.radius, b)
           if (!c) continue
           const imp = pushOut(v, c, 0.25)
-          if (imp > 2.5) {
-            this.hitVehicle(v, (imp - 2.5) * 2.2, false)
-            this.events.emit('vehicleHitStatic', { v, impulse: imp })
-            if (v.driver === 'player') this.audio.crash(imp)
-          }
-          // 撞墙后轻微转开，避免卡死
-          v.yaw += (c.nx * Math.cos(v.yaw) - c.nz * Math.sin(v.yaw)) * 0.02 * (i === 0 ? 1 : -1)
+          if (imp > maxImp) maxImp = imp
+          // 撞墙后轻微转开，避免卡死（力度减半：擦到路灯不再明显甩头）
+          v.yaw += (c.nx * Math.cos(v.yaw) - c.nz * Math.sin(v.yaw)) * 0.01 * (i === 0 ? 1 : -1)
           v.circle(i, c0)
         }
       }
+      if (maxImp > 2.5) {
+        this.hitVehicle(v, (maxImp - 2.5) * 2.2, false)
+        this.events.emit('vehicleHitStatic', { v, impulse: maxImp })
+        if (v.driver === 'player') this.audio.crash(maxImp)
+      }
     }
-    // 车 vs 车
+    // 车 vs 车：物理响应逐圆对计算，伤害/事件每对车每帧只结算一次（取最大冲量；巴士 4 圆 × 4 圆不再多次计罪）
     for (let i = 0; i < V.length; i++) {
       const a = V[i]; if (!a.active) continue
       for (let j = i + 1; j < V.length; j++) {
         const b = V[j]; if (!b.active) continue
         const dx = a.x - b.x, dz = a.z - b.z
         if (dx * dx + dz * dz > (a.halfLen + b.halfLen + 2.4) ** 2) continue
+        const avx = a.vx, avz = a.vz, bvx = b.vx, bvz = b.vz
+        let maxImp = 0
         for (let ia = 0; ia < a.circleCount; ia++) for (let ib = 0; ib < b.circleCount; ib++) {
           a.circle(ia, c0); b.circle(ib, c1)
           const imp = circleCircle(a, a.radius, a.mass, b, b.radius, b.mass, 0.3, c0.x, c0.z, c1.x, c1.z)
-          if (imp > 0) {
-            if (imp > 2) {
-              const byPlayer = a.driver === 'player' || b.driver === 'player'
-              // 玩家车结实（1.2×），被玩家撞的车脆（3.5×），NPC 互撞伤害低（0.8×）避免车流自毁
-              const scaleFor = (v: Vehicle) => (v.driver === 'player' ? 1.2 : byPlayer ? 3.5 : 0.8)
-              this.hitVehicle(a, (imp - 2) * scaleFor(a), byPlayer && b.driver === 'player')
-              this.hitVehicle(b, (imp - 2) * scaleFor(b), byPlayer && a.driver === 'player')
-              this.events.emit('vehicleHitVehicle', { a, b, impulse: imp })
-              if (byPlayer) this.audio.crash(imp)
-              // 被明显撞到的交通车改为物理滑行
-              if (imp > 4) { if (a.driver === 'traffic') this.trafficAI.knock(a); if (b.driver === 'traffic') this.trafficAI.knock(b) }
-            }
-          }
+          if (imp > maxImp) maxImp = imp
         }
+        if (maxImp <= 2) continue
+        const byPlayer = a.driver === 'player' || b.driver === 'player'
+        const fault = byPlayer && this.playerAtFault(a, b, avx, avz, bvx, bvz)
+        // 玩家车结实（1.2×），被玩家撞的车脆（3.5×），NPC 互撞伤害低（0.8×）避免车流自毁
+        const scaleFor = (v: Vehicle) => (v.driver === 'player' ? 1.2 : byPlayer ? 3.5 : 0.8)
+        this.hitVehicle(a, (maxImp - 2) * scaleFor(a), fault && b.driver === 'player')
+        this.hitVehicle(b, (maxImp - 2) * scaleFor(b), fault && a.driver === 'player')
+        this.hitByPlayerFault = fault
+        this.events.emit('vehicleHitVehicle', { a, b, impulse: maxImp })
+        this.hitByPlayerFault = true
+        if (byPlayer) this.audio.crash(maxImp)
+        // 被明显撞到的交通车改为物理滑行
+        if (maxImp > 4) { if (a.driver === 'traffic') this.trafficAI.knock(a); if (b.driver === 'traffic') this.trafficAI.knock(b) }
       }
     }
     // 步行玩家 vs 车

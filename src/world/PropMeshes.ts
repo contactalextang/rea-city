@@ -4,7 +4,8 @@ import { rand } from '../config'
 import type { ChunkProp } from './ChunkFormat'
 import type { RoadGraph, RoadNode, RoadEdge, P2 } from './RoadGraph'
 import { polyBody, type StaticBody } from './Colliders'
-import type { SignalLights } from '../systems/Signals'
+import { signalClusters, type SignalLights } from '../systems/Signals'
+import { RoadClearance } from './RoadClearance'
 
 /**
  * 街道道具：全局 InstancedMesh（每种道具一个池），按区块维护实例记录；
@@ -13,6 +14,9 @@ import type { SignalLights } from '../systems/Signals'
  *   scene.userData.lamps = 灯柱 InstancedMesh，scene.userData.lampHead = 灯头相对实例原点偏移；
  *   scene.userData.signalLights = { mesh: 灯头 InstancedMesh, edgeIds }，第 i 个实例对应 edgeIds[i]（进入路口的边）。
  * 本地坐标：原点在地面，yaw=0 时"前方"为 +z（与 ChunkFormat 的 yaw 约定一致），len 沿 +z。
+ * 杆状道具（路灯 / 信号灯杆 / 的士站牌 / 行道树）的 LTA 原始坐标约两成落在建模车行道里：加载时用 RoadClearance
+ * 沿法线推到路缘外 0.5 m（实例与碰撞体一起移）；推不出的路灯/树直接不放，信号灯杆保留外观（灯头要用）但不建碰撞体。
+ * ERP 龙门架的立柱不挪（横梁要对齐），立柱在车行道内就只去掉碰撞体。
  */
 
 type PoolName = 'lamp' | 'signalPole' | 'signalHead' | 'busstop' | 'taxistand' | 'gantryBeam' | 'mrtexit' | 'linkwayRoof' | 'bridgeDeck' | 'stair' | 'post' | 'tree'
@@ -23,6 +27,8 @@ interface Entry { pool: PoolName; m: THREE.Matrix4; edgeId: number }
 /** 灯头相对灯柱实例原点的偏移（DayNight 光晕用） */
 export const LAMP_HEAD = new THREE.Vector3(0.5, 5.45, 0)
 const SIGNAL_SNAP = 20
+/** 杆状道具与路缘的净空 (m) */
+const KERB_CLEAR = 0.5
 const RED = new THREE.Color(0xff2b2b)
 const tmpP: P2 = { x: 0, z: 0 }
 const tmpV = new THREE.Vector3(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3()
@@ -112,7 +118,12 @@ export class PropMeshes {
   private dirty = false
   private scene: THREE.Scene | null = null
   private signalNodes: RoadNode[] = []
-  private incoming = new Map<RoadNode, RoadEdge[]>()
+  /** 信号路口簇 id → 从簇外进入的边（灯头只挂这些边，簇内部短边恒绿） */
+  private incoming = new Map<number, RoadEdge[]>()
+  private cluster: Int32Array
+  private clear: RoadClearance
+  /** 杆状道具净空修正统计（调试/验收用）：moved 推出车行道，dropped 推不出而去掉碰撞体，ms 为 addChunk 累计耗时 */
+  readonly clearance = { moved: 0, dropped: 0, ms: 0 }
 
   constructor(private graph: RoadGraph, lampCapacity = 4096) {
     const geos = makeGeometries()
@@ -129,11 +140,14 @@ export class PropMeshes {
     }
     this.signalLights = { mesh: this.pools.signalHead.mesh, edgeIds: [] }
     for (const n of graph.nodes) if (n.signal) this.signalNodes.push(n)
+    this.cluster = signalClusters(graph)
     for (const e of graph.edges) {
-      if (!e.to.signal) continue
-      const list = this.incoming.get(e.to) ?? []
-      list.push(e); this.incoming.set(e.to, list)
+      const c = this.cluster[e.to.id]
+      if (c < 0 || this.cluster[e.from.id] === c) continue
+      const list = this.incoming.get(c) ?? []
+      list.push(e); this.incoming.set(c, list)
     }
+    this.clear = new RoadClearance(graph)
   }
 
   attach(scene: THREE.Scene) {
@@ -176,15 +190,32 @@ export class PropMeshes {
       const c = Math.cos(yaw), s = Math.sin(yaw)
       return [x + lx * c + lz * s, z - lx * s + lz * c]
     }
+    const t0 = performance.now()
+    const st = this.clearance
+    // 杆状道具推出车行道：返回新位置；推不出返回 null
+    const fit = (x: number, z: number, r: number) => {
+      const q = this.clear.fit(x, z, r, KERB_CLEAR)
+      if (!q.moved) return q
+      if (q.ok) st.moved++; else st.dropped++
+      return q.ok ? q : null
+    }
     for (const p of props) {
-      const { x, z, yaw } = p
+      const { yaw } = p
+      let { x, z } = p
       switch (p.type) {
-        case 0: push('lamp', x, z, yaw); aabb(x, z, 0.2, 5.5); break
+        case 0: {
+          const q = fit(x, z, 0.2)
+          if (!q) break                          // 落在路口圆心 / 夹缝里：数据误差，直接不放
+          push('lamp', q.x, q.z, yaw); aabb(q.x, q.z, 0.2, 5.5)
+          break
+        }
         case 1: {
+          const q = fit(x, z, 0.15)
+          if (q) { x = q.x; z = q.z }
           const edgeId = this.signalEdge(x, z)
           push('signalPole', x, z, yaw)
           if (edgeId >= 0) push('signalHead', x, z, yaw, 1, 1, 1, edgeId)
-          aabb(x, z, 0.15, 3.6)
+          if (q) aabb(x, z, 0.15, 3.6)          // 推不出：保留外观（灯头）但不建碰撞体
           break
         }
         case 2: {
@@ -193,13 +224,18 @@ export class PropMeshes {
           rect(x, z, yaw, -0.72, 0, 0.1, 4, 1.7)
           break
         }
-        case 3: push('taxistand', x, z, yaw); aabb(x, z, 0.1, 2.5); break
+        case 3: {
+          const q = fit(x, z, 0.1)
+          if (q) { push('taxistand', q.x, q.z, yaw); aabb(q.x, q.z, 0.1, 2.5) }
+          break
+        }
         case 4: {
           const len = Math.max(4, p.len || 10)
           push('gantryBeam', x, z, yaw, 1, 1, len)
           for (const lz of [-len / 2, len / 2]) {
             push('post', x, z, yaw, 1.6, 5.6, 1.6, -1, 0, lz)
-            const [px, pz] = local(x, z, yaw, 0, lz); aabb(px, pz, 0.22, 5.6)
+            const [px, pz] = local(x, z, yaw, 0, lz)
+            if (this.clear.intrudes(px, pz, 0.22)) st.dropped++; else aabb(px, pz, 0.22, 5.6)
           }
           break
         }
@@ -230,12 +266,14 @@ export class PropMeshes {
         }
         case 8: {
           const s = rand(0.8, 1.3)
-          push('tree', x, z, yaw, s, s, s); aabb(x, z, 0.35, 2.2)
+          const q = fit(x, z, 0.35)
+          if (q) { push('tree', q.x, q.z, yaw, s, s, s); aabb(q.x, q.z, 0.35, 2.2) }
           break
         }
         default: break
       }
     }
+    st.ms += performance.now() - t0
     this.chunks.set(key, entries)
     this.dirty = true
   }
@@ -244,7 +282,7 @@ export class PropMeshes {
     if (this.chunks.delete(key)) this.dirty = true
   }
 
-  /** 信号灯道具 → 进入路口的边：取 20 m 内最近的信号灯节点，在其入边里选停止线旁人行道点离道具最近的那条 */
+  /** 信号灯道具 → 进入路口的边：取 20 m 内最近的信号灯节点，在其所在路口簇的入边（簇外进入）里选停止线旁人行道点离道具最近的那条 */
   private signalEdge(x: number, z: number): number {
     let node: RoadNode | null = null, best = SIGNAL_SNAP * SIGNAL_SNAP
     for (const n of this.signalNodes) {
@@ -252,7 +290,7 @@ export class PropMeshes {
       if (d < best) { best = d; node = n }
     }
     if (!node) return -1
-    const edges = this.incoming.get(node)
+    const edges = this.incoming.get(this.cluster[node.id])
     if (!edges || !edges.length) return -1
     let bestE = edges[0], bestD = Infinity
     for (const e of edges) {
