@@ -48,7 +48,7 @@ export class PoiMarkers {
       cube.userData.castShadow = false
       const beam = opts.beams
         ? new THREE.InstancedMesh(new THREE.CylinderGeometry(0.35, 0.35, BEAM_H, 8, 1, true).translate(0, 3.8 + BEAM_H / 2, 0),
-          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide }), big.length)
+          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }), big.length)
         : null
       if (beam) beam.userData.castShadow = false
       big.forEach(({ p, x, z }, k) => {

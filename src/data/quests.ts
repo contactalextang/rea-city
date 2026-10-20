@@ -80,13 +80,13 @@ export const QUESTS: QuestDef[] = [
   // ---------- 黑帮街头任务（原三任务） ----------
   {
     id: 'm_deliver', title: '运货', roles: ['gang'], giver: { type: 'landmark' }, reward: 600, timeLimit: 110,
-    intro: '把金色轿车完好送到商店门口（蓝色标记）。',
-    steps: [{ kind: 'deliver', from: { type: 'landmark' }, to: { type: 'shop' }, label: '上金色轿车，送到蓝色标记' }],
+    intro: '把金色轿车完好送到商店门口（粉色标记）。',
+    steps: [{ kind: 'deliver', from: { type: 'landmark' }, to: { type: 'shop' }, label: '上金色轿车，送到粉色标记' }],
   },
   {
     id: 'm_race', title: '赶时间', roles: ['gang'], giver: { type: 'shop' }, reward: 450, timeLimit: 70,
-    intro: '限时赶到地标（蓝色标记），用什么交通工具随你。',
-    steps: [{ kind: 'goto', poi: { type: 'landmark' }, label: '限时赶到蓝色标记' }],
+    intro: '限时赶到地标（粉色标记），用什么交通工具随你。',
+    steps: [{ kind: 'goto', poi: { type: 'landmark' }, label: '限时赶到粉色标记' }],
   },
   {
     id: 'm_wreck', title: '街头破坏', roles: ['gang'], giver: { type: 'landmark' }, reward: 900, timeLimit: 90, requires: 'm_deliver',

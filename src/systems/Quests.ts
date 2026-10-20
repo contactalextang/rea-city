@@ -1,8 +1,8 @@
 import type { Ctx } from '../core/Context'
 import type { P2 } from '../world/RoadGraph'
-import type { Poi } from './Poi'
+import type { Poi, PoiType } from './Poi'
 import { Vehicle } from '../entities/Vehicle'
-import { Marker } from '../world/Marker'
+import { Marker, TARGET_COLOR } from '../world/Marker'
 import { QUESTS, type QuestDef, type StepDef, type PoiRef } from '../data/quests'
 
 export interface QuestsSave {
@@ -11,9 +11,17 @@ export interface QuestsSave {
 }
 
 const STEP_LABEL: Record<StepDef['kind'], string> = {
-  goto: '前往蓝色标记', drive: '开车到蓝色标记', deliver: '把金色轿车开到蓝色标记', earn: '赚钱', wreck: '撞毁车辆',
+  goto: '前往粉色标记', drive: '开车到粉色标记', deliver: '把金色轿车开到粉色标记', earn: '赚钱', wreck: '撞毁车辆',
   eat: '吃一顿', sleep: '回家睡觉', clockIn: '去办公楼打卡', rentTaxi: '去的士站租车', job: '完成工作', invest: '投资',
 }
+
+/**
+ * 被动工作 id → 去哪类 POI 开展（job / earn 步骤的指引）。
+ * 手机开工的工作（收保护费随机挑店、的士载客等）不在此列：开工后由 Jobs 自己给目标，这里指了反而误导。
+ */
+const JOB_POI: Record<string, PoiType> = { white_shift: 'office', blue_site: 'site' }
+/** 事件步骤的指引点每隔多少秒按玩家位置重选"最近" */
+const EVENT_RETARGET = 1
 
 /**
  * 数据驱动任务（取代 Missions）：按身份筛选 data/quests.ts；auto 任务开局自动接，
@@ -31,7 +39,9 @@ export class Quests {
   missionCar: Vehicle
   private resolved: Record<string, string> = {}
   private giverMarkers = new Map<string, Marker>()
-  private targetMarker = new Marker(0x3ea6ff)
+  private targetMarker = new Marker(TARGET_COLOR)
+  /** 事件步骤（吃/睡/打卡…）的就近指引重算计时 */
+  private eventTimer = 0
   private result: 'none' | 'win' | 'fail' = 'none'
   resultTimer = 0
   toast: (s: string, sec?: number) => void = () => {}
@@ -135,7 +145,32 @@ export class Quests {
       const from = this.resolve(s.from, key('from')), to = this.resolve(s.to, key('to'))
       if (from) this.parkMissionCar(from.door)
       this.targetMarker.set(to?.door ?? null)
+    } else this.retargetEvent()
+  }
+
+  /**
+   * 事件步骤没有固定地点：按类型给"该去哪"的就近指引（光柱 + 小地图目标），事件触发即推进。
+   * eat → 小贩中心（没有则商店）；sleep → 自己的家；clockIn / invest → 办公楼；rentTaxi → 的士站；
+   * job / earn → 该工作的 POI（JOB_POI）；wreck → 无（随便哪辆车）。
+   */
+  private eventPoi(s: StepDef): Poi | null {
+    const ctx = this.ctx, pl = ctx.player
+    const near = (types: PoiType[]) => ctx.pois.nearest(pl.worldX, pl.worldZ, Infinity, types)
+    switch (s.kind) {
+      case 'eat': return near(['hawker']) ?? near(['shop'])
+      case 'sleep': return ctx.pois.byId(ctx.role.home) ?? near(['home'])
+      case 'clockIn': case 'invest': return near(['office'])
+      case 'rentTaxi': return near(['taxi'])
+      case 'job': { const t = JOB_POI[s.job]; return t ? near([t]) : null }
+      case 'earn': { const t = s.source ? JOB_POI[s.source] : undefined; return t ? near([t]) : null }
+      default: return null
     }
+  }
+  private retargetEvent() {
+    const s = this.current; if (!s) return
+    if (s.kind === 'goto' || s.kind === 'drive' || s.kind === 'deliver') return
+    this.eventTimer = EVENT_RETARGET
+    this.targetMarker.set(this.eventPoi(s)?.door ?? null)
   }
 
   /** 把金色任务车停在某门口最近的车道上 */
@@ -205,6 +240,8 @@ export class Quests {
     if (q.timeLimit) { this.timer -= dt; if (this.timer <= 0) { this.fail('超时'); return } }
     const s = this.current; if (!s) return
     const key = (k: string) => `${this.step}:${k}`
+    this.eventTimer -= dt
+    if (this.eventTimer <= 0) this.retargetEvent()
     if (s.kind === 'goto') {
       const p = this.resolve(s.poi, key('poi'))
       if (p && Math.hypot(px - p.door.x, pz - p.door.z) < (s.radius ?? 5)) this.advance()

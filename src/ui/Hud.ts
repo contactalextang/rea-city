@@ -1,3 +1,5 @@
+import { minimapNav, fmtDist } from './Minimap'
+
 const $ = (id: string) => document.getElementById(id)!
 
 /** DOM 覆盖层：血条、金钱、通缉星、任务卡片、提示、全屏覆盖 */
@@ -11,6 +13,7 @@ export class Hud {
   private lawText = ''
   private gun = true
   private vignetteOn = false
+  private navHtml = ''
 
   update(dt: number, health: number, money: number, stars: number, flash: number, speedKmh: number | null,
     mission: { title: string; desc: string; timer: string; sub?: string } | null, debug: string) {
@@ -27,10 +30,25 @@ export class Hud {
       $('mission-desc').textContent = mission.desc
       $('mission-timer').textContent = mission.timer
       const sub = $('mission-sub'); sub.textContent = mission.sub ?? ''; sub.style.display = mission.sub ? '' : 'none'
+      this.nav()
     } else m.style.display = 'none'
     this.toastTimer -= dt
     if (this.toastTimer <= 0) this.toastEl.classList.remove('show')
     $('debug').textContent = debug
+  }
+
+  /** 任务卡片的方位箭头 + 距离（相对相机朝向；数据来自本帧 Minimap.draw 算出的 minimapNav），无目标隐藏 */
+  private nav() {
+    const t = minimapNav.target
+    let html = ''
+    if (t && t.dist < 6) html = '就在这里'
+    else if (t) {
+      const deg = Math.round(t.angle * 180 / Math.PI / 5) * 5
+      html = `<span class="arr" style="transform:rotate(${deg}deg)">↑</span>${fmtDist(t.dist, ' ')}`
+    }
+    if (html === this.navHtml) return
+    this.navHtml = html
+    const el = $('mission-nav'); el.innerHTML = html; el.style.display = html ? '' : 'none'
   }
 
   /** 左上角时钟/天气：如 `第1天 07:30 · 晴` */

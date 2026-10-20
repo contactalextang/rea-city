@@ -29,6 +29,8 @@
     .mission .title { font-weight: 700; color: #ffd33d; }
     .mission .timer { font-size: 20px; font-weight: 700; margin-top: 2px; }
     .mission .timer:empty { display: none; }
+    .mission .nav { margin-top: 3px; font-size: 16px; font-weight: 800; color: #ff2bd6; text-shadow: 0 1px 2px #000; }
+    .mission .nav .arr { display: inline-block; margin-right: 6px; font-size: 18px; }
     .mission .qsub { font-size: 12px; opacity: .8; margin-top: 4px; color: #9fd3ff; border-top: 1px solid rgba(255,255,255,.15); padding-top: 4px; }
     .hint { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-size: 18px; font-weight: 600; padding: 6px 14px; background: rgba(0,0,0,.5); border-radius: 6px; opacity: 0; transition: opacity .2s; }
     .hint.show { opacity: 1; }
@@ -130,7 +132,7 @@
       <div class="stars" id="stars"></div>
       <div class="law" id="law" style="display:none"></div>
     </div>
-    <div class="hud-bc"><div class="mission" id="mission" style="display:none"><div class="title" id="mission-title"></div><div id="mission-desc"></div><div class="timer" id="mission-timer"></div><div class="qsub" id="mission-sub" style="display:none"></div></div></div>
+    <div class="hud-bc"><div class="mission" id="mission" style="display:none"><div class="title" id="mission-title"></div><div id="mission-desc"></div><div class="nav" id="mission-nav" style="display:none"></div><div class="timer" id="mission-timer"></div><div class="qsub" id="mission-sub" style="display:none"></div></div></div>
     <div class="hint" id="hint"></div>
     <div class="toast" id="toast"></div>
     <canvas id="minimap" width="200" height="200"></canvas>

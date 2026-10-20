@@ -23,6 +23,8 @@ export const POI_COLOR: Record<PoiType, number> = {
   hawker: 0xff8c2e, mrt: 0x2ecc71, bus: 0x27ae60, taxi: 0xf2c516, home: 0x3ea6ff, office: 0x9b7bff,
   site: 0xffb000, police: 0x4169e1, hospital: 0xff4b4b, shop: 0xff69b4, landmark: 0xffffff,
 }
+/** CSS 颜色串（小地图 / 手机地图用） */
+export const poiCss = (t: PoiType) => '#' + POI_COLOR[t].toString(16).padStart(6, '0')
 export const POI_LABEL: Record<PoiType, string> = {
   hawker: '小贩中心', mrt: '地铁站', bus: '巴士站', taxi: '的士站', home: '住家', office: '办公楼',
   site: '工地', police: '警署', hospital: '医院', shop: '商店', landmark: '地标',

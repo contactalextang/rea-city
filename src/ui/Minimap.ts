@@ -1,13 +1,20 @@
 import type { P2 } from '../world/RoadGraph'
-import { POI_COLOR, type Poi, type PoiType } from '../systems/Poi'
+import { poiCss, type Poi, type PoiType } from '../systems/Poi'
+import { TARGET_CSS } from '../world/Marker'
 
 const MINOR = new Set<PoiType>(['bus', 'taxi'])
 const NAMED = new Set<PoiType>(['mrt', 'home', 'office', 'police', 'hospital', 'landmark', 'site'])
 
+/** 距离文字：320m / 1.2km（米数取整到 5，减少跳动；sep 为数字与单位间的分隔） */
+export const fmtDist = (d: number, sep = '') => d < 1000 ? `${Math.round(d / 5) * 5}${sep}m` : `${(d / 1000).toFixed(d < 10000 ? 1 : 0)}${sep}km`
+
+/** 小地图每帧算出的目标导航（距离 m、相对相机朝向的方位角 rad，0 = 正前、顺时针为正）；Hud 读它画方位箭头，无目标为 null */
+export const minimapNav: { target: { dist: number; angle: number } | null } = { target: null }
+
 /** 预烘焙底图：1 px/m，图片左上角对应世界 (minX, minZ) */
 export interface MinimapImageSource { image: HTMLImageElement | HTMLCanvasElement; minX: number; minZ: number }
 
-/** 右下角圆形小地图：静态城市底图 + 玩家箭头 + 任务/警车/任务车标记，随朝向旋转 */
+/** 右下角圆形小地图：静态城市底图 + 玩家箭头 + 任务/警车/任务车标记，随朝向旋转；目标在视野外时圆边画箭头 + 距离 */
 export class Minimap {
   private canvas = document.getElementById('minimap') as HTMLCanvasElement
   private ctx = this.canvas.getContext('2d')!
@@ -19,6 +26,7 @@ export class Minimap {
   private minZ: number
   private baseW: number
   private baseH: number
+  private dpr = 0
 
   /** 底图来源：方格城由 GridWorld 合成 canvas，真实城市用预烘焙 PNG；scale = 圆形小地图 px/m */
   constructor(source: MinimapImageSource, scale = 0.75) {
@@ -28,8 +36,19 @@ export class Minimap {
     this.scale = scale
   }
 
-  draw(px: number, pz: number, yaw: number, target: P2 | null, starts: P2[], police: P2[], gold: P2 | null, hospital: P2, pois: Poi[] = []) {
+  /** 按 devicePixelRatio 调整画布像素尺寸（CSS 尺寸不变），高分屏不发糊 */
+  private fitDpr() {
+    const d = Math.min(3, window.devicePixelRatio || 1)
+    if (d === this.dpr) return
+    this.dpr = d
+    this.canvas.width = this.canvas.height = Math.round(this.size * d)
+  }
+
+  /** health 可选：低于 35 时医院点夹到边缘常驻，否则只在视野内画 */
+  draw(px: number, pz: number, yaw: number, target: P2 | null, starts: P2[], police: P2[], gold: P2 | null, hospital: P2, pois: Poi[] = [], health?: number) {
+    this.fitDpr()
     const g = this.ctx, S = this.size, R = S / 2
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     g.clearRect(0, 0, S, S)
     g.save()
     g.beginPath(); g.arc(R, R, R - 2, 0, Math.PI * 2); g.clip()
@@ -46,25 +65,64 @@ export class Minimap {
       g.fillStyle = color; g.fill()
       if (ring) { g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke() }
     }
-    // POI 不夹到边缘（真实城市有几百个，夹边会围成一圈）；巴士/的士站画小点
+    // POI 不夹到边缘（真实城市有几百个，夹边会围成一圈）；巴士/的士站画小点；整体半透明，把视觉重心让给目标
     const view2 = ((R - 6) / this.scale) ** 2
+    g.globalAlpha = 0.55
     for (const p of pois) {
       const dx = p.x - px, dz = p.z - pz
       if (dx * dx + dz * dz > view2) continue
       const minor = MINOR.has(p.type)
-      dot(p, '#' + POI_COLOR[p.type].toString(16).padStart(6, '0'), minor ? 1.8 : 3, !minor)
+      dot(p, poiCss(p.type), minor ? 1.6 : 2.6, !minor)
     }
+    g.globalAlpha = 1
     for (const s of starts) dot(s, '#ffd33d', 5, true)
     if (gold) dot(gold, '#f5b400', 4)
-    if (target) dot(target, '#3ea6ff', 6, true)
     for (const p of police) dot(p, '#ff3b3b', 3.5)
-    dot(hospital, '#ff6b6b', 4)
+    // 医院：视野内才画；血量低时夹边常驻，指路去医院
+    const hd2 = (hospital.x - px) ** 2 + (hospital.z - pz) ** 2
+    if (hd2 <= view2 || (health !== undefined && health < 35)) dot(hospital, '#ff6b6b', 4)
     g.restore()
+    minimapNav.target = target ? this.drawTarget(px, pz, yaw, target) : null
     // 玩家箭头（朝上）
     g.save(); g.translate(R, R)
     g.beginPath(); g.moveTo(0, -8); g.lineTo(6, 7); g.lineTo(0, 4); g.lineTo(-6, 7); g.closePath()
     g.fillStyle = '#ffffff'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#000'; g.stroke()
     g.restore()
+  }
+
+  /** 当前目标：视野内画品红菱形 + 脉冲外环；视野外在圆边画朝向目标的三角箭头 + 距离 */
+  private drawTarget(px: number, pz: number, yaw: number, t: P2) {
+    const g = this.ctx, R = this.size / 2
+    const a = yaw + Math.PI, ca = Math.cos(a), sa = Math.sin(a)
+    const dx = (t.x - px) * this.scale, dz = (t.z - pz) * this.scale
+    // 与底图同一旋转：屏幕坐标（相对圆心，y 向下 = 相机后方）
+    const sx = dx * ca - dz * sa, sy = dx * sa + dz * ca
+    const r = Math.hypot(sx, sy), dist = Math.hypot(t.x - px, t.z - pz)
+    const phase = (performance.now() / 1000) % 1.2 / 1.2
+    const edge = R - 16
+    g.save(); g.translate(R, R)
+    if (r <= edge) {
+      g.beginPath(); g.arc(sx, sy, 6 + phase * 12, 0, Math.PI * 2)
+      g.globalAlpha = 1 - phase; g.lineWidth = 2.5; g.strokeStyle = TARGET_CSS; g.stroke()
+      g.globalAlpha = 1
+      g.beginPath(); g.moveTo(sx, sy - 8); g.lineTo(sx + 7, sy); g.lineTo(sx, sy + 8); g.lineTo(sx - 7, sy); g.closePath()
+      g.fillStyle = TARGET_CSS; g.fill(); g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke()
+    } else {
+      const th = Math.atan2(sy, sx), pulse = 1 + Math.sin(phase * Math.PI * 2) * 0.12
+      g.save(); g.rotate(th)
+      const tip = R - 4, base = tip - 15 * pulse, w = 9 * pulse
+      g.beginPath(); g.moveTo(tip, 0); g.lineTo(base, -w); g.lineTo(base + 4, 0); g.lineTo(base, w); g.closePath()
+      g.fillStyle = TARGET_CSS; g.fill(); g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke()
+      g.restore()
+      const lr = R - 34, lx = Math.cos(th) * lr, ly = Math.sin(th) * lr
+      g.font = 'bold 12px -apple-system, "PingFang SC", Arial, sans-serif'
+      g.textAlign = 'center'; g.textBaseline = 'middle'
+      g.lineWidth = 3.5; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(fmtDist(dist), lx, ly)
+      g.fillStyle = '#fff'; g.fillText(fmtDist(dist), lx, ly)
+    }
+    g.restore()
+    // 方位角：0 = 相机正前方，顺时针为正
+    return { dist, angle: Math.atan2(sx, -sy) }
   }
 
   /** 手机里的大地图：整城不旋转（按长边等比缩放），画 POI 图标 + 名字、警车、玩家箭头 */
@@ -84,7 +142,7 @@ export class Minimap {
       const x = X(p.x), z = Z(p.z)
       const minor = MINOR.has(p.type)
       g.beginPath(); g.arc(x, z, minor ? 1.5 : many ? 3 : 4, 0, Math.PI * 2)
-      g.fillStyle = '#' + POI_COLOR[p.type].toString(16).padStart(6, '0'); g.fill()
+      g.fillStyle = poiCss(p.type); g.fill()
       if (minor) continue
       g.lineWidth = 1; g.strokeStyle = '#fff'; g.stroke()
       if (many && !NAMED.has(p.type)) continue
