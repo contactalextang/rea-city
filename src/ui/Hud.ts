@@ -13,7 +13,7 @@ export class Hud {
   private vignetteOn = false
 
   update(dt: number, health: number, money: number, stars: number, flash: number, speedKmh: number | null,
-    mission: { title: string; desc: string; timer: string } | null, debug: string) {
+    mission: { title: string; desc: string; timer: string; sub?: string } | null, debug: string) {
     ;($('health') as HTMLElement).style.width = `${Math.max(0, health)}%`
     $('money').textContent = `$${money.toLocaleString()}`
     $('stars').innerHTML = Array.from({ length: 5 }, (_, i) => `<span class="${i < stars ? 'on' : 'off'}">★</span>`).join('')
@@ -26,6 +26,7 @@ export class Hud {
       $('mission-title').textContent = mission.title
       $('mission-desc').textContent = mission.desc
       $('mission-timer').textContent = mission.timer
+      const sub = $('mission-sub'); sub.textContent = mission.sub ?? ''; sub.style.display = mission.sub ? '' : 'none'
     } else m.style.display = 'none'
     this.toastTimer -= dt
     if (this.toastTimer <= 0) this.toastEl.classList.remove('show')

@@ -11,6 +11,7 @@ import type { RoleDef } from '../data/roles'
 import type { PoiRegistry } from '../systems/Poi'
 import type { Needs } from '../systems/Needs'
 import type { Law } from '../systems/Law'
+import type { Poi } from '../systems/Poi'
 
 /** 各系统共享的只读上下文（由 Game 构造并填充） */
 export interface Ctx {
@@ -31,6 +32,8 @@ export interface Ctx {
   pois: PoiRegistry
   needs: Needs
   law: Law
+  /** 事件总线（Interactions / Jobs / Quests 之间解耦通知） */
+  events: EventBus
 }
 
 export interface GameEvents {
@@ -40,6 +43,16 @@ export interface GameEvents {
   playerHitByVehicle: { v: Vehicle; impulse: number }
   vehicleWrecked: { v: Vehicle; byPlayer: boolean }
   carjack: { v: Vehicle; hadDriver: boolean }
+  /** 在小贩中心/商店消费了一餐 */
+  ate: { poi: Poi }
+  /** 在家睡到次日 */
+  slept: { day: number }
+  /** 办公楼打卡上班（pay 为当日薪水） */
+  clockIn: { day: number; pay: number }
+  taxiRented: { v: Vehicle }
+  /** 某项工作产生一笔收入（的士每单 / 保护费每家 / 一次性任务奖励） */
+  jobDone: { job: string; amount: number }
+  invested: { asset: string; amount: number }
 }
 type Handler<K extends keyof GameEvents> = (e: GameEvents[K]) => void
 

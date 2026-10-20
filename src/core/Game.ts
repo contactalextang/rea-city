@@ -18,7 +18,9 @@ import { Spawner, policeCountFor } from '../systems/Spawner'
 import { Law, type TrafficKind } from '../systems/Law'
 import { Signals, type Phase, type SignalLights } from '../systems/Signals'
 import { ROLES, type RoleDef } from '../data/roles'
-import { Missions } from '../systems/Missions'
+import { Jobs, taxiFare } from '../systems/Jobs'
+import { Quests } from '../systems/Quests'
+import type { AssetId } from '../data/jobs'
 import { Audio } from '../systems/Audio'
 import { Weapon } from '../systems/Weapon'
 import { Hud } from '../ui/Hud'
@@ -60,7 +62,8 @@ export class Game {
   signals: Signals
   role: RoleDef
   private signalLights: SignalLights | null = null
-  missions: Missions
+  jobs: Jobs
+  quests: Quests
   audio = new Audio()
   weapon: Weapon
   private muzzleTmp = new THREE.Vector3()
@@ -128,8 +131,11 @@ export class Game {
     this.peds = new Pedestrians(this.scene, this.events)
     this.trafficAI = new TrafficAI(this.peds)
     this.policeAI = new PoliceAI(this.peds)
-    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, pursuitLevel: 0, settings: this.settings, clock: this.clock, signals: this.signals, role: this.role, pois: this.pois, needs: this.needs, law: this.law }
+    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, pursuitLevel: 0, settings: this.settings, clock: this.clock, signals: this.signals, role: this.role, pois: this.pois, needs: this.needs, law: this.law, events: this.events }
     this.spawner = new Spawner(this.ctx, this.peds, this.trafficAI, this.policeAI)
+    this.jobs = new Jobs(this.ctx, this.peds)
+    this.jobs.toast = (t, sec) => this.hud.toast(t, sec)
+    this.jobs.closePanel = () => this.closePanel()
     this.panels.onClose = () => this.closePanel()
     this.interactions = new Interactions(this.ctx, this.panels, {
       toast: (t, sec) => this.hud.toast(t, sec),
@@ -138,6 +144,7 @@ export class Game {
       save: () => this.saveGame(false),
       parkTaxi: (x, z, yaw) => this.spawner.parkTaxiNear(this.ctx, x, z, yaw),
     })
+    this.interactions.jobs = this.jobs
     this.phone = new Phone({
       setTimeSpeed: (v) => { this.settings.timeSpeed = v; this.clock.speed = v; saveSettings(this.settings); this.hud.toast(`时间流速 ${v}×`) },
       setShadows: (on) => { this.settings.shadows = on; this.dayNight.setShadows(on); saveSettings(this.settings); this.hud.toast(on ? '阴影已开启' : '阴影已关闭') },
@@ -146,9 +153,13 @@ export class Game {
       restart: () => { Save.clear(); const q = new URLSearchParams(location.search); q.set('fresh', '1'); location.search = q.toString() },
       drawMap: (c) => this.minimap.drawLarge(c, this.player.worldX, this.player.worldZ, this.cam.yaw, this.vehicles.filter((v) => v.active && v.driver === 'police'), this.pois.all),
       toast: (t) => this.hud.toast(t),
+      startJob: (id) => { const r = this.jobs.start(id); if (r !== true) this.hud.toast(r) },
+      stopJob: () => this.jobs.stop(),
+      buy: (asset, amount) => this.jobs.buy(asset, amount),
+      sell: (asset) => this.jobs.sell(asset),
     })
-    this.missions = new Missions(this.ctx, this.events)
-    this.missions.setToast((s) => this.hud.toast(s))
+    this.quests = new Quests(this.ctx)
+    this.quests.toast = (t, sec) => this.hud.toast(t, sec)
     this.law.setToast((s, sec) => this.hud.toast(s, sec))
     this.weapon = new Weapon(this.scene)
     this.weather = new Weather(this.scene, this.dayNight, this.audio)
@@ -173,7 +184,10 @@ export class Game {
     // 存档：同身份且未带 ?fresh=1 则读档
     const fresh = new URLSearchParams(location.search).has('fresh')
     const saved = fresh ? null : Save.load()
-    if (saved && saved.role === this.role.id) { Save.apply(this.ctx, saved); console.info(`[REA] 读取存档：第${saved.day}天 $${saved.money}`) }
+    if (saved && saved.role === this.role.id) {
+      Save.apply(this.ctx, saved); this.jobs.restore(saved.jobs); this.quests.init(saved.quests)
+      console.info(`[REA] 读取存档：第${saved.day}天 $${saved.money}`)
+    } else this.quests.init(null)
 
     this.wireEvents()
     window.addEventListener('resize', () => this.fitViewport())
@@ -278,7 +292,7 @@ export class Game {
   }
 
   saveGame(announce: boolean) {
-    const ok = Save.save(this.ctx)
+    const ok = Save.save(this.ctx, { jobs: this.jobs.serialize(), quests: this.quests.serialize() })
     if (announce) this.hud.toast(ok ? '已存档' : '存档失败（浏览器禁止本地存储）')
     return ok !== null
   }
@@ -286,7 +300,9 @@ export class Game {
     const d = Save.load()
     if (!d) { this.hud.toast('没有存档'); return false }
     if (d.role !== this.role.id) { this.hud.toast(`存档身份是 ${ROLES[d.role].title}，与当前不同`); return false }
+    this.jobs.stop()
     Save.apply(this.ctx, d)
+    this.jobs.restore(d.jobs); this.quests.init(d.quests)
     this.law.reset()
     this.cam.snap(this.player.yaw)
     this.hud.toast(`已读档 · 第${d.day}天 ${this.clock.hhmm}`)
@@ -355,10 +371,10 @@ export class Game {
     this.player.update(dt, input, this.cam.yaw, this.world, control)
     this.weapon.update(dt)
     if (control && gun && (input.mouseDown(0) || input.down('ControlLeft')) && this.weapon.ready) this.shoot()
-    if (control && input.justPressed('KeyF')) this.toggleVehicle()
+    if (control && input.justPressed('KeyF') && !this.jobs.keyF(this.ctx)) this.toggleVehicle()
     this.interactions.update()
     if (control && input.justPressed('KeyE') && this.interactions.near) { this.openPanel(this.interactions.near); return }
-    if (playing && input.justPressed('KeyM')) this.hud.toast(`任务进度 ${this.missions.completed}/3 · 黄色标记开始任务`, 3)
+    if (playing && input.justPressed('KeyM')) this.hud.toast(this.quests.active ? `任务「${this.quests.active.title}」：${this.quests.stepLabel()}` : `任务 ${this.quests.completed}/${this.quests.defs.length} · 黄色标记接任务 · Tab 手机开工`, 3)
     if (input.justPressed('Enter')) this.toggleFullscreen()
 
     // AI → 物理
@@ -372,7 +388,8 @@ export class Game {
     this.law.update(dt, this.ctx)
     this.ctx.pursuitLevel = this.law.chase ? this.law.pursuitLevel : 0
     this.spawner.update(dt, this.ctx, policeCountFor(this.law.policeStars))
-    this.missions.update(dt)
+    this.jobs.update(dt, this.ctx)
+    this.quests.update(dt)
 
     if (playing) {
       if (this.player.health <= 0) this.enterState('dead')
@@ -386,9 +403,9 @@ export class Game {
           if (this.bustTimer > 2.5) this.enterState('busted')
         } else this.bustTimer = Math.max(0, this.bustTimer - dt * 0.5)
       } else this.bustTimer = 0
-      if (this.missions.allDone && !this.wonShown) {
+      if (this.quests.allDone && !this.wonShown) {
         this.wonShown = true; this.state = 'won'; this.stateTimer = 0
-        this.hud.showOverlay('通关！', `三个任务全部完成 · 账户 $${this.player.money}`, 'gold', false, '按任意键继续自由游荡')
+        this.hud.showOverlay('通关！', `${this.role.title}线任务全部完成 · 账户 $${this.player.money.toLocaleString()}`, 'gold', false, '按任意键继续自由游荡')
       }
     }
 
@@ -398,13 +415,13 @@ export class Game {
     this.cam.update(dt, this.player.inVehicle ? 'car' : 'foot', target, this.player.vehicle?.speed ?? 0, this.time, moving, this.state === 'play' && (this.input.locked || this.forceAim))
     this.player.sync()
     for (const v of this.vehicles) if (v.active) v.sync(this.time)
-    this.missions.sync(this.time)
+    this.jobs.sync(this.time); this.quests.sync(this.time)
     this.updateHud(dt)
   }
 
   private enterState(s: State) {
     this.state = s; this.stateTimer = 0
-    this.missions.onPlayerDown()
+    this.jobs.onPlayerDown(); this.quests.onPlayerDown()
     if (s === 'dead') this.hud.showOverlay('WASTED', '你倒下了，正在送往医院…', 'red', false, '')
     else this.hud.showOverlay('BUSTED', '被捕了，罚金 10%…', 'red', false, '')
   }
@@ -562,18 +579,25 @@ export class Game {
     const police: P2[] = []
     let policeDist = Infinity
     for (const v of this.vehicles) if (v.active && v.driver === 'police') { police.push(v); policeDist = Math.min(policeDist, Math.hypot(v.x - pl.worldX, v.z - pl.worldZ)) }
-    const starts = this.missions.active ? [] : this.missions.defs.filter((d) => !d.done).map((d) => d.start)
-    const gold = this.missions.missionCar.active && pl.vehicle !== this.missions.missionCar ? { x: this.missions.missionCar.x, z: this.missions.missionCar.z } : null
-    this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, this.missions.targetPoint, starts, police, gold, this.hospital, this.pois.all)
+    const target = this.jobs.targetPoint ?? this.quests.targetPoint
+    this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, target, this.quests.starts, police, this.quests.carPoint, this.hospital, this.pois.all)
     this.phoneTimer += dt
     if (this.phone.open && this.phoneTimer >= 0.25) {
       this.phoneTimer = 0
-      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows })
+      const q = this.quests.active ? { title: this.quests.active.title, step: this.quests.stepLabel() } : null
+      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, work: this.jobs.view(), quest: q })
     }
     const speedKmh = pl.vehicle ? pl.vehicle.speed * 3.6 : null
     const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
-    this.hud.update(dt, pl.health, pl.money, this.law.stars, this.law.flash, speedKmh, this.missions.hudText(), dbg)
+    this.hud.update(dt, pl.health, pl.money, this.law.stars, this.law.flash, speedKmh, this.missionCard(), dbg)
     this.audio.update(this.time, pl.inVehicle, pl.vehicle?.speed ?? 0, pl.vehicle?.controls.throttle ?? 0, this.law.policeStars, policeDist)
+  }
+
+  /** HUD 底部任务卡：进行中的工作优先，任务作为副行 */
+  private missionCard() {
+    const job = this.jobs.hudCard(), quest = this.quests.hudCard()
+    if (job) return { ...job, sub: quest && this.quests.active ? `任务：${quest.desc}` : undefined }
+    return quest
   }
 
   private render(dt: number) {
@@ -587,7 +611,7 @@ export class Game {
       this.resolveCollisions()
       this.peds.update(dt, this.ctx)
       this.spawner.update(dt, this.ctx, 0)
-      this.missions.sync(performance.now() / 1000)
+      this.jobs.sync(performance.now() / 1000); this.quests.sync(performance.now() / 1000)
       this.time += dt; this.ctx.time = this.time
     }
     this.frames++; this.fpsTimer += dt
@@ -624,12 +648,38 @@ export class Game {
         /** 玩家车（或任意坐标）在某条边上的投影弧长，用于测试停止线 */
         projectT(edgeId: number, x: number, z: number) { return self.graph.projectT(self.graph.edges[edgeId], x, z) },
         lanePoint(edgeId: number, t: number) { return self.graph.lanePoint(self.graph.edges[edgeId], t, { x: 0, z: 0 }) },
+        /** 测试用：离 (x,z) 最近的车道点与行驶方向 */
+        nearestLane(x: number, z: number) { const n = self.graph.nearestLane(x, z); const p = self.graph.lanePoint(n.edge, n.t, { x: 0, z: 0 }); const d = self.graph.dirAt(n.edge, n.t, { x: 0, z: 0 }); return { x: p.x, z: p.z, dx: d.x, dz: d.z, edge: n.edge.id, t: n.t } },
       },
-      get missions() { return { active: self.missions.active?.id ?? null, completed: self.missions.completed, timer: self.missions.timer, progress: self.missions.progress } },
+      /** 兼容旧测试：映射到 quests */
+      get missions() { return { active: self.quests.active?.id ?? null, completed: self.quests.completed, timer: self.quests.timer, progress: self.quests.progress } },
+      jobs: {
+        get list() { return self.jobs.view().jobs },
+        start(id: string) { return self.jobs.start(id) },
+        stop() { self.jobs.stop() },
+        get active() { return self.jobs.active?.id ?? null },
+        get state() { return { stats: self.jobs.stats, taxi: self.jobs.taxiState, lastTrip: self.jobs.lastTrip, stealTarget: self.jobs.stealTarget, target: self.jobs.targetPoint, hud: self.jobs.hudCard() } },
+        buy(asset: AssetId, amount: number) { return self.jobs.buy(asset, amount) },
+        sell(asset: AssetId) { return self.jobs.sell(asset) },
+        fare(dist: number, wait: number, peak: boolean, rating: number) { return taxiFare(dist, wait, peak, rating) },
+      },
+      quests: {
+        get list() { return self.quests.defs.map((q) => ({ id: q.id, title: q.title, giver: q.giver, steps: q.steps.length, done: self.quests.done.has(q.id) })) },
+        get active() { return self.quests.active?.id ?? null },
+        get step() { return self.quests.step },
+        get stepLabel() { return self.quests.stepLabel() },
+        get progress() { return self.quests.progress },
+        get timer() { return self.quests.timer },
+        get target() { return self.quests.targetPoint },
+        get done() { return [...self.quests.done] },
+        start(id: string) { const q = self.quests.byId(id); if (!q) return false; self.quests.begin(q); return true },
+        /** 测试用：跳过当前步骤 */
+        complete() { self.quests.advance() },
+      },
       get police() { return self.vehicles.filter((v) => v.active && v.driver === 'police').map((v) => ({ x: v.x, z: v.z, mode: (v.ai as { mode: string } | null)?.mode })) },
       get cars() { return self.vehicles.filter((v) => v.active).map((v) => ({ kind: v.kind, driver: v.driver, speed: +v.speed.toFixed(1), health: v.health, wrecked: v.wrecked, x: +v.x.toFixed(1), z: +v.z.toFixed(1), yaw: +v.yaw.toFixed(2), vx: +v.vx.toFixed(1), vz: +v.vz.toFixed(1), stuck: (v.ai as { stuck?: number } | null)?.stuck ?? 0, dbg: (v.ai as { dbg?: string } | null)?.dbg ?? '' })) },
-      get missionCar() { const m = self.missions.missionCar; return { active: m.active, x: m.x, z: m.z } },
-      get missionDefs() { return self.missions.defs.map((d) => ({ id: d.id, start: d.start, target: d.target, done: d.done })) },
+      get missionCar() { const m = self.quests.missionCar; return { active: m.active, x: m.x, z: m.z } },
+      get missionDefs() { return self.quests.defs.map((d) => ({ id: d.id, giver: d.giver, done: self.quests.done.has(d.id) })) },
       boxesNear(x: number, z: number, r = 3) { return self.world.query(x, z, r, []).map((b) => ({ ...b, w: +(b.maxX - b.minX).toFixed(1), d: +(b.maxZ - b.minZ).toFixed(1) })) },
       carDetail(i: number) { const v = self.vehicles.filter((q) => q.active)[i]; return { x: v.x, z: v.z, yaw: v.yaw, vx: v.vx, vz: v.vz, ctl: v.controls, kind: v.kind, driver: v.driver } },
       get peds() { return self.peds.peds.filter((p) => p.active).map((p) => ({ x: +p.x.toFixed(1), z: +p.z.toFixed(1), state: p.state })) },
@@ -670,10 +720,11 @@ export class Game {
       interact(poiId: string) { const p = self.pois.byId(poiId); if (!p) return false; if (self.state === 'intro') self['beginPlay'](); if (self.state === 'panel') self.closePanel(); self.openPanel(p); return self.state === 'panel' },
       panel: {
         get open() { return self.panels.open },
+        get labels() { return self.panels.labels },
         choose(index: number) { return self.panels.choose(index) },
         close() { self.closePanel() },
       },
-      phone: { get open() { return self.phone.open }, toggle() { self.phone.toggle() } },
+      phone: { get open() { return self.phone.open }, toggle() { self.phone.toggle() }, show(sub: 'work' | 'map' | 'settings' | null) { self.phone.set(true); self.phone.showSub(sub) } },
       save() { return self.saveGame(false) },
       load() { return self.loadGame() },
       get dayNight() { const d = self.dayNight; return { sunIntensity: d.sun.intensity, hemiIntensity: d.hemi.intensity, lights: d.lights, gloom: d.gloom, shadows: self.renderer.shadowMap.enabled, sunDir: d.sun.position.clone().sub(d.sun.target.position).normalize().toArray().map((n) => +n.toFixed(2)) } },

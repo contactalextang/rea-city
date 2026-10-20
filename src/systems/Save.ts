@@ -1,5 +1,7 @@
 import type { Ctx } from '../core/Context'
 import { isRoleId, type RoleId } from '../data/roles'
+import type { JobsSave } from './Jobs'
+import type { QuestsSave } from './Quests'
 
 export const SAVE_KEY = 'rea.save'
 
@@ -15,17 +17,22 @@ export interface SaveData {
   inVehicle: false
   needs: { hunger: number; energy: number }
   law: { demerits: number; fines: number; arrests: number; licenseSuspendedUntilDay: number }
+  /** 工作统计（今日收入/的士评分/投资持仓）与任务进度；旧存档可缺省 */
+  jobs?: JobsSave
+  quests?: QuestsSave
   savedAt: number
 }
+export interface SaveExtra { jobs?: JobsSave; quests?: QuestsSave }
 
 /** 把当前状态写入 localStorage；返回写入的数据（失败返回 null） */
-export function save(ctx: Ctx): SaveData | null {
+export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
   const pl = ctx.player, law = ctx.law
   const data: SaveData = {
     v: 1, role: ctx.role.id, money: pl.money, day: ctx.clock.day, hour: ctx.clock.hour,
     x: pl.worldX, z: pl.worldZ, yaw: pl.vehicle ? pl.vehicle.yaw : pl.yaw, inVehicle: false,
     needs: { hunger: ctx.needs.hunger, energy: ctx.needs.energy },
     law: { demerits: law.demerits, fines: law.fines, arrests: law.arrests, licenseSuspendedUntilDay: law.licenseSuspendedUntilDay },
+    jobs: extra.jobs, quests: extra.quests,
     savedAt: Date.now(),
   }
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)) } catch { return null }

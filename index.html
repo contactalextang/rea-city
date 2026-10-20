@@ -28,6 +28,8 @@
     .mission { background: rgba(0,0,0,.45); padding: 8px 16px; border-radius: 8px; display: inline-block; min-width: 260px; }
     .mission .title { font-weight: 700; color: #ffd33d; }
     .mission .timer { font-size: 20px; font-weight: 700; margin-top: 2px; }
+    .mission .timer:empty { display: none; }
+    .mission .qsub { font-size: 12px; opacity: .8; margin-top: 4px; color: #9fd3ff; border-top: 1px solid rgba(255,255,255,.15); padding-top: 4px; }
     .hint { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-size: 18px; font-weight: 600; padding: 6px 14px; background: rgba(0,0,0,.5); border-radius: 6px; opacity: 0; transition: opacity .2s; }
     .hint.show { opacity: 1; }
     #minimap { position: absolute; right: 16px; bottom: 16px; width: 200px; height: 200px; border-radius: 50%; border: 3px solid rgba(255,255,255,.7); background: #1a1f2e; box-shadow: 0 4px 16px rgba(0,0,0,.5); }
@@ -91,6 +93,27 @@
     .phone .sub .row button.on { background: rgba(126,231,135,.3); border-color: #7ee787; }
     .phone #phone-map { width: 100%; aspect-ratio: 1; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: #1a1f2e; }
     .phone .tip { font-size: 11px; opacity: .55; margin-top: 12px; }
+    /* 工作页 */
+    .phone .work .stat { font-size: 12px; opacity: .85; margin-bottom: 8px; line-height: 1.6; }
+    .phone .work .quest { font-size: 12px; color: #9fd3ff; background: rgba(62,166,255,.1); border: 1px solid rgba(62,166,255,.3); border-radius: 8px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.5; }
+    .phone .job { border: 1px solid rgba(255,255,255,.15); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; background: rgba(255,255,255,.04); }
+    .phone .job.active { border-color: #7ee787; background: rgba(126,231,135,.1); }
+    .phone .job.off { opacity: .5; }
+    .phone .job .jt { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600; }
+    .phone .job .jd { font-size: 11px; opacity: .75; margin-top: 2px; line-height: 1.45; }
+    .phone .job .js { font-size: 11px; color: #ffd33d; margin-top: 3px; }
+    .phone .job button { padding: 4px 10px; font-size: 12px; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; background: rgba(255,255,255,.1); color: #fff; cursor: pointer; font: inherit; }
+    .phone .job button:hover { background: rgba(126,231,135,.25); border-color: #7ee787; }
+    .phone .job button.stop { border-color: #ff5f5f; }
+    .phone .job button.stop:hover { background: rgba(255,95,95,.3); }
+    .phone .invest { margin-top: 10px; }
+    .phone .invest .asset { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.1); }
+    .phone .invest .asset .an { flex: 1 1 100%; display: flex; justify-content: space-between; }
+    .phone .invest .asset .an b { color: #7ee787; }
+    .phone .invest .asset .chg { opacity: .8; margin-left: 6px; }
+    .phone .invest .asset .chg.neg { color: #ff8a8a; }
+    .phone .invest .asset button { padding: 3px 8px; font-size: 11px; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; background: rgba(255,255,255,.1); color: #fff; cursor: pointer; font: inherit; }
+    .phone .invest .asset button:hover { background: rgba(126,231,135,.25); }
   </style>
 </head>
 <body>
@@ -106,7 +129,7 @@
       <div class="stars" id="stars"></div>
       <div class="law" id="law" style="display:none"></div>
     </div>
-    <div class="hud-bc"><div class="mission" id="mission" style="display:none"><div class="title" id="mission-title"></div><div id="mission-desc"></div><div class="timer" id="mission-timer"></div></div></div>
+    <div class="hud-bc"><div class="mission" id="mission" style="display:none"><div class="title" id="mission-title"></div><div id="mission-desc"></div><div class="timer" id="mission-timer"></div><div class="qsub" id="mission-sub" style="display:none"></div></div></div>
     <div class="hint" id="hint"></div>
     <div class="toast" id="toast"></div>
     <canvas id="minimap" width="200" height="200"></canvas>
@@ -139,6 +162,7 @@
       <button data-app="load">读档</button>
       <button data-app="restart" class="danger">重新开始</button>
     </div>
+    <div class="sub work" id="phone-sub-work"><h3>工作</h3><div id="phone-work"></div></div>
     <div class="sub" id="phone-sub-map"><h3>地图</h3><canvas id="phone-map" width="400" height="400"></canvas></div>
     <div class="sub" id="phone-sub-settings">
       <h3>设置</h3>
@@ -158,6 +182,7 @@
       <span><kbd>E</kbd></span><span>进入地点（小贩中心 / 地铁 / 家…）</span>
       <span><kbd>Tab</kbd></span><span>手机（状态 / 地图 / 设置 / 存档）</span>
       <span><kbd>M</kbd></span><span>任务提示</span>
+      <span><kbd>Tab</kbd>→工作</span><span>开工 / 下班 / 投资</span>
       <span><kbd>Enter</kbd></span><span>切换全屏</span>
       <span><kbd>鼠标</kbd></span><span>转动视角（点击画面锁定，Esc 解锁）</span>
     </div>

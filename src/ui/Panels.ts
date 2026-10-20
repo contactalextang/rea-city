@@ -30,6 +30,8 @@ export class Panels {
   }
 
   get open() { return this.spec !== null }
+  /** 测试钩子：当前按钮文字 */
+  get labels() { return this.spec?.buttons.map((b) => b.label) ?? [] }
 
   show(spec: PanelSpec) {
     this.spec = spec

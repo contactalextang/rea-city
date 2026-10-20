@@ -5,7 +5,8 @@ import type { Ctx, EventBus } from '../core/Context'
 import { circleAABB } from '../physics/Collision'
 import type { AABB } from '../world/Colliders'
 
-type PedState = 'walk' | 'flee' | 'return' | 'down'
+/** hail：站在路边招手（的士乘客），不走动、不受惊 */
+type PedState = 'walk' | 'flee' | 'return' | 'down' | 'hail'
 export interface Ped {
   active: boolean
   x: number; z: number; yaw: number; vx: number; vz: number
@@ -81,7 +82,7 @@ export class Pedestrians {
   /** 枪声：半径内的行人背离声源逃跑 */
   scare(x: number, z: number, radius: number) {
     for (const p of this.peds) {
-      if (!p.active || p.state === 'down') continue
+      if (!p.active || p.state === 'down' || p.state === 'hail') continue
       const dx = p.x - x, dz = p.z - z
       if (dx * dx + dz * dz > radius * radius) continue
       p.state = 'flee'; p.timer = rand(2.5, 4); p.speed = rand(4.5, 5.5)
@@ -90,6 +91,13 @@ export class Pedestrians {
   }
 
   despawn(p: Ped) { p.active = false; this.hide(this.peds.indexOf(p)) }
+
+  /** 变成招手乘客：原地站定、举手跳动（的士工作） */
+  hail(p: Ped) { if (p.state === 'walk' || p.state === 'return') { p.state = 'hail'; p.vx = p.vz = 0; p.timer = 0 } }
+  /** 取消招手，继续走路 */
+  unhail(p: Ped) { if (p.state === 'hail') { p.state = 'walk'; p.edge = null } }
+  /** 上车：行人隐藏（回收） */
+  board(p: Ped) { this.despawn(p) }
 
   knockDown(p: Ped, vx: number, vz: number) {
     if (p.state === 'down') return
@@ -144,6 +152,9 @@ export class Pedestrians {
           }
         }
         if (dPlayer < 60) this.checkScare(p, ctx)
+      } else if (p.state === 'hail') {
+        p.timer += dt
+        p.vx = p.vz = 0
       } else { // down
         p.timer -= dt
         p.x += p.vx * dt; p.z += p.vz * dt
@@ -200,8 +211,13 @@ export class Pedestrians {
     for (let i = 0; i < this.peds.length; i++) {
       const p = this.peds[i]
       if (!p.active) continue
-      const bob = p.state === 'down' ? 0 : Math.abs(Math.sin(p.phase * 3)) * 0.05
-      if (p.state === 'down') {
+      const bob = p.state === 'down' ? 0 : p.state === 'hail' ? Math.abs(Math.sin(p.timer * 7)) * 0.18 : Math.abs(Math.sin(p.phase * 3)) * 0.05
+      if (p.state === 'hail') {
+        // 招手：身体前倾一点 + 跳动
+        Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.yaw)
+        Q.multiply(new THREE.Quaternion().setFromAxisAngle(AX, 0.22))
+        V.set(p.x, bob, p.z)
+      } else if (p.state === 'down') {
         Q.setFromAxisAngle(AX, -Math.PI / 2)
         Q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.yaw))
         V.set(p.x, 0.2, p.z)

@@ -3,6 +3,7 @@ import type { Vehicle } from '../entities/Vehicle'
 import type { Panels, PanelSpec, PanelButton } from '../ui/Panels'
 import { HAWKER_MENU, SHOP_MENU, ECONOMY, type MenuItem } from '../data/menus'
 import { POI_LABEL, type Poi } from './Poi'
+import type { Jobs } from './Jobs'
 
 export const INTERACT_DIST = 3.5
 
@@ -23,6 +24,8 @@ export class Interactions {
   near: Poi | null = null
   current: Poi | null = null
   private taxiRentedDay = -1
+  /** 工作系统：给面板追加与工作相关的按钮（收保护费 / 取餐 / 加班 / 开工） */
+  jobs: Jobs | null = null
 
   constructor(private ctx: Ctx, private panels: Panels, private host: InteractionHost) {}
 
@@ -43,6 +46,12 @@ export class Interactions {
   close() { this.current = null; this.host.closePanel() }
 
   private build(poi: Poi): PanelSpec {
+    const spec = this.buildBase(poi)
+    const extra = this.jobs?.poiButtons(poi) ?? []
+    if (extra.length) spec.buttons.splice(Math.max(0, spec.buttons.length - 1), 0, ...extra)
+    return spec
+  }
+  private buildBase(poi: Poi): PanelSpec {
     switch (poi.type) {
       case 'hawker': return this.menuPanel(poi, HAWKER_MENU, '吃一顿约 20 分钟')
       case 'shop': return this.menuPanel(poi, SHOP_MENU, '随买随吃，约 5 分钟')
@@ -79,6 +88,7 @@ export class Interactions {
         this.ctx.needs.sync()
         this.ctx.needs.add(m.hunger, m.energy ?? 0)
         this.host.toast(`${m.name} 真不错 · 饱食 +${m.hunger}`)
+        this.ctx.events.emit('ate', { poi })
         this.refresh()
       },
     }))
@@ -137,6 +147,7 @@ export class Interactions {
           this.ctx.needs.set(this.ctx.needs.hunger - 20, 100)
           if (rent) { this.ctx.player.money -= rent; this.host.toast(`新的一天 · 房租 −${money(rent)}`, 3) }
           else this.host.toast('睡了个好觉', 2.5)
+          this.ctx.events.emit('slept', { day: clock.day })
           this.host.save()
           this.close()
         } },
@@ -169,6 +180,8 @@ export class Interactions {
           this.ctx.needs.add(-30, -25)
           this.ctx.player.money += pay
           this.host.toast(`下班了 · 薪水 +${money(pay)}`, 3)
+          this.ctx.events.emit('clockIn', { day: clock.day, pay })
+          this.ctx.events.emit('jobDone', { job: 'white_shift', amount: pay })
           this.close()
         } },
         { label: '离开', onClick: () => this.close() },
@@ -193,6 +206,7 @@ export class Interactions {
           needs.add(-6, -12)
           this.ctx.player.money += ECONOMY.siteWage
           this.host.toast(`工钱 +${money(ECONOMY.siteWage)}`)
+          this.ctx.events.emit('jobDone', { job: 'blue_site', amount: ECONOMY.siteWage })
           this.refresh()
         } },
         { label: '离开', onClick: () => this.close() },
@@ -206,27 +220,32 @@ export class Interactions {
     const price = role.id === 'blue' ? ECONOMY.taxiRentBlue : ECONOMY.taxiRent
     const rented = this.taxiRentedDay === this.ctx.clock.day
     const pl = this.ctx.player
+    const rent = (thenWork: boolean) => {
+      if (pl.money < price) { this.host.toast('钱不够租车'); return }
+      // 停在门口最近的车道上
+      const g = this.ctx.graph
+      const lane = g.nearestLane(poi.door.x, poi.door.z)
+      const t = Math.max(6, Math.min(lane.edge.length - 6, lane.t))
+      const p = g.lanePoint(lane.edge, t, { x: 0, z: 0 })
+      const d = g.dirAt(lane.edge, t, { x: 0, z: 0 })
+      const v = this.host.parkTaxi(p.x, p.z, Math.atan2(d.x, d.z))
+      if (!v) { this.host.toast('暂时没有空车'); return }
+      pl.money -= price
+      this.taxiRentedDay = this.ctx.clock.day
+      pl.enter(v)
+      this.host.toast(`的士到手 · −${money(price)}`, 3)
+      this.ctx.events.emit('taxiRented', { v })
+      this.close()
+      if (thenWork && this.jobs) { const r = this.jobs.start('blue_taxi'); if (r !== true) this.host.toast(r) }
+    }
+    const buttons: PanelButton[] = [
+      { label: rented ? '今天已经租过了' : '租一辆的士', note: rented ? '' : `${money(price)}/天`, disabled: rented, onClick: () => rent(false) },
+    ]
+    if (role.id === 'blue') buttons.push({ label: '租车并开工载客', note: rented ? '' : `${money(price)}/天 · 的士载客`, disabled: rented, onClick: () => rent(true) })
+    buttons.push({ label: '离开', onClick: () => this.close() })
     return {
       title: poi.name, subtitle: '的士站 · 日租', lines: [this.status(), role.id === 'blue' ? '同行优惠：蓝领租金 $30/天。' : '租金 $50/天，当天只能租一次。'],
-      buttons: [
-        { label: rented ? '今天已经租过了' : '租一辆的士', note: rented ? '' : `${money(price)}/天`, disabled: rented, onClick: () => {
-          if (pl.money < price) { this.host.toast('钱不够租车'); return }
-          // 停在门口最近的车道上
-          const g = this.ctx.graph
-          const lane = g.nearestLane(poi.door.x, poi.door.z)
-          const t = Math.max(6, Math.min(lane.edge.length - 6, lane.t))
-          const p = g.lanePoint(lane.edge, t, { x: 0, z: 0 })
-          const d = g.dirAt(lane.edge, t, { x: 0, z: 0 })
-          const v = this.host.parkTaxi(p.x, p.z, Math.atan2(d.x, d.z))
-          if (!v) { this.host.toast('暂时没有空车'); return }
-          pl.money -= price
-          this.taxiRentedDay = this.ctx.clock.day
-          pl.enter(v)
-          this.host.toast(`的士到手 · −${money(price)}`, 3)
-          this.close()
-        } },
-        { label: '离开', onClick: () => this.close() },
-      ],
+      buttons,
     }
   }
 }
