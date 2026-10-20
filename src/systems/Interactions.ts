@@ -5,7 +5,7 @@ import { HAWKER_MENU, SHOP_MENU, ECONOMY, type MenuItem } from '../data/menus'
 import { POI_LABEL, type Poi } from './Poi'
 import type { Jobs } from './Jobs'
 import type { RestBonus } from './Assets'
-import { spend } from './Wallet'
+import { spend, earn } from './Wallet'
 
 export const INTERACT_DIST = 3.5
 
@@ -143,17 +143,22 @@ export class Interactions {
       return { title: poi.name, subtitle: '住家', lines: ['这不是你家。'], buttons: [{ label: '离开', onClick: () => this.close() }] }
     }
     const clock = this.ctx.clock
-    const rent = role.systems.rent ? (ECONOMY.rent[role.id] ?? 0) : 0
+    // 自有房产：饥饿少扣、次日 XP 加成（默认 = 原数值），并且不交房租
+    const bonus = this.host.restBonus(poi.id)
+    const rentBase = role.systems.rent ? (ECONOMY.rent[role.id] ?? 0) : 0
+    const rent = bonus ? 0 : rentBase
     const lines = [this.status()]
     if (rent) lines.push(`房租 ${money(rent)}/天，每过一夜结算`)
-    // 自有房产：饥饿少扣、次日 XP 加成（默认 = 原数值）
-    const bonus = this.host.restBonus(poi.id)
+    else if (rentBase && bonus) lines.push('自有物业，免交房租')
     const hungerCost = bonus?.hunger ?? 20
     const xpMul = bonus?.xpMul ?? 1
+    // 精力 > 70 不能睡（防止雇经理后连睡刷产业收入）；昏倒强制睡走 Game.faint，不受影响
+    const notTired = this.ctx.needs.energy > 70
     return {
       title: poi.name, subtitle: '住家', lines,
       buttons: [
-        { label: '睡觉到 07:00', note: `精力 100 · 饱食 −${hungerCost}${xpMul > 1 ? ` · 明天 XP +${Math.round((xpMul - 1) * 100)}%` : ''}`, onClick: () => {
+        { label: notTired ? '还不困（精力 >70）' : '睡觉到 07:00', note: notTired ? '' : `精力 100 · 饱食 −${hungerCost}${xpMul > 1 ? ` · 明天 XP +${Math.round((xpMul - 1) * 100)}%` : ''}`, disabled: notTired, onClick: () => {
+          if (this.ctx.needs.energy > 70) return
           const hours = clock.hour < 7 ? 7 - clock.hour : 24 - clock.hour + 7
           clock.skip(hours)
           clock.set(7, clock.day)
@@ -192,7 +197,7 @@ export class Interactions {
           clock.set(18, clock.day)
           this.ctx.needs.sync()
           this.ctx.needs.add(-30, -25)
-          this.ctx.player.money += pay
+          earn(this.ctx, pay, 'salary')
           this.host.toast(`下班了 · 薪水 +${money(pay)}`, 3)
           this.ctx.events.emit('clockIn', { day: clock.day, pay })
           this.ctx.events.emit('jobDone', { job: 'white_shift', amount: pay })
@@ -218,7 +223,7 @@ export class Interactions {
           this.ctx.clock.skip(1)
           needs.sync()
           needs.add(-6, -12)
-          this.ctx.player.money += ECONOMY.siteWage
+          earn(this.ctx, ECONOMY.siteWage, 'site')
           this.host.toast(`工钱 +${money(ECONOMY.siteWage)}`)
           this.ctx.events.emit('jobDone', { job: 'blue_site', amount: ECONOMY.siteWage })
           this.refresh()
@@ -244,7 +249,7 @@ export class Interactions {
       const d = g.dirAt(lane.edge, t, { x: 0, z: 0 })
       const v = this.host.parkTaxi(p.x, p.z, Math.atan2(d.x, d.z))
       if (!v) { this.host.toast('暂时没有空车'); return }
-      pl.money -= price
+      spend(this.ctx, price, 'taxiRent')
       this.taxiRentedDay = this.ctx.clock.day
       pl.enter(v)
       this.host.toast(`的士到手 · −${money(price)}`, 3)

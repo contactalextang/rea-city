@@ -25,6 +25,7 @@
     .level { margin-top: 6px; font-size: 13px; font-weight: 700; color: #d8c4ff; letter-spacing: .5px; }
     .level .xpbar { width: 180px; height: 4px; background: rgba(0,0,0,.5); border-radius: 2px; overflow: hidden; margin-top: 3px; }
     .level .xpbar > div { height: 100%; width: 0; background: #b48cff; transition: width .3s; }
+    .level .nw { margin-left: 8px; font-weight: 600; color: #ffd98a; }
     .ach { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); font-size: 16px; font-weight: 700; color: #fff; background: rgba(60,30,110,.8); border: 1px solid #b48cff; border-radius: 10px; padding: 8px 18px; opacity: 0; transition: opacity .3s; text-align: center; white-space: nowrap; }
     .ach.show { opacity: 1; }
     .clock { margin-top: 6px; font-size: 13px; opacity: .9; letter-spacing: .5px; }
@@ -47,6 +48,7 @@
     .overlay h1 { font-size: 56px; margin: 0 0 8px; letter-spacing: 4px; }
     .overlay h1.red { color: #ff5f5f; } .overlay h1.gold { color: #ffd33d; }
     .overlay p { margin: 4px 0; font-size: 16px; opacity: .9; }
+    #ov-sub { white-space: pre-line; line-height: 1.6; }
     .overlay .keys { margin-top: 18px; display: grid; grid-template-columns: auto auto; gap: 6px 18px; font-size: 15px; text-align: left; background: rgba(255,255,255,.06); padding: 16px 24px; border-radius: 10px; }
     .overlay kbd { display: inline-block; min-width: 18px; text-align: center; padding: 2px 7px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; background: rgba(0,0,0,.4); font-family: inherit; font-size: 13px; }
     .overlay .go { margin-top: 24px; font-size: 18px; color: #7ee787; animation: blink 1.2s infinite; }
@@ -137,7 +139,7 @@
   <div id="hud">
     <div class="hud-tl">
       <div class="health"><div id="health"></div></div>
-      <div class="level" id="level"><span id="level-text">Lv1</span><div class="xpbar"><div id="xp-fill"></div></div></div>
+      <div class="level" id="level"><span id="level-text">Lv1</span><span class="nw" id="networth"></span><div class="xpbar"><div id="xp-fill"></div></div></div>
       <div class="clock" id="clock"></div>
       <div class="speed" id="speed"></div>
     </div>

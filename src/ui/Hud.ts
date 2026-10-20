@@ -2,6 +2,14 @@ import { minimapNav, fmtDist } from './Minimap'
 
 const $ = (id: string) => document.getElementById(id)!
 
+/** 紧凑金额：$850 / $12.3k / $1.25M */
+export function compactUsd(n: number) {
+  const a = Math.abs(n), sign = n < 0 ? '-' : ''
+  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(a >= 1e7 ? 1 : 2).replace(/\.?0+$/, '')}M`
+  if (a >= 1e3) return `${sign}$${(a / 1e3).toFixed(a >= 1e5 ? 0 : 1).replace(/\.0$/, '')}k`
+  return `${sign}$${Math.round(a)}`
+}
+
 /** DOM 覆盖层：血条、金钱、通缉星、任务卡片、提示、全屏覆盖 */
 export class Hud {
   private toastTimer = 0
@@ -16,6 +24,7 @@ export class Hud {
   private navHtml = ''
   private levelText = ''
   private xpPct = -1
+  private nwText = ''
   private achEl = $('ach')
   private achTimer = 0
   private achQueue: string[] = []
@@ -68,6 +77,12 @@ export class Hud {
     if (text !== this.levelText) { this.levelText = text; $('level-text').textContent = text }
     const p = Math.round(pct * 200) / 2
     if (p !== this.xpPct) { this.xpPct = p; ($('xp-fill') as HTMLElement).style.width = `${p}%` }
+  }
+
+  /** 等级条旁的净资产（紧凑写法：净资产 $12.3k） */
+  netWorth(n: number) {
+    const t = `净资产 ${compactUsd(n)}`
+    if (t !== this.nwText) { this.nwText = t; $('networth').textContent = t }
   }
 
   /** 成就横幅（排队显示） */

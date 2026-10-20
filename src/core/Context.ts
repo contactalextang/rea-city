@@ -62,6 +62,8 @@ export interface GameEvents {
   bizEvent: { biz: string; kind: 'raid' | 'boom' | 'slump' | 'inspection'; delta: number }
   levelUp: { level: number }
   achievement: { id: string }
+  /** 任务完成（reward = 现金奖励；Game 按它发 XP / 帝国线收尾总结） */
+  questDone: { id: string; reward: number }
 }
 export type PurchaseKind = 'vehicle' | 'property' | 'upgrade' | 'biz' | 'bizTier' | 'manager'
 

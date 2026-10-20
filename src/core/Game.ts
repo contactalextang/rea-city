@@ -82,8 +82,6 @@ export class Game {
   business!: Business
   wallet!: Wallet
   progress!: Progress
-  /** 已发过任务 XP 的任务 id（比对 quests.done 找出新完成的任务） */
-  private questSeen = new Set<string>()
   audio = new Audio()
   weapon: Weapon
   private muzzleTmp = new THREE.Vector3()
@@ -113,7 +111,8 @@ export class Game {
   private fps = 60
   private frames = 0
   private fpsTimer = 0
-  private wonShown = false
+  /** 本步内有购买（purchased 事件）→ 步末自动存档一次 */
+  private saveDue = false
   private bustTimer = 0
   private unlockHintAt = 0
   private forceAim = false
@@ -259,9 +258,13 @@ export class Game {
     this.quests.toast = (t, sec) => this.hud.toast(t, sec)
     // Phase 8 子系统：资产 / 产业（P8.2 / P8.3 填实）→ 钱包 → 成长
     this.assets = new Assets(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), spawner: this.spawner, level: () => this.progress.level, closePanel: () => this.closePanel(), refresh: () => { const c = this.interactions.current; if (c && this.panels.open) this.interactions.open(c) } })
-    this.business = new Business(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), level: () => this.progress.level, refresh: () => { const c = this.interactions.current; if (c && this.panels.open) this.interactions.open(c) } })
+    this.business = new Business(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), level: () => this.progress.level, hasBloomberg: () => this.assets.owns('upg_bloomberg'), refresh: () => { const c = this.interactions.current; if (c && this.panels.open) this.interactions.open(c) } })
     this.wallet = new Wallet(this.ctx, () => { const v = this.jobs.stats.invest; return v.fixed + v.index + v.crypto }, this.assets, this.business)
     this.progress = new Progress(this.ctx, { netWorth: () => this.wallet.netWorth(), bizCount: () => this.business.list().length })
+    // 投资买卖只是现金 ↔ 持仓互换，不计入终身收支
+    this.jobs.onInvestCash = (d) => this.progress.excludeCash(d)
+    // 帝国任务线读产业 / 资产 / 等级 / 净资产
+    this.quests.setSources({ business: this.business, assets: this.assets, progress: this.progress, netWorth: () => this.wallet.netWorth() })
     this.interactions.addProvider((p) => this.jobs.poiButtons(p))
     this.interactions.addProvider((p) => this.assets.poiButtons(p))
     this.interactions.addProvider((p) => this.business.poiButtons(p))
@@ -369,6 +372,8 @@ export class Game {
       const mul = this.assets.effects().taxiTipMul
       if (job === 'blue_taxi' && mul > 1) this.wallet.earn(Math.round(amount * (mul - 1) * 100) / 100, 'taxiTip')
     })
+    // 每次购买（商店 / 产业 / 升档 / 经理）后自动存档：同一步内多次购买只存一次
+    this.events.on('purchased', () => { this.saveDue = true })
     this.events.on('playerHitByVehicle', ({ v, impulse }) => {
       this.player.damage(impulse * 2.2)
       this.player.vx += v.vx * 0.8; this.player.vz += v.vz * 0.8; this.player.vy = 3
@@ -518,7 +523,6 @@ export class Game {
   /** 恢复成长 / 资产 / 产业（旧存档或新开局缺字段 → 默认值），并以当前已完成任务为基线 */
   private restorePhase8(d: Save.SaveData | null) {
     this.progress.restore(d?.progress); this.assets.restore(d?.assets); this.business.restore(d?.biz)
-    this.questSeen = new Set(this.quests.done)
   }
 
   saveGame(announce: boolean) {
@@ -540,14 +544,23 @@ export class Game {
     return true
   }
 
-  /** 精力归零：昏倒，次日 07:00 在家门口醒来 */
+  /** 主住所门口（设了别的自有房产为主住所 → 它的门口，否则身份自带的家） */
+  private homeSpawn() {
+    const p = this.pois.byId(this.assets.primaryHome)
+    return p ? { ...p.door } : { ...this.homeDoor }
+  }
+  /** 主住所是否为买下的房产（被捕 / 倒下后回那里而不是警署 / 医院） */
+  private get ownHomeSpawn() { return this.assets.ownsHome(this.assets.primaryHome) }
+
+  /** 精力归零：昏倒，次日 07:00 在家（主住所）门口醒来 */
   private faint() {
     if (this.player.vehicle) this.player.exit(this.world)
     this.hud.toast('体力透支，你昏倒了…', 4)
     this.clock.set(7, this.clock.day + 1)
     this.needs.sync()
     this.needs.set(this.needs.hunger, 60)
-    this.player.place(this.homeDoor.x, this.homeDoor.z, this.homeDoor.yaw)
+    const home = this.homeSpawn()
+    this.player.place(home.x, home.z, home.yaw)
     this.law.reset()
     this.cam.snap(this.player.yaw)
     this.closePanel()
@@ -569,6 +582,8 @@ export class Game {
     this.clockHudTimer += dt
     if (this.clockHudTimer >= 1) { this.clockHudTimer = 0; this.hud.clock(`第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`) }
     const input = this.input
+    // 购买 / 重生后的自动存档（每步至多一次）
+    if (this.saveDue && this.state !== 'intro' && this.state !== 'creator') { this.saveDue = false; this.saveGame(false) }
 
     if (this.state === 'intro') {
       if (input.anyKeyPressed || input.clicked) this.beginPlay()
@@ -629,10 +644,6 @@ export class Game {
     this.quests.update(dt)
     this.assets.update(dt)
     this.business.update(dt)
-    // 新完成的任务 → XP（奖励的 1/5）
-    if (this.quests.done.size !== this.questSeen.size) {
-      for (const id of this.quests.done) if (!this.questSeen.has(id)) { this.questSeen.add(id); this.progress.questDone(this.quests.byId(id)?.reward ?? 0) }
-    }
     this.progress.update(dt)
 
     if (playing) {
@@ -647,9 +658,13 @@ export class Game {
           if (this.bustTimer > lawTuning(this.ctx).bustTime) this.enterState('busted')
         } else this.bustTimer = Math.max(0, this.bustTimer - dt * 0.5)
       } else this.bustTimer = 0
-      if (this.quests.allDone && !this.wonShown) {
-        this.wonShown = true; this.state = 'won'; this.stateTimer = 0
-        this.hud.showOverlay('通关！', `${this.role.title}线任务全部完成 · 账户 $${this.player.money.toLocaleString()}`, 'gold', false, '按任意键继续自由游荡')
+      if (this.quests.allDone && !this.progress.storyShown) {
+        this.progress.storyShown = true; this.saveDue = true; this.state = 'won'; this.stateTimer = 0
+        this.hud.showOverlay('故事线完成 · 帝国目标已解锁', `${this.role.title}线故事任务全部完成 · 账户 $${this.player.money.toLocaleString()} · 打开手机「生意」经营你的产业帝国`, 'gold', false, '按任意键继续')
+      } else if (this.state === 'play' && !this.progress.empireShown && this.quests.empireDone()) {
+        this.progress.empireShown = true; this.saveDue = true
+        this.state = 'won'; this.stateTimer = 0
+        this.hud.showOverlay('帝国落成', this.empireSummary(), 'gold', false, '按任意键继续')
       }
     }
 
@@ -662,6 +677,16 @@ export class Game {
     for (const v of this.vehicles) if (v.active) v.sync(this.time)
     this.jobs.sync(this.time); this.quests.sync(this.time, this.jobs.targetPoint !== null)
     this.updateHud(dt)
+  }
+
+  /** 帝国总结：头衔、净资产、产业数、终身统计 */
+  private empireSummary() {
+    const st = this.progress.stats, usd = (n: number) => `$${Math.round(n).toLocaleString()}`
+    return [
+      `Lv${this.progress.level} ${this.progress.title} · 净资产 ${usd(this.wallet.netWorth())} · 产业 ${this.business.list().length} 个`,
+      `累计收入 ${usd(st.earned)} · 产业收入 ${usd(st.bizIncome)} · 累计花费 ${usd(st.spent)} · 净资产峰值 ${usd(st.peakNetWorth)}`,
+      `第 ${st.daysPlayed} 天 · 里程 ${st.distanceKm.toFixed(1)} km · 的士 ${st.trips} 趟 · 被捕 ${st.arrests} 次 · 成就 ${this.progress.achievements.size}/${ACHIEVEMENTS.length}`,
+    ].join('\n')
   }
 
   private enterState(s: State) {
@@ -678,15 +703,19 @@ export class Game {
     const busted = this.state === 'busted'
     if (busted) { this.law.fines += fine; this.law.arrests++ }
     this.player.money -= fine
-    // 倒下 → 医院门口；被捕 → 警署门口
-    const d = busted ? this.policeDoor : this.hospitalDoor
+    // 黑帮产业：被捕 / 倒下时各处钱柜被卷走
+    this.business.onBustOrDeath()
+    // 主住所是买下的房产 → 在那里醒来；否则倒下 → 医院门口，被捕 → 警署门口
+    const ownHome = this.ownHomeSpawn
+    const d = ownHome ? this.homeSpawn() : busted ? this.policeDoor : this.hospitalDoor
     this.player.place(d.x, d.z, d.yaw)
     this.law.reset()
     for (const v of this.vehicles) if (v.driver === 'police') { v.deactivate() }
     this.cam.snap(this.player.yaw)
     this.state = 'play'
     this.hud.hideOverlay()
-    this.hud.toast(busted ? '在警署交了罚金，被释放' : '在医院醒来', 2)
+    this.hud.toast(busted ? `交了罚金，被释放${ownHome ? ' · 回到主住所' : ''}` : ownHome ? '在主住所醒来' : '在医院醒来', 2)
+    this.saveDue = true
   }
 
   private shoot() {
@@ -867,6 +896,7 @@ export class Game {
     const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
     this.hud.update(dt, pl.health, pl.money, this.law.stars, this.law.flash, speedKmh, this.missionCard(), dbg)
     this.hud.level(`Lv${this.progress.level} ${this.progress.title}`, this.progress.pct)
+    this.hud.netWorth(this.wallet.netWorth())
     this.audio.update(this.time, pl.inVehicle, pl.vehicle?.speed ?? 0, pl.vehicle?.controls.throttle ?? 0, this.law.policeStars, policeDist)
     this.audio.ambient(this.ctx, dt)
   }
@@ -1074,6 +1104,7 @@ export class Game {
         get level() { return self.progress.level }, get xp() { return self.progress.xp }, get need() { return self.progress.need },
         get title() { return self.progress.title }, get stats() { return self.progress.stats },
         get achievements() { return [...self.progress.achievements] },
+        get empireShown() { return self.progress.empireShown }, get storyShown() { return self.progress.storyShown },
         addXp(n: number) { self.progress.addXp(n); return self.progress.level },
       },
       /** 测试：直接设置现金（不计入终身收支） */

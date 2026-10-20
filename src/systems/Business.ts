@@ -32,6 +32,8 @@ export interface BizSave {
   log: string[]
   /** 今日产业入账合计 */
   today?: { day: number; income: number }
+  /** 彭博终端预告：day 当天 07:00 各产业预掷的景气 / 低迷（null = 平稳） */
+  forecast?: { day: number; moods: Record<string, 'boom' | 'slump' | null> }
 }
 
 /** Game 提供给产业系统的依赖 */
@@ -42,6 +44,8 @@ export interface BusinessHost {
   level?(): number
   /** 操作后刷新当前 POI 面板 */
   refresh?(): void
+  /** 拥有彭博终端：前一天 18:00 起预告次日 07:00 的景气 / 低迷 */
+  hasBloomberg?(): boolean
 }
 
 export type BizEventKind = 'raid' | 'boom' | 'slump' | 'inspection'
@@ -54,6 +58,8 @@ const LOG_MAX = 20
 const MAX_CATCHUP_H = 24 * 7
 /** 走到导航目标 15 m 内自动取消导航 */
 const NAV_ARRIVE = 15
+/** 彭博终端预告时刻（前一天 18:00） */
+const FORECAST_HOUR = 18
 
 const sumCost = (t: BizType, tier: number) => t.tiers.slice(0, tier).reduce((a, x) => a + x.cost, 0)
 const tierName = (t: BizType, tier: number) => t.unit ? `${tier} ${t.unit}` : `T${tier}`
@@ -87,6 +93,8 @@ export class Business implements Subsystem<BizSave> {
       this.rollRisk()
     }
     this.accrue(now)
+    // 彭博终端：今天 07:00 已掷过、18:00 后 → 预掷明天的景气 / 低迷
+    if (c.hour >= FORECAST_HOUR && this.s.riskDay === c.day && this.s.forecast?.day !== c.day + 1 && this.host.hasBloomberg?.()) this.makeForecast(c.day + 1)
     if (this.navTarget) {
       const p = this.ctx.player
       if (Math.hypot(p.worldX - this.navTarget.x, p.worldZ - this.navTarget.z) < NAV_ARRIVE) this.navTarget = null
@@ -126,7 +134,29 @@ export class Business implements Subsystem<BizSave> {
   }
 
   // ---------- 每日风险 ----------
+  /** 掷一次景气 / 低迷（全身份） */
+  private rollMood(): 'boom' | 'slump' | null {
+    const y = Math.random()
+    return y < MOOD_EVENTS.boom.p ? 'boom' : y < MOOD_EVENTS.boom.p + MOOD_EVENTS.slump.p ? 'slump' : null
+  }
+  /** 彭博终端：预掷 day 当天各产业的景气 / 低迷，写日志并 toast 预告 */
+  private makeForecast(day: number) {
+    const moods: Record<string, 'boom' | 'slump' | null> = {}
+    const parts: string[] = []
+    for (const b of this.s.owned) {
+      const m = this.rollMood()
+      moods[b.id] = m
+      if (m) parts.push(`${bizType(b.type)?.name ?? b.type}（${this.poiName(b.poi)}）${m === 'boom' ? `景气 ×${MOOD_EVENTS.boom.mul}` : `低迷 ×${MOOD_EVENTS.slump.mul}`}`)
+    }
+    this.s.forecast = { day, moods }
+    if (!this.s.owned.length) return
+    const msg = `彭博终端预告 · 明天 07:00：${parts.length ? parts.join('；') : '市场平稳'}`
+    this.addLog(msg)
+    this.host.toast(msg, 5)
+  }
   private rollRisk() {
+    const fc = this.s.forecast?.day === this.ctx.clock.day ? this.s.forecast.moods : null
+    this.s.forecast = undefined
     for (const b of this.s.owned) {
       const t = bizType(b.type)
       if (!t) continue
@@ -138,9 +168,8 @@ export class Business implements Subsystem<BizSave> {
         if (x < pRaid) { this.applyEvent(b, 'raid'); continue }
         if (x < pRaid + (r.inspectPerDay ?? 0)) { this.applyEvent(b, 'inspection'); continue }
       }
-      const y = Math.random()
-      if (y < MOOD_EVENTS.boom.p) this.applyEvent(b, 'boom')
-      else if (y < MOOD_EVENTS.boom.p + MOOD_EVENTS.slump.p) this.applyEvent(b, 'slump')
+      const m = fc && b.id in fc ? fc[b.id] : this.rollMood()
+      if (m) this.applyEvent(b, m)
     }
   }
 
@@ -351,6 +380,13 @@ export class Business implements Subsystem<BizSave> {
         tone: locked ? 'locked' as const : undefined,
       }
     })
+    const fc = this.s.forecast
+    if (this.host.hasBloomberg?.()) {
+      if (fc && fc.day === day + 1) {
+        const ev = owned.filter((b) => fc.moods[b.id]).map((b) => `${bizType(b.type)!.name}（${this.poiName(b.poi)}）${fc.moods[b.id] === 'boom' ? `景气 ×${MOOD_EVENTS.boom.mul}` : `低迷 ×${MOOD_EVENTS.slump.mul}`}`)
+        lines.push(`彭博终端 · 明日预告：${ev.length ? ev.join('；') : '市场平稳'}`)
+      } else lines.push(`彭博终端 · 每天 ${FORECAST_HOUR}:00 预告次日景气 / 低迷`)
+    }
     const v: AppView = { lines, sections: [], log: this.s.log.slice() }
     if (items.length) v.sections!.push({ title: '我的产业', items })
     else {
@@ -382,7 +418,7 @@ export class Business implements Subsystem<BizSave> {
         invested: o.invested ?? sumCost(t, tier) + (o.manager ? t.manager.cost : 0),
       })
     }
-    this.s = { owned, riskDay: Number.isFinite(s.riskDay) ? s.riskDay : -1, log: [...(s.log ?? [])].slice(0, LOG_MAX), today: s.today ? { ...s.today } : b.today }
+    this.s = { owned, riskDay: Number.isFinite(s.riskDay) ? s.riskDay : -1, log: [...(s.log ?? [])].slice(0, LOG_MAX), today: s.today ? { ...s.today } : b.today, forecast: s.forecast ? { day: s.forecast.day, moods: { ...s.forecast.moods } } : undefined }
     // 读档补算：钱柜按 cap 封顶，不会爆表
     this.accrue(now)
   }
@@ -406,6 +442,7 @@ export class Business implements Subsystem<BizSave> {
       },
       get log() { return self.s.log.slice() },
       get today() { return self.s.today?.day === self.ctx.clock.day ? self.s.today.income : 0 },
+      get forecast() { return self.s.forecast ? { day: self.s.forecast.day, moods: { ...self.s.forecast.moods } } : null },
       get value() { return self.value() },
       get navTarget() { return self.navTarget },
       buy: (type: string, poi: string) => self.buy(type, poi),

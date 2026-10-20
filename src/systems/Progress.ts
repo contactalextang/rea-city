@@ -1,11 +1,12 @@
 import type { Ctx, Subsystem, AppView, PurchaseKind } from '../core/Context'
 import type { PanelButton } from '../ui/Panels'
 import type { Poi } from './Poi'
+import { onCashFlow } from './Wallet'
 import { MAX_LEVEL, XP, xpFor, titleFor, nextUnlocks, ACHIEVEMENTS, type AchievementId } from '../data/progression'
 
 /** 终身统计 */
 export interface LifeStats {
-  /** 现金累计流入 / 流出（按每帧现金变化自动累计，含工作、任务、投资回款、罚款等） */
+  /** 现金累计流入 / 流出：Wallet.earn/spend 按笔记账，其余直接改现金的路径按每帧差分兜底；投资买卖不计（excludeCash） */
   earned: number
   spent: number
   /** 产业收入（bizIncome 事件累计） */
@@ -29,6 +30,10 @@ export interface ProgressSave {
   /** 自有房产睡醒后的 XP 加成：buffDay 当天 XP × buffMul */
   buffDay?: number
   buffMul?: number
+  /** 帝国总结遮罩已弹过（只弹一次） */
+  empireShown?: boolean
+  /** 故事线通关遮罩已弹过（只弹一次） */
+  storyShown?: boolean
 }
 /** Game 提供的估值查询（净资产 / 已拥有产业数） */
 export interface ProgressHost {
@@ -37,6 +42,8 @@ export interface ProgressHost {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
+/** 单个任务给的 XP 上限（金领末任务奖励 $500k，不封顶会一口气跳十几级） */
+const QUEST_XP_CAP = 2000
 const defaultStats = (): LifeStats => ({ earned: 0, spent: 0, bizIncome: 0, distanceKm: 0, trips: 0, arrests: 0, daysPlayed: 1, peakNetWorth: 0, bought: {} })
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`
 
@@ -59,6 +66,10 @@ export class Progress implements Subsystem<ProgressSave> {
   private lastArrests = 0
   private checkTimer = 0
   private raidSurvived = false
+  /** 帝国总结遮罩已弹过 */
+  empireShown = false
+  /** 故事线通关遮罩已弹过 */
+  storyShown = false
 
   constructor(private ctx: Ctx, private host: ProgressHost) {
     const ev = ctx.events
@@ -72,6 +83,7 @@ export class Progress implements Subsystem<ProgressSave> {
       this.addXp(XP.slept)
     })
     ev.on('clockIn', () => this.addXp(XP.clockIn))
+    ev.on('questDone', ({ reward }) => this.questDone(reward))
     ev.on('purchased', ({ kind, cost }) => {
       this.stats.bought[kind] = (this.stats.bought[kind] ?? 0) + 1
       this.addXp(Math.min(XP.purchaseCap, cost / XP.purchaseDiv))
@@ -82,6 +94,11 @@ export class Progress implements Subsystem<ProgressSave> {
       this.addXp(amount / XP.bizIncomeDiv)
     })
     ev.on('bizEvent', ({ kind }) => { if (kind === 'raid') { this.raidSurvived = true; this.check() } })
+    // 经 Wallet.earn / spend 的每一笔直接记账，并挪动差分基线（差分只兜底直接改 money 的路径：任务奖励、罚款、房租…）
+    onCashFlow((d) => {
+      if (d > 0) this.stats.earned = round2(this.stats.earned + d); else this.stats.spent = round2(this.stats.spent - d)
+      this.lastCash += d
+    })
     this.resync()
   }
 
@@ -105,8 +122,8 @@ export class Progress implements Subsystem<ProgressSave> {
     if (this.level >= MAX_LEVEL) this.xp = 0
     this.check()
   }
-  /** 任务完成（Game 比对 quests.done 后调用）：XP = 奖励的 1/5 */
-  questDone(reward: number) { this.addXp(reward / XP.questRewardDiv) }
+  /** 任务完成（questDone 事件）：XP = 奖励的 1/5，单个任务封顶 2000 */
+  questDone(reward: number) { this.addXp(Math.min(QUEST_XP_CAP, reward / XP.questRewardDiv)) }
 
   /** 重设差分基线（读档 / 调试改钱 / 瞬移后调用，避免把跳变算进统计） */
   resync() {
@@ -116,6 +133,9 @@ export class Progress implements Subsystem<ProgressSave> {
     this.lastDay = c.clock.day
     this.lastArrests = c.law.arrests
   }
+
+  /** 不计入终身收支的现金变化（投资买入 / 卖出）：直接挪动差分基线 */
+  excludeCash(delta: number) { this.lastCash += delta }
 
   update(dt: number) {
     const c = this.ctx, s = this.stats
@@ -172,6 +192,7 @@ export class Progress implements Subsystem<ProgressSave> {
     return {
       lines: [
         `Lv${this.level} ${this.title}${this.ctx.clock.day === this.buffDay && this.buffMul > 1 ? ` · 今日 XP ×${this.buffMul}` : ''}`,
+        `净资产 ${usd(this.host.netWorth())} · 产业 ${this.host.bizCount()} 个`,
         need ? `距 Lv${this.level + 1} 还差 ${Math.ceil(need - this.xp)} XP` : '已满级',
       ],
       bars: [{ label: '经验', pct: this.pct, text: need ? `${Math.floor(this.xp)} / ${need}` : 'MAX' }],
@@ -192,7 +213,7 @@ export class Progress implements Subsystem<ProgressSave> {
   }
 
   serialize(): ProgressSave {
-    return { level: this.level, xp: this.xp, stats: JSON.parse(JSON.stringify(this.stats)) as LifeStats, achievements: [...this.achievements], buffDay: this.buffDay, buffMul: this.buffMul }
+    return { level: this.level, xp: this.xp, stats: JSON.parse(JSON.stringify(this.stats)) as LifeStats, achievements: [...this.achievements], buffDay: this.buffDay, buffMul: this.buffMul, empireShown: this.empireShown, storyShown: this.storyShown }
   }
   restore(d?: ProgressSave) {
     const base = defaultStats()
@@ -203,6 +224,9 @@ export class Progress implements Subsystem<ProgressSave> {
     this.raidSurvived = this.achievements.has('survive_raid')
     this.buffDay = d?.buffDay ?? -1
     this.buffMul = d?.buffMul ?? 1
+    this.empireShown = !!d?.empireShown
+    // 旧存档无此字段：已弹过帝国遮罩说明故事线早已通关，不再重弹
+    this.storyShown = !!d?.storyShown || this.empireShown
     this.resync()
   }
 }

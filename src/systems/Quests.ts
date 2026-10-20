@@ -4,6 +4,8 @@ import type { Poi, PoiType } from './Poi'
 import { Vehicle } from '../entities/Vehicle'
 import { Marker, TARGET_COLOR } from '../world/Marker'
 import { QUESTS, type QuestDef, type StepDef, type PoiRef } from '../data/quests'
+import { bizType } from '../data/business'
+import { SHOP, shopItem, canRoleBuy } from '../data/shop'
 
 export interface QuestsSave {
   done: string[]
@@ -13,7 +15,22 @@ export interface QuestsSave {
 const STEP_LABEL: Record<StepDef['kind'], string> = {
   goto: '前往粉色标记', drive: '开车到粉色标记', deliver: '把金色轿车开到粉色标记', earn: '赚钱', wreck: '撞毁车辆',
   eat: '吃一顿', sleep: '回家睡觉', clockIn: '去办公楼打卡', rentTaxi: '去的士站租车', job: '完成工作', invest: '投资',
+  buy: '买下指定物品', ownBiz: '拥有产业', bizIncome: '产业入账', netWorth: '净资产达标', level: '升级',
 }
+
+/**
+ * 帝国线步骤的数据源（Game 在 Business / Assets / Progress / Wallet 建好后调 setSources 注入）。
+ * 只用到最小的鸭子类型接口，缺失时相关步骤安全地不推进（进度显示「—」）。
+ */
+export interface QuestSources {
+  business?: { list(): readonly { type: string; poi: string; tier: number }[] }
+  assets?: { owns(id: string): boolean }
+  progress?: { readonly level: number }
+  netWorth?: () => number
+}
+/** 轮询型步骤（ownBiz / netWorth / level / 已拥有的 buy）的检查间隔（秒） */
+const POLL_EVERY = 0.5
+const usd = (n: number) => `$${Math.round(n).toLocaleString()}`
 
 /**
  * 被动工作 id → 去哪类 POI 开展（job / earn 步骤的指引）。
@@ -45,6 +62,8 @@ export class Quests {
   private result: 'none' | 'win' | 'fail' = 'none'
   resultTimer = 0
   toast: (s: string, sec?: number) => void = () => {}
+  private src: QuestSources = {}
+  private pollTimer = 0
 
   constructor(private ctx: Ctx) {
     this.defs = QUESTS.filter((q) => q.roles === 'all' || q.roles.includes(ctx.role.id))
@@ -57,6 +76,13 @@ export class Quests {
     ev.on('slept', () => this.onKind('sleep'))
     ev.on('clockIn', () => this.onKind('clockIn'))
     ev.on('taxiRented', () => this.onKind('rentTaxi'))
+    ev.on('purchased', ({ kind, id }) => {
+      const s = this.current
+      if (s?.kind !== 'buy') return
+      const base = id.split('@')[0]
+      if ((s.item && (s.item === id || s.item === base)) || (!s.item && s.itemKind && s.itemKind === kind)) this.advance()
+    })
+    ev.on('bizIncome', ({ amount }) => { const s = this.current; if (s?.kind === 'bizIncome') this.bump(Math.round(amount * 100) / 100, s.amount) })
     ev.on('invested', ({ amount }) => { const s = this.current; if (s?.kind === 'invest') this.bump(amount, s.amount) })
     ev.on('jobDone', ({ job, amount }) => {
       const s = this.current
@@ -69,11 +95,21 @@ export class Quests {
       if (s?.kind === 'wreck' && byPlayer && v !== this.missionCar) { this.bump(1, s.count); if (this.active) this.toast(`撞毁 ${this.progress}/${s.count}`) }
     })
     this.refreshGivers()
+    // 调试：headless 测试可直接拿到实例（__game.quests 是包装对象）
+    ;(globalThis as unknown as { __quests?: Quests }).__quests = this
   }
+
+  /** 注入帝国线数据源（可多次调用、可部分注入） */
+  setSources(src: QuestSources) { this.src = { ...this.src, ...src }; this.pollTimer = 0 }
 
   get current(): StepDef | null { return this.active ? this.active.steps[this.step] ?? null : null }
   get completed() { return this.done.size }
-  get allDone() { return this.defs.length > 0 && this.defs.every((q) => this.done.has(q.id)) }
+  private get story() { return this.defs.filter((q) => (q.tier ?? 'story') === 'story') }
+  private get empire() { return this.defs.filter((q) => q.tier === 'empire') }
+  /** 故事线全部完成（帝国线不计） */
+  get allDone() { const st = this.story; return st.length > 0 && st.every((q) => this.done.has(q.id)) }
+  /** 本身份帝国线全部完成 */
+  empireDone() { const em = this.empire; return em.length > 0 && em.every((q) => this.done.has(q.id)) }
   byId(id: string) { return this.defs.find((q) => q.id === id) ?? null }
 
   /** 读档/开局：恢复进度并自动接新手任务 */
@@ -95,10 +131,21 @@ export class Quests {
   }
 
   private requiresOk(q: QuestDef) { return !q.requires || this.done.has(q.requires) }
+  /**
+   * 自动接任务：giver=auto、未完成、前置满足；被某任务 next 串着的，要等上一环完成才接；
+   * 帝国线要等故事线全部完成（旧通关存档读档后也由此接上）。
+   */
   private autoStart() {
     if (this.active) return
-    const chained = new Set(this.defs.map((q) => q.next).filter((x): x is string => !!x))
-    const q = this.defs.find((d) => d.giver === 'auto' && !this.done.has(d.id) && !chained.has(d.id) && this.requiresOk(d))
+    const parent = new Map<string, string>()
+    for (const q of this.defs) if (q.next) parent.set(q.next, q.id)
+    const storyDone = this.allDone
+    const q = this.defs.find((d) => {
+      if (d.giver !== 'auto' || this.done.has(d.id) || !this.requiresOk(d)) return false
+      if (d.tier === 'empire' && !storyDone) return false
+      const p = parent.get(d.id)
+      return p ? this.done.has(p) : true
+    })
     if (q) this.begin(q)
   }
 
@@ -163,9 +210,72 @@ export class Quests {
       case 'rentTaxi': return near(['taxi'])
       case 'job': { const t = JOB_POI[s.job]; return t ? near([t]) : null }
       case 'earn': { const t = s.source ? JOB_POI[s.source] : undefined; return t ? near([t]) : null }
+      case 'ownBiz': return this.bizPoi(s)
+      case 'buy': return this.buyPoi(s)
+      case 'bizIncome': {
+        // 最近的自有产业门口（去收钱）
+        const owned = this.src.business?.list() ?? []
+        let best: Poi | null = null, bd = Infinity
+        for (const b of owned) { const p = ctx.pois.byId(b.poi); if (!p) continue; const d = Math.hypot(p.door.x - pl.worldX, p.door.z - pl.worldZ); if (d < bd) { bd = d; best = p } }
+        return best
+      }
       default: return null
     }
   }
+  /** ownBiz 指引：有 tier 要求且已有该产业 → 自有那处（去升级）；否则最近的、还没被自己占用的该类 POI */
+  private bizPoi(s: Extract<StepDef, { kind: 'ownBiz' }>): Poi | null {
+    const t = s.type ? bizType(s.type) : null
+    if (!t) return null
+    const ctx = this.ctx, pl = ctx.player
+    const owned = this.src.business?.list() ?? []
+    if (s.tier) { const mine = owned.find((b) => b.type === t.id); const p = mine && ctx.pois.byId(mine.poi); if (p) return p }
+    const taken = new Set(owned.map((b) => b.poi))
+    let best: Poi | null = null, bd = Infinity
+    for (const p of ctx.pois.byType(t.poiType)) {
+      if (taken.has(p.id)) continue
+      const d = Math.hypot(p.door.x - pl.worldX, p.door.z - pl.worldZ)
+      if (d < bd) { bd = d; best = p }
+    }
+    return best
+  }
+  /** buy 指引：只有房产有门口（车 / 升级在手机商店买，无目标） */
+  private buyPoi(s: Extract<StepDef, { kind: 'buy' }>): Poi | null {
+    const ctx = this.ctx
+    const items = s.item ? [shopItem(s.item)].filter((x) => !!x) : s.itemKind === 'property' ? SHOP.filter((it) => it.kind === 'property' && !it.hidden) : []
+    for (const it of items) {
+      if (!it || it.kind !== 'property' || !canRoleBuy(it, ctx.role.id) || this.src.assets?.owns(it.id)) continue
+      for (const id of it.poi ?? []) { const p = ctx.pois.byId(id); if (p) return p }
+    }
+    return null
+  }
+  /** ownBiz 实际要求的数量：不超过本世界该类 POI 数与产业上限（?world=grid 只有 1 家商店等） */
+  private bizNeed(s: Extract<StepDef, { kind: 'ownBiz' }>) {
+    const t = s.type ? bizType(s.type) : null
+    if (!t) return s.count
+    return Math.max(1, Math.min(s.count, t.maxOwned, this.ctx.pois.byType(t.poiType).length))
+  }
+  /** 轮询型步骤的当前值（缺数据源 → null，不推进） */
+  private pollValue(s: StepDef): number | null {
+    const src = this.src
+    switch (s.kind) {
+      case 'ownBiz': {
+        const l = src.business?.list(); if (!l) return null
+        return l.filter((b) => (!s.type || b.type === s.type) && (!s.tier || b.tier >= s.tier)).length
+      }
+      case 'netWorth': return src.netWorth ? src.netWorth() : null
+      case 'level': return src.progress ? src.progress.level : null
+      default: return null
+    }
+  }
+  private poll() {
+    const s = this.current; if (!s) return
+    if (s.kind === 'buy') { if (s.item && this.src.assets?.owns(s.item)) this.advance(); return }
+    const v = this.pollValue(s); if (v === null) return
+    const need = s.kind === 'ownBiz' ? this.bizNeed(s) : s.kind === 'netWorth' ? s.amount : s.kind === 'level' ? s.level : Infinity
+    this.progress = s.kind === 'netWorth' ? Math.round(v) : v
+    if (v >= need) this.advance()
+  }
+
   private retargetEvent() {
     const s = this.current; if (!s) return
     if (s.kind === 'goto' || s.kind === 'drive' || s.kind === 'deliver') return
@@ -205,7 +315,9 @@ export class Quests {
     const q = this.active!
     this.done.add(q.id)
     this.ctx.player.money = Math.round((this.ctx.player.money + q.reward) * 100) / 100
-    this.toast(`任务完成「${q.title}」+$${q.reward}`, 3)
+    const last = q.tier === 'empire' && this.empireDone()
+    this.toast(last ? `帝国建成！「${q.title}」+${usd(q.reward)} · 手机「成长」看你的终身战绩` : `任务完成「${q.title}」+${usd(q.reward)}`, last ? 6 : 3)
+    this.ctx.events.emit('questDone', { id: q.id, reward: q.reward })
     this.end('win')
     const next = q.next ? this.byId(q.next) : null
     if (next && !this.done.has(next.id)) this.begin(next)
@@ -234,6 +346,8 @@ export class Quests {
         const p = this.giverMarkers.get(q.id)?.point
         if (p && Math.hypot(px - p.x, pz - p.z) < 4) { this.begin(q); break }
       }
+      // 故事线刚通关（结果卡片消失后）→ 接上帝国线
+      if (!this.active && this.allDone && !this.empireDone()) this.autoStart()
       return
     }
     const q = this.active
@@ -242,6 +356,8 @@ export class Quests {
     const key = (k: string) => `${this.step}:${k}`
     this.eventTimer -= dt
     if (this.eventTimer <= 0) this.retargetEvent()
+    this.pollTimer -= dt
+    if (this.pollTimer <= 0) { this.pollTimer = POLL_EVERY; this.poll(); if (this.active !== q || this.current !== s) return }
     if (s.kind === 'goto') {
       const p = this.resolve(s.poi, key('poi'))
       if (p && Math.hypot(px - p.door.x, pz - p.door.z) < (s.radius ?? 5)) this.advance()
@@ -261,6 +377,13 @@ export class Quests {
     else if (s.kind === 'wreck') l += `（${this.progress}/${s.count}）`
     else if (s.kind === 'job' && (s.count ?? 1) > 1) l += `（${this.progress}/${s.count}）`
     else if (s.kind === 'invest') l += `（$${this.progress}/$${s.amount}）`
+    else if (s.kind === 'bizIncome') l += `（${usd(this.progress)}/${usd(s.amount)}）`
+    else if (s.kind === 'ownBiz' || s.kind === 'netWorth' || s.kind === 'level') {
+      const v = this.pollValue(s)
+      if (s.kind === 'ownBiz') l += `（${v ?? '—'}/${this.bizNeed(s)}${s.tier ? ` · 需 ${bizType(s.type ?? '')?.unit ? `${s.tier} ${bizType(s.type ?? '')!.unit}` : `T${s.tier}`}` : ''}）`
+      else if (s.kind === 'netWorth') l += `（${v === null ? '—' : usd(v)}/${usd(s.amount)}）`
+      else l += `（Lv${v ?? '—'}/Lv${s.level}）`
+    }
     return l
   }
   /** 当前应在小地图上指示的目标点 */

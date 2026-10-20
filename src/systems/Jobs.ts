@@ -9,6 +9,7 @@ import { Marker, TARGET_COLOR } from '../world/Marker'
 import { JOB_TEXT, JOB_PARAMS, ASSETS, type AssetId, type JobText } from '../data/jobs'
 import { ECONOMY } from '../data/menus'
 import { rand, pick, CAR_WID, type VehicleKind } from '../config'
+import { earn as earnCash } from './Wallet'
 
 /**
  * 工作系统：按身份提供可开工/下班的工作（的士、外卖、偷车、收保护费、赶会议…）
@@ -578,6 +579,8 @@ export class Jobs {
   yellow = new Marker(0xffd33d)
   toast: (s: string, sec?: number) => void = () => {}
   closePanel: () => void = () => {}
+  /** 投资买入 / 卖出造成的现金变化（Game 接到 Progress：投资交易不计入终身收支） */
+  onInvestCash: (delta: number) => void = () => {}
   private readonly taxi: BlueTaxi
   private readonly invest: GoldInvest
 
@@ -620,8 +623,7 @@ export class Jobs {
 
   /** 结算一笔收入：加钱、今日收入、完成计数、jobDone 事件 */
   earn(job: string, amount: number, msg?: string) {
-    const pl = this.ctx.player
-    pl.money = round2(pl.money + amount)
+    earnCash(this.ctx, amount, job)
     this.stats.todayIncome = round2(this.stats.todayIncome + amount)
     this.stats.done[job] = (this.stats.done[job] ?? 0) + 1
     this.ctx.events.emit('jobDone', { job, amount })
@@ -669,8 +671,15 @@ export class Jobs {
   get taxiState() { return this.taxi.state }
 
   // ---------- 投资 ----------
-  buy(asset: AssetId, amount: number) { return this.invest.buy(this.ctx, asset, amount) }
-  sell(asset: AssetId) { return this.invest.sell(this.ctx, asset) }
+  buy(asset: AssetId, amount: number) { return this.investCash(() => this.invest.buy(this.ctx, asset, amount)) }
+  sell(asset: AssetId) { return this.investCash(() => this.invest.sell(this.ctx, asset)) }
+  private investCash(fn: () => boolean) {
+    const m0 = this.ctx.player.money
+    const r = fn()
+    const d = this.ctx.player.money - m0
+    if (d) this.onInvestCash(d)
+    return r
+  }
 
   /** 手机工作页视图 */
   view(): JobsView {
