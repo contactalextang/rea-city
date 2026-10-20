@@ -4,6 +4,7 @@ import { polyBody, type StaticBody, type StaticWorld } from './Colliders'
 import { GeomSink, appendBuilding, buildingColor, makeWallMaterial } from './BuildingMesh'
 import type { PropMeshes } from './PropMeshes'
 import type { RoadMarkings } from './RoadMarkings'
+import { isReplaced } from './Landmarks'
 
 /**
  * 区块流式加载：以玩家所在块为中心的 5×5 为目标集合，每帧最多发起 1 次 fetch、构建 1 个块；
@@ -47,6 +48,8 @@ export class ChunkManager {
   private built = new Map<string, Built>()
   private failed = new Set<string>()
   private lastCenter = ''
+  /** 累计被地标模型取代而跳过挤出的楼栋数（调试用） */
+  replaced = 0
   private wanted: string[] = []
 
   constructor(
@@ -171,14 +174,22 @@ export class ChunkManager {
     flat(c.roadPos, c.roadIdx, 0, this.roadMat, 'road')
     flat(c.walkPos, c.walkIdx, WALK_Y, this.walkMat, 'walk')
 
-    // 建筑：合并成一个 Mesh；碰撞体按足迹
+    // 建筑：合并成一个 Mesh；碰撞体按足迹。被地标精做模型取代的楼（Landmarks.isReplaced）只留碰撞体
     const bodies: StaticBody[] = []
     if (c.buildings.length) {
       const sink = new GeomSink()
       for (const b of c.buildings) {
         if (b.ring.length < 6) continue
-        tris += appendBuilding(sink, b, buildingColor(b.cls, tmpColor))
         bodies.push(polyBody(b.ring, b.h))
+        const name = b.nameIdx >= 0 ? c.names[b.nameIdx] : undefined
+        if (b.cls === 4 || !name) {
+          // 只有 landmark 类或无名楼才可能被替换（超级树 / Pinnacle 塔楼足迹无名）
+          let cx = 0, cz = 0
+          const n = b.ring.length >> 1
+          for (let k = 0; k < b.ring.length; k += 2) { cx += b.ring[k]; cz += b.ring[k + 1] }
+          if (isReplaced(name, cx / n, cz / n)) { this.replaced++; continue }
+        }
+        tris += appendBuilding(sink, b, buildingColor(b.cls, tmpColor))
       }
       if (sink.vertexCount) {
         const m = new THREE.Mesh(sink.toGeometry(), this.wallMat)

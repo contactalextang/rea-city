@@ -5,6 +5,7 @@ import { DayNight } from '../systems/DayNight'
 import { DEFAULT_SETTINGS } from '../core/Settings'
 import type { Ctx } from '../core/Context'
 import { chunkKeyAt } from '../world/ChunkManager'
+import { LANDMARK_SITES } from '../world/Landmarks'
 
 /**
  * 真实世界独立查看页（不走 Game）：dev/world.html?x=0&z=0
@@ -23,7 +24,7 @@ document.body.appendChild(renderer.domElement)
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0xa9c9e8)
 scene.fog = new THREE.Fog(0xa9c9e8, 400, 1800)
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.5, 4000)
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.5, 5000)
 const controls = new OrbitControls(camera, renderer.domElement)
 controls.enableDamping = true
 controls.maxPolarAngle = Math.PI / 2 - 0.02
@@ -44,6 +45,16 @@ let ready = false
 const fakeCtx = { clock: { hour }, player: { get worldX() { return probe.x }, get worldZ() { return probe.z } }, vehicles: [] } as unknown as Ctx
 
 const TELEPORTS: Record<string, string> = { '1': 'home_gang', '2': 'home_gold', '3': 'home_white', '4': 'home_blue', '5': 'landmark_marina_bay_sands', '6': 'mrt_raffles_place' }
+/** 地标跳转（直接到模型中心，镜头拉远）：7 Merlion、8 Esplanade、9 Flyer、0 Lau Pa Sat、g 超级树、p Pinnacle、m 牛车水寺庙 */
+const SITE_KEYS: Record<string, { site: string; cam: [number, number, number] }> = {
+  '7': { site: 'merlion', cam: [-30, 14, 20] },
+  '8': { site: 'esplanade', cam: [-150, 70, 140] },
+  '9': { site: 'flyer', cam: [-260, 90, 140] },
+  '0': { site: 'laupasat', cam: [-70, 45, 60] },
+  g: { site: 'supertrees', cam: [-120, 45, 90] },
+  p: { site: 'pinnacle', cam: [-260, 140, 160] },
+  m: { site: 'mariamman', cam: [80, 45, 90] },
+}
 
 function placeCamera() {
   // 顶视图：高 600 m + 窄视角 25°，减小高楼的透视外倾
@@ -70,6 +81,17 @@ function onKey(k: string) {
   if (k === 't' || k === 'T') setTopView(!topView)
   const id = TELEPORTS[k]
   if (id) teleport(id)
+  const sk = SITE_KEYS[k.toLowerCase()]
+  if (sk) jumpSite(sk.site, ...sk.cam)
+}
+/** 跳到地标模型中心，并把镜头放在 (dx, dy, dz) 偏移处 */
+function jumpSite(site: string, dx = -150, dy = 80, dz = 120): boolean {
+  const s = LANDMARK_SITES[site]
+  if (!s) return false
+  probe.x = s.x; probe.z = s.z
+  camOffset.set(dx, dy, dz); topView = false
+  placeCamera()
+  return true
 }
 
 const fwd = new THREE.Vector3(), right = new THREE.Vector3()
@@ -148,6 +170,16 @@ world.ready.then(() => {
   get probe() { return { ...probe } },
   setProbe(x: number, z: number) { probe.x = x; probe.z = z; placeCamera() },
   teleport,
+  jumpSite,
+  /** 镜头看向 (tx, ty, tz)，相机放在世界坐标 (cx, cy, cz)；探针（区块加载中心）设到 (px, pz) */
+  look(px: number, pz: number, cx: number, cy: number, cz: number, tx: number, ty: number, tz: number) {
+    probe.x = px; probe.z = pz; topView = false
+    camera.fov = 60; camera.updateProjectionMatrix()
+    camera.position.set(cx, cy, cz); controls.target.set(tx, ty, tz); controls.update()
+  },
+  get landmarks() { return world.landmarks?.stats },
+  get replaced() { return world.chunks.replaced },
+  get skylineDropped() { return world.skylineDropped },
   topView(on: boolean) { setTopView(on) },
   setCamera(dx: number, dy: number, dz: number) { camOffset.set(dx, dy, dz); topView = false; placeCamera() },
   nearestPoi,

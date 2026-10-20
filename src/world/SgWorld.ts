@@ -6,6 +6,7 @@ import { CLS_COLORS } from './BuildingMesh'
 import { PropMeshes } from './PropMeshes'
 import { RoadMarkings } from './RoadMarkings'
 import { ChunkManager, type ChunkStats } from './ChunkManager'
+import { Landmarks, skylineHidden } from './Landmarks'
 import type { WorldSource } from './WorldSource'
 import type { Poi } from '../systems/Poi'
 
@@ -14,6 +15,8 @@ import type { Poi } from '../systems/Poi'
  * ready 里并行拉取 manifest / graph / pois / landuse / skyline / minimap / ground；
  * attach 挂地面（ground.png 2 m/px）+ 外圈海面 + 天际线 + 道具/标线池 + 隐形边界墙；
  * update 驱动 ChunkManager 做 5×5 区块流式加载。
+ * 地标（Landmarks）常驻：MBS / Flyer / Esplanade 等精做模型 + 滨海湾/新加坡河半透明水面；
+ * 被替换的烘焙楼在区块构建与天际线里都跳过（碰撞体保留原足迹）。
  */
 
 export interface LanduseData {
@@ -59,6 +62,9 @@ export class SgWorld implements WorldSource {
   props!: PropMeshes
   marks!: RoadMarkings
   skyline: THREE.Mesh | null = null
+  landmarks: Landmarks | null = null
+  /** 天际线里因地标替换丢弃的三角数 */
+  skylineDropped = 0
   /** 首个 5×5 全部构建完成的时间戳（performance.now），统计首屏用 */
   firstLoadedAt = 0
   private minimapImg!: HTMLImageElement
@@ -107,7 +113,16 @@ export class SgWorld implements WorldSource {
   }
 
   private buildSkyline(buf: ArrayBuffer) {
-    const { pos, cls } = decodeSkyline(buf)
+    const raw = decodeSkyline(buf)
+    // 丢弃落在地标替换足迹内的三角（按 xz 质心判断）
+    const keep: number[] = []
+    for (let t = 0; t < raw.cls.length; t += 3) {
+      const p = raw.pos, o = t * 3
+      if (!skylineHidden((p[o] + p[o + 3] + p[o + 6]) / 3, (p[o + 2] + p[o + 5] + p[o + 8]) / 3)) keep.push(t)
+    }
+    const pos = new Float32Array(keep.length * 9), cls = new Uint8Array(keep.length * 3)
+    keep.forEach((t, i) => { pos.set(raw.pos.subarray(t * 3, t * 3 + 9), i * 9); cls.set(raw.cls.subarray(t, t + 3), i * 3) })
+    this.skylineDropped = raw.cls.length / 3 - keep.length
     const n = cls.length
     if (!n) return
     const g = new THREE.BufferGeometry()
@@ -149,7 +164,7 @@ export class SgWorld implements WorldSource {
     // 外圈海面
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(w + SEA_MARGIN * 2, h + SEA_MARGIN * 2), new THREE.MeshLambertMaterial({ color: SEA_COLOR }))
     sea.rotation.x = -Math.PI / 2
-    sea.position.set((minX + maxX) / 2, -0.08, (minZ + maxZ) / 2)
+    sea.position.set((minX + maxX) / 2, -0.2, (minZ + maxZ) / 2)
     sea.userData.castShadow = false
     sea.name = 'sea'
     // 地面：ground.png（2 m/px，上边 = minZ）
@@ -160,7 +175,8 @@ export class SgWorld implements WorldSource {
     tex.anisotropy = 4
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({ map: tex }))
     ground.rotation.x = -Math.PI / 2
-    ground.position.set((minX + maxX) / 2, -0.05, (minZ + maxZ) / 2)
+    // 地面压低到 −0.12：给地标水面（−0.05）与路面（0）留出深度间隔
+    ground.position.set((minX + maxX) / 2, -0.12, (minZ + maxZ) / 2)
     ground.userData.castShadow = false
     ground.receiveShadow = true
     ground.name = 'ground'
@@ -169,10 +185,14 @@ export class SgWorld implements WorldSource {
     this.props.attach(scene)
     this.marks.attach(scene)
     this.chunks.attach(scene)
+    // 地标（须在 DayNight.attachWorld 之前：它在那时读取 scene.userData.windows）
+    this.landmarks = new Landmarks(this.landuse?.water ?? null)
+    this.landmarks.attach(scene)
   }
 
-  update(px: number, pz: number, _dt: number) {
+  update(px: number, pz: number, dt: number) {
     this.chunks.update(px, pz)
+    this.landmarks?.update(dt)
     if (!this.firstLoadedAt && this.chunks.idle && this.chunks.stats.loaded > 0) this.firstLoadedAt = performance.now()
   }
 
@@ -190,6 +210,7 @@ export class SgWorld implements WorldSource {
 
   dispose() {
     this.chunks.dispose()
+    this.landmarks?.dispose()
     this.props.dispose()
     this.marks.dispose()
     this.skyline?.geometry.dispose()

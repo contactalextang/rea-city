@@ -1,10 +1,10 @@
 // 第 7 步：兴趣点（POI）。小贩中心 / 地铁站 / 巴士站 / 德士站 / 四个身份的家 / CBD 办公楼 /
-// 工地 / 警署 / 医院 / 地标，每个 POI 附带"门口"（最近车行道靠左侧人行道位置 + 朝向）。
+// 工地 / 警署 / 医院 / 地标 / 商店（shop），每个 POI 附带"门口"（最近车行道靠左侧人行道位置 + 朝向）。
 // 用法：node scripts/geo/07-pois.ts → data/geo/build/pois.json
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { GEO_DIR, LOCAL_DIR, ensureDir, fileSize, fmtBytes, log, warn } from './lib/common.ts';
-import { proj } from './lib/proj.ts';
+import { LOCAL_BBOX, proj } from './lib/proj.ts';
 
 type PoiType = 'hawker' | 'mrt' | 'bus' | 'taxi' | 'home' | 'office' | 'site' | 'police' | 'hospital' | 'shop' | 'landmark';
 interface Door {
@@ -513,6 +513,67 @@ function main(): void {
     add('landmark', lm.key, featurePoint(best)!, { osmName: nameOf(best) }, `landmark_${slug(lm.key)}`);
     matched[`landmark:${lm.key}`] = nameOf(best);
   }
+
+  // 9) shop：OSM shop=* ∪ amenity=marketplace（点 + 面），无名跳过，100 m 去重，取 30–60 个。
+  //    先在四个优先片区（牛车水 / 丹戎巴葛 / 中峇鲁 / 莱佛士坊）各取至多 10 个，再全切片补到 SHOP_MAX；
+  //    同等条件下按类型优先级（商场 / 百货 / 超市 / 便利店 / 杂货 / 巴刹 > 其他）与面积取舍。
+  const SHOP_MAX = 60, SHOP_MIN = 30, SHOP_DEDUP = 100, SHOP_PER_AREA = 10;
+  const SHOP_RANK: Record<string, number> = { mall: 0, department_store: 0, supermarket: 1, marketplace: 1, convenience: 2, variety_store: 3, general: 3 };
+  const shopAreas: { key: string; lonlat: [number, number]; r: number }[] = [
+    { key: 'chinatown', lonlat: [103.8443, 1.2836], r: 450 },
+    { key: 'tanjong_pagar', lonlat: [103.8455, 1.2765], r: 450 },
+    { key: 'tiong_bahru', lonlat: [103.8310, 1.2850], r: 450 },
+    { key: 'raffles_place', lonlat: [103.8514, 1.2840], r: 450 },
+  ];
+  interface ShopCand { name: string; kind: string; pt: Pos; rank: number; area: number }
+  const shopCands: ShopCand[] = [];
+  for (const f of [...osmPolys, ...osmPoints]) {
+    const p = f.properties ?? {};
+    const shop = tag(p, 'shop');
+    const kind = shop ?? (p.amenity === 'marketplace' ? 'marketplace' : '');
+    if (!kind || kind === 'no' || kind === 'vacant') continue;
+    const name = nameOf(f);
+    if (!name || /^(retail )?shop$/i.test(name)) continue;
+    const pt = featurePoint(f);
+    // 离切片边缘 40 m 内的跳过（门口可能落到边界墙外）
+    if (!pt || pt[0] < LOCAL_BBOX.minX + 40 || pt[0] > LOCAL_BBOX.maxX - 40 || pt[1] < LOCAL_BBOX.minZ + 40 || pt[1] > LOCAL_BBOX.maxZ - 40) continue;
+    shopCands.push({ name, kind, pt, rank: SHOP_RANK[kind] ?? 5, area: featureArea(f) });
+  }
+  // 优先级：类型 rank 小者先，同 rank 面积大者先（商场面比店铺点更有代表性），再按名称稳定排序
+  shopCands.sort((a, b) => a.rank - b.rank || b.area - a.area || a.name.localeCompare(b.name));
+  const shopPicked = new Set<ShopCand>();
+  const takeShop = (c: ShopCand, area: string) => {
+    if (shopPicked.has(c) || nearExisting('shop', c.pt, SHOP_DEDUP)) return false;
+    // 同名商场（如 Suntec City 多个面）400 m 内只留一个；连锁便利店同名不受此限
+    if (c.rank <= 1 && pois.some((q) => q.type === 'shop' && q.name === c.name && dist([q.x, q.z], c.pt) <= 400)) return false;
+    shopPicked.add(c);
+    add('shop', c.name, c.pt, { kind: c.kind, area });
+    return true;
+  };
+  const shopByArea: Record<string, number> = {};
+  for (const a of shopAreas) {
+    const center = proj(a.lonlat[0], a.lonlat[1]);
+    let n = 0;
+    for (const c of shopCands) {
+      if (n >= SHOP_PER_AREA) break;
+      if (c.rank > 3 || dist(c.pt, center) > a.r) continue;
+      if (takeShop(c, a.key)) n++;
+    }
+    shopByArea[a.key] = n;
+  }
+  // 全切片补齐：只收主要类型（rank ≤ 3）；仍不足 SHOP_MIN 再放开到全部类型
+  for (const maxRank of [3, 5]) {
+    for (const c of shopCands) {
+      if (pois.filter((q) => q.type === 'shop').length >= SHOP_MAX) break;
+      if (c.rank > maxRank) continue;
+      takeShop(c, 'other');
+    }
+    if (pois.filter((q) => q.type === 'shop').length >= SHOP_MIN) break;
+  }
+  const shopCount = pois.filter((q) => q.type === 'shop').length;
+  shopByArea.other = shopCount - Object.values(shopByArea).reduce((s, v) => s + v, 0);
+  log(`shop: candidates ${shopCands.length} (named) → ${shopCount}; by area ${JSON.stringify(shopByArea)}`);
+  if (shopCount < SHOP_MIN) unmatched.push(`shop: only ${shopCount} (< ${SHOP_MIN})`);
 
   // 输出
   const byType: Record<string, number> = {};
