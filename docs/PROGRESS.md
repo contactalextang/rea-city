@@ -40,7 +40,7 @@
 ## Phase 5 — 生活模拟
 - [x] P5.1 Needs + Poi/Interactions/Panels/Phone/Save（方格城合成 POI 验证通过；真实世界只需 pois.load；遗留：的士与车辆不进存档）
 - [x] P5.2 Signals + Law（Wanted 已删；roles.ts 四身份；?role= 切换；吊销仅提示不阻止）
-- [~] P5.3 Jobs（四身份工作线）+ Quests + 手机 HUD + 署名
+- [x] P5.3 Jobs + Quests + 手机工作页（计价/外卖/偷车/保护费/会议/投资/加班实测通过；gang_wreck 与撞车扣评分未实测）
 
 ## Phase 6 — 打磨
 - [ ] 步行道/天桥、桥梁抬高、地标、招牌贴图、音效、性能、README、启动器
