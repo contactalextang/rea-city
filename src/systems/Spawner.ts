@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { MAX_PEDS, MAX_TRAFFIC, MAX_POLICE, SPAWN_MIN, SPAWN_MAX, DESPAWN_DIST, TAXI_COLORS, pick, rand } from '../config'
 import type { Ctx } from '../core/Context'
-import type { RoadEdge, P2 } from '../world/RoadGraph'
+import type { RoadEdge, RoadKind, P2 } from '../world/RoadGraph'
 import { Vehicle } from '../entities/Vehicle'
 import type { Pedestrians } from '../entities/Pedestrians'
 import { TrafficAI, releaseToken } from '../entities/TrafficAI'
@@ -11,6 +11,8 @@ const CAR_COLORS = [0xc0392b, 0x2980b9, 0x27ae60, 0xf39c12, 0x8e44ad, 0xecf0f1, 
 const tmp: P2 = { x: 0, z: 0 }
 const tmpDir: P2 = { x: 0, z: 0 }
 const camDir = new THREE.Vector3()
+/** 行人不走的道路等级（快速路、主干道没有人行道） */
+const NO_WALK: readonly RoadKind[] = ['expressway', 'trunk']
 
 /** 在玩家周围环形区内生成/回收行人、交通车与警车 */
 export class Spawner {
@@ -20,8 +22,9 @@ export class Spawner {
   taxis: Vehicle[] = []
   private timer = 0
 
-  constructor(ctx: Ctx, private peds: Pedestrians, private trafficAI: TrafficAI, private policeAI: PoliceAI) {
-    for (let i = 0; i < MAX_TRAFFIC; i++) {
+  /** maxTraffic：交通车池大小（方格城 MAX_TRAFFIC，真实城市更大） */
+  constructor(ctx: Ctx, private peds: Pedestrians, private trafficAI: TrafficAI, private policeAI: PoliceAI, readonly maxTraffic = MAX_TRAFFIC) {
+    for (let i = 0; i < maxTraffic; i++) {
       const v = new Vehicle('civil', pick(CAR_COLORS)); ctx.scene.add(v.group); ctx.vehicles.push(v); this.traffic.push(v)
     }
     for (let i = 0; i < MAX_POLICE; i++) {
@@ -37,9 +40,10 @@ export class Spawner {
     const px = ctx.player.worldX, pz = ctx.player.worldZ
     const cf = ctx.cam.camera.getWorldDirection(camDir)
     for (let k = 0; k < 24; k++) {
-      const e = ctx.graph.randomEdge()
+      // 只在玩家周围 max 半径内的路段里采样（真实路网全图采样几乎落不进环形区）
+      const e = ctx.graph.randomEdgeNear(px, pz, max, forPed ? NO_WALK : undefined)
+      if (!e) return null
       if (e.length < 14) continue
-      if (forPed && e.kind === 'expressway') continue   // 行人不上快速路
       const t = rand(6, e.length - 6)
       ctx.graph.lanePoint(e, t, tmp)
       const d = Math.hypot(tmp.x - px, tmp.z - pz)
@@ -75,7 +79,7 @@ export class Spawner {
     // 交通车
     budget = 2
     const trafficActive = this.traffic.filter((v) => v.active).length
-    for (let i = trafficActive; i < MAX_TRAFFIC && budget > 0; i++) {
+    for (let i = trafficActive; i < this.maxTraffic && budget > 0; i++) {
       const v = this.traffic.find((q) => !q.active); if (!v) break
       const spot = this.pickSpot(ctx, SPAWN_MIN, SPAWN_MAX, true); if (!spot) break
       ctx.graph.lanePoint(spot.edge, spot.t, tmp)
@@ -96,7 +100,7 @@ export class Spawner {
     const activePolice = this.police.filter((v) => v.active && v.driver === 'police')
     if (activePolice.length < want) {
       const v = this.police.find((q) => !q.active)
-      const spot = v && this.pickSpot(ctx, 90, 150, true)
+      const spot = v ? this.policeSpot(ctx) : null
       if (v && spot) {
         ctx.graph.lanePoint(spot.edge, spot.t, tmp)
         ctx.graph.dirAt(spot.edge, spot.t, tmpDir)
@@ -105,6 +109,24 @@ export class Spawner {
         this.policeAI.start(v, spot.edge, activePolice.length % 2 === 0 ? 1 : -1)
       }
     }
+  }
+
+  /**
+   * 警车出生点：在 90–150 m 环里抽几个候选，取沿路网开到玩家所在路段起点最近的那个
+   * （真实城市单行道多，直线近的点可能要绕一大圈）
+   */
+  private policeSpot(ctx: Ctx): { edge: RoadEdge; t: number } | null {
+    const g = ctx.graph
+    const pl = g.nearestLane(ctx.player.worldX, ctx.player.worldZ)
+    const target = pl.t < pl.edge.length / 2 ? pl.edge.from : pl.edge.to
+    let best: { edge: RoadEdge; t: number } | null = null, bestD = Infinity
+    for (let k = 0; k < 8; k++) {
+      const s = this.pickSpot(ctx, 90, 150, k < 4)
+      if (!s) continue
+      const d = g.routeDist(s.edge, s.t, target)
+      if (d < bestD) { bestD = d; best = s }
+    }
+    return best
   }
 
   /** 确保指定位置附近存在一辆可用的空车（开局/重生用） */

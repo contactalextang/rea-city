@@ -7,7 +7,8 @@ import { clamp, lerp } from '../config'
  * 昼夜系统：太阳/月光方向光（阴影跟随玩家）、半球光、天空/雾/曝光色表、
  * 夜间窗户自发光与路灯光晕。只依赖 scene/renderer/ctx；世界实现通过
  * scene.userData 约定暴露：windows: MeshLambertMaterial[]，lamps: InstancedMesh，
- * lampHead: Vector3（灯头相对实例原点的偏移），roads: Material[]（由 Weather 使用）。
+ * lampHead: Vector3（灯头相对实例原点的偏移），roads: Material[]（由 Weather 使用），
+ * lampsVersion: number（可选；流式世界每次灯柱实例变化时递增，光晕随之重建）。
  */
 
 /** 色表关键帧（按小时，首尾循环插值） */
@@ -53,6 +54,8 @@ export class DayNight {
   flash = 0
   /** 当前夜间灯光开启度 0–1（窗户/路灯） */
   lights = 0
+  /** 雾距倍率：方格城 1；真实城市放远（far ≈ 900 m）以看到天际线 */
+  fogScale = 1
   private shadowsOn: boolean
   private sunDir = new THREE.Vector3()
   private cSky = new THREE.Color(); private cFog = new THREE.Color(); private cHemiSky = new THREE.Color(); private cHemiGround = new THREE.Color(); private cSun = new THREE.Color()
@@ -64,6 +67,9 @@ export class DayNight {
   private poolMat: THREE.MeshBasicMaterial | null = null
   private tmpV = new THREE.Vector3()
   private tmpM = new THREE.Matrix4()
+  private lampSrc: THREE.InstancedMesh | null = null
+  private lampHead = new THREE.Vector3(0, 5, 0)
+  private lampVer = -1
 
   constructor(private scene: THREE.Scene, private renderer: THREE.WebGLRenderer, settings: Settings) {
     this.shadowsOn = settings.shadows
@@ -96,7 +102,10 @@ export class DayNight {
     this.windows = (ud.windows as THREE.MeshLambertMaterial[] | undefined) ?? []
     this.applyShadowFlags(this.scene)
     const lamps = ud.lamps as THREE.InstancedMesh | undefined
-    if (lamps) this.buildLampGlow(lamps, (ud.lampHead as THREE.Vector3 | undefined) ?? new THREE.Vector3(0, 5, 0))
+    if (lamps) {
+      this.lampHead.copy((ud.lampHead as THREE.Vector3 | undefined) ?? new THREE.Vector3(0, 5, 0))
+      this.buildLampGlow(lamps)
+    }
   }
 
   /** 运行时开关阴影（设置面板用）：切换 shadowMap 后材质需重新编译 */
@@ -153,7 +162,7 @@ export class DayNight {
 
     ;(this.scene.background as THREE.Color).copy(this.cSky)
     const fog = this.scene.fog as THREE.Fog
-    fog.color.copy(this.cFog); fog.near = this.fogNear; fog.far = this.fogFar
+    fog.color.copy(this.cFog); fog.near = this.fogNear * this.fogScale; fog.far = this.fogFar * this.fogScale
     this.hemi.color.copy(this.cHemiSky); this.hemi.groundColor.copy(this.cHemiGround); this.hemi.intensity = this.hemiI
     this.renderer.toneMappingExposure = this.exposure
 
@@ -177,6 +186,11 @@ export class DayNight {
     if (this.haloMat) { this.haloMat.uniforms.uOpacity.value = this.lights; this.halo!.visible = this.lights > 0.01 }
     if (this.poolMat) { this.poolMat.opacity = 0.55 * this.lights; this.pool!.visible = this.lights > 0.01 }
 
+    // 流式世界：灯柱实例集合变了（区块加载/卸载）→ 重写光晕实例
+    const ud = this.scene.userData
+    const lamps = ud.lamps as THREE.InstancedMesh | undefined
+    if (lamps && this.lampSrc && (lamps !== this.lampSrc || ((ud.lampsVersion as number | undefined) ?? 0) !== this.lampVer)) this.buildLampGlow(lamps)
+
     // 新生成的动态物体（车辆）补阴影标记
     if (this.shadowsOn) for (const v of ctx.vehicles) if (!v.group.userData.shadowDone) this.applyShadowFlags(v.group)
   }
@@ -196,9 +210,41 @@ export class DayNight {
     this.fogNear = lerp(a.fogNear, b.fogNear, t); this.fogFar = lerp(a.fogFar, b.fogFar, t)
   }
 
-  /** 路灯光晕：面向相机的 additive 四边形（InstancedMesh + 小 shader）+ 地面光池 */
-  private buildLampGlow(lamps: THREE.InstancedMesh, head: THREE.Vector3) {
+  /**
+   * 路灯光晕：面向相机的 additive 四边形（InstancedMesh + 小 shader）+ 地面光池。
+   * 可重复调用：容量够时只重写实例矩阵与 count，不够才换新的 InstancedMesh（材质复用）。
+   */
+  private buildLampGlow(lamps: THREE.InstancedMesh) {
+    this.lampSrc = lamps
+    this.lampVer = (this.scene.userData.lampsVersion as number | undefined) ?? 0
     const n = lamps.count
+    const cap = Math.max(1, lamps.instanceMatrix.count)
+    if (!this.haloMat || !this.poolMat) this.makeGlowMaterials()
+    if (!this.halo || !this.pool || this.halo.instanceMatrix.count < n) {
+      if (this.halo) { this.halo.removeFromParent(); this.halo.dispose(); this.halo.geometry.dispose() }
+      if (this.pool) { this.pool.removeFromParent(); this.pool.dispose(); this.pool.geometry.dispose() }
+      this.halo = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), this.haloMat!, cap)
+      this.pool = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), this.poolMat!, cap)
+      this.halo.frustumCulled = false
+      this.pool.frustumCulled = false
+      this.halo.visible = this.pool.visible = this.lights > 0.01
+      this.scene.add(this.halo, this.pool)
+    }
+    const head = this.lampHead
+    const q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), ps = new THREE.Vector3(9, 1, 9)
+    for (let i = 0; i < n; i++) {
+      lamps.getMatrixAt(i, this.tmpM)
+      this.tmpV.copy(head).applyMatrix4(this.tmpM)
+      this.halo.setMatrixAt(i, this.tmpM.compose(this.tmpV, q, s))
+      this.tmpV.y = 0.04
+      this.pool.setMatrixAt(i, this.tmpM.compose(this.tmpV, q, ps))
+    }
+    this.halo.count = n; this.pool.count = n
+    this.halo.instanceMatrix.needsUpdate = true
+    this.pool.instanceMatrix.needsUpdate = true
+  }
+
+  private makeGlowMaterials() {
     const tex = makeGlowTexture()
     this.haloMat = new THREE.ShaderMaterial({
       uniforms: { uMap: { value: tex }, uOpacity: { value: 0 }, uSize: { value: 2.6 }, uColor: { value: new THREE.Color(0xffd79a) } },
@@ -221,21 +267,7 @@ export class DayNight {
         }`,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
     })
-    this.halo = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), this.haloMat, n)
     this.poolMat = new THREE.MeshBasicMaterial({ map: tex, color: 0xffc77a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
-    this.pool = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), this.poolMat, n)
-    const q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), ps = new THREE.Vector3(9, 1, 9)
-    for (let i = 0; i < n; i++) {
-      lamps.getMatrixAt(i, this.tmpM)
-      this.tmpV.copy(head).applyMatrix4(this.tmpM)
-      this.halo.setMatrixAt(i, this.tmpM.compose(this.tmpV, q, s))
-      this.tmpV.y = 0.04
-      this.pool.setMatrixAt(i, this.tmpM.compose(this.tmpV, q, ps))
-    }
-    this.halo.frustumCulled = false
-    this.pool.frustumCulled = false
-    this.halo.visible = this.pool.visible = false
-    this.scene.add(this.halo, this.pool)
   }
 }
 

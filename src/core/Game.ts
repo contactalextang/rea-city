@@ -1,14 +1,16 @@
 import * as THREE from 'three'
-import { FIXED_DT, PITCH, HALF, DRIVE_SIDE } from '../config'
+import { FIXED_DT, PITCH, HALF, DRIVE_SIDE, MAX_TRAFFIC } from '../config'
 import { Input } from './Input'
 import { ChaseCamera } from './Camera'
 import { EventBus, type Ctx } from './Context'
-import { RoadGraph, type P2 } from '../world/RoadGraph'
-import { buildGridGraphData } from '../world/GridGraph'
+import type { RoadGraph, P2 } from '../world/RoadGraph'
 import { loadSettings, type Settings } from './Settings'
-import { StaticWorld, type AABB } from '../world/Colliders'
-import { CityGenerator } from '../world/CityGenerator'
-import { circleAABB, circleCircle, pushOut } from '../physics/Collision'
+import type { StaticWorld, AABB } from '../world/Colliders'
+import type { WorldSource } from '../world/WorldSource'
+import { SgWorld } from '../world/SgWorld'
+import { GridWorld } from '../world/GridWorld'
+import { PoiMarkers } from '../world/PoiMarkers'
+import { circleBody, circleCircle, pushOut } from '../physics/Collision'
 import { Player } from '../entities/Player'
 import { Vehicle } from '../entities/Vehicle'
 import { Pedestrians } from '../entities/Pedestrians'
@@ -28,7 +30,7 @@ import { Minimap } from '../ui/Minimap'
 import { Clock } from '../systems/Clock'
 import { DayNight } from '../systems/DayNight'
 import { Weather, WEATHER_LABEL } from '../systems/Weather'
-import { PoiRegistry, gridPois, type Poi } from '../systems/Poi'
+import { PoiRegistry, type Poi } from '../systems/Poi'
 import { Needs } from '../systems/Needs'
 import { Interactions } from '../systems/Interactions'
 import { Panels } from '../ui/Panels'
@@ -49,39 +51,47 @@ export class Game {
   input = new Input()
   events = new EventBus()
   settings: Settings = loadSettings()
-  graph: RoadGraph
-  world = new StaticWorld()
-  city: CityGenerator
+  /** 世界数据源（sg 真实城市 / grid 方格城）；下面的 graph/world 在 init() 里取自它 */
+  source: WorldSource & { firstLoadMs?: number }
+  graph!: RoadGraph
+  world!: StaticWorld
+  poiMarkers!: PoiMarkers
   player = new Player()
   vehicles: Vehicle[] = []
-  peds: Pedestrians
-  trafficAI: TrafficAI
-  policeAI: PoliceAI
-  spawner: Spawner
+  peds!: Pedestrians
+  trafficAI!: TrafficAI
+  policeAI!: PoliceAI
+  spawner!: Spawner
   law = new Law()
-  signals: Signals
+  signals!: Signals
   role: RoleDef
   private signalLights: SignalLights | null = null
-  jobs: Jobs
-  quests: Quests
+  jobs!: Jobs
+  quests!: Quests
   audio = new Audio()
   weapon: Weapon
   private muzzleTmp = new THREE.Vector3()
   hud = new Hud()
-  minimap: Minimap
+  minimap!: Minimap
   clock: Clock
   dayNight: DayNight
   weather: Weather
   pois = new PoiRegistry()
   needs: Needs
-  interactions: Interactions
+  interactions!: Interactions
   panels = new Panels()
   phone: Phone
-  ctx: Ctx
+  ctx!: Ctx
+  /** init() 完成（世界数据就绪、系统已构建） */
+  ready = false
+  private bootAt = performance.now()
+  private readyAt = 0
   state: State = 'intro'
   stateTimer = 0
   time = 0
-  hospital: P2
+  hospital: P2 = { x: 0, z: 0 }
+  private hospitalDoor = { x: 0, z: 0, yaw: 0 }
+  private policeDoor = { x: 0, z: 0, yaw: 0 }
   private acc = 0
   private last = 0
   private fps = 60
@@ -108,43 +118,16 @@ export class Game {
     this.scene.background = new THREE.Color(0xa9c9e8)
     this.scene.fog = new THREE.Fog(0xa9c9e8, 150, 380)   // 之后每帧由 DayNight 更新
     this.cam = new ChaseCamera(window.innerWidth / window.innerHeight)
-    // 路网：sg 数据尚未就绪时回退方格城
-    if (this.settings.world === 'sg') console.warn('[REA] 新加坡路网数据尚未就绪，回退到 grid')
-    this.graph = new RoadGraph(buildGridGraphData())
-    this.signals = new Signals(this.graph)
     this.role = ROLES[this.settings.role]
     this.player.money = this.role.cash
     this.hud.setGun(this.role.systems.gun)
     this.clock = new Clock(this.settings.timeSpeed)
     this.dayNight = new DayNight(this.scene, this.renderer, this.settings)   // 创建半球光/太阳光
-
-    this.city = new CityGenerator(this.scene, this.graph, this.world)
-    this.city.build()
-    // 兴趣点：方格城用合成集；真实世界接入后改由其加载器提供
-    this.pois.load(gridPois(this.graph))
-    this.city.addPoiMarkers(this.pois.all)
     this.needs = new Needs(this.clock, this.role.needsRate)
-    this.minimap = new Minimap(this.city)
-    this.signalLights = (this.scene.userData.signalLights as SignalLights | undefined) ?? null
-
-    this.scene.add(this.player.group)
-    this.peds = new Pedestrians(this.scene, this.events)
-    this.trafficAI = new TrafficAI(this.peds)
-    this.policeAI = new PoliceAI(this.peds)
-    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, pursuitLevel: 0, settings: this.settings, clock: this.clock, signals: this.signals, role: this.role, pois: this.pois, needs: this.needs, law: this.law, events: this.events }
-    this.spawner = new Spawner(this.ctx, this.peds, this.trafficAI, this.policeAI)
-    this.jobs = new Jobs(this.ctx, this.peds)
-    this.jobs.toast = (t, sec) => this.hud.toast(t, sec)
-    this.jobs.closePanel = () => this.closePanel()
+    this.weapon = new Weapon(this.scene)
+    this.weather = new Weather(this.scene, this.dayNight, this.audio)
     this.panels.onClose = () => this.closePanel()
-    this.interactions = new Interactions(this.ctx, this.panels, {
-      toast: (t, sec) => this.hud.toast(t, sec),
-      closePanel: () => this.closePanel(),
-      teleport: (x, z, yaw) => { this.player.place(x, z, yaw); this.cam.snap(yaw) },
-      save: () => this.saveGame(false),
-      parkTaxi: (x, z, yaw) => this.spawner.parkTaxiNear(this.ctx, x, z, yaw),
-    })
-    this.interactions.jobs = this.jobs
+    this.law.setToast((s, sec) => this.hud.toast(s, sec))
     this.phone = new Phone({
       setTimeSpeed: (v) => { this.settings.timeSpeed = v; this.clock.speed = v; saveSettings(this.settings); this.hud.toast(`时间流速 ${v}×`) },
       setShadows: (on) => { this.settings.shadows = on; this.dayNight.setShadows(on); saveSettings(this.settings); this.hud.toast(on ? '阴影已开启' : '阴影已关闭') },
@@ -158,43 +141,98 @@ export class Game {
       buy: (asset, amount) => this.jobs.buy(asset, amount),
       sell: (asset) => this.jobs.sell(asset),
     })
+
+    // 世界数据源：默认真实新加坡（异步加载烘焙数据），?world=grid 为方格城回归基线
+    this.source = this.settings.world === 'sg' ? new SgWorld() : new GridWorld()
+    this.hud.showOverlay('REA CITY', this.source.kind === 'sg' ? '加载新加坡…' : '生成城市…', '', false, '')
+    this.hud.attribution('')
+
+    window.addEventListener('resize', () => this.fitViewport())
+    document.addEventListener('fullscreenchange', () => this.fitViewport())
+    new ResizeObserver(() => this.fitViewport()).observe(document.documentElement)
+    this.exposeDebug()
+    this.init().catch((e: unknown) => {
+      console.error('[REA] 世界加载失败：', e)
+      this.hud.showOverlay('加载失败', String((e as Error)?.message ?? e), 'red', false, '刷新页面重试，或加 ?world=grid 进入方格城')
+    })
+  }
+
+  /** 世界就绪后构建依赖路网/碰撞/POI 的全部系统（顺序：路网 → 静态网格 → 实体/系统 → 灯光约定 → 出生点） */
+  private async init() {
+    const src = this.source
+    await src.ready
+    const sg = src.kind === 'sg'
+    this.graph = src.graph
+    this.world = src.world
+    this.signals = new Signals(this.graph)
+    this.pois.load(src.pois)
+    // 静态网格挂进 scene（方格城此时才生成城市；真实城市挂地面/天际线/道具池，区块随 update 流式加载）
+    src.attach(this.scene)
+    this.poiMarkers = new PoiMarkers(this.pois.all, sg
+      ? { beams: true, labelDist: 120, smallTypes: ['bus', 'taxi'], atDoor: true }
+      : { beams: false, labelDist: Infinity, smallTypes: [], atDoor: false })
+    this.poiMarkers.attach(this.scene)
+    const b = src.bounds
+    this.minimap = new Minimap({ image: src.minimapBase(), minX: b.minX, minZ: b.minZ }, sg ? 0.5 : 0.75)
+    // 红绿灯灯具：真实城市的对象由 PropMeshes 持有（mesh 随区块增删更换，每帧读 .mesh）
+    this.signalLights = (this.scene.userData.signalLights as SignalLights | undefined) ?? null
+
+    this.scene.add(this.player.group)
+    this.peds = new Pedestrians(this.scene, this.events)
+    this.trafficAI = new TrafficAI(this.peds)
+    this.policeAI = new PoliceAI(this.peds)
+    this.ctx = { scene: this.scene, graph: this.graph, world: this.world, vehicles: this.vehicles, player: this.player, cam: this.cam, time: 0, pursuitLevel: 0, settings: this.settings, clock: this.clock, signals: this.signals, role: this.role, pois: this.pois, needs: this.needs, law: this.law, events: this.events }
+    this.spawner = new Spawner(this.ctx, this.peds, this.trafficAI, this.policeAI, sg ? 30 : MAX_TRAFFIC)
+    this.jobs = new Jobs(this.ctx, this.peds)
+    this.jobs.toast = (t, sec) => this.hud.toast(t, sec)
+    this.jobs.closePanel = () => this.closePanel()
+    this.interactions = new Interactions(this.ctx, this.panels, {
+      toast: (t, sec) => this.hud.toast(t, sec),
+      closePanel: () => this.closePanel(),
+      teleport: (x, z, yaw) => { this.player.place(x, z, yaw); this.cam.snap(yaw) },
+      save: () => this.saveGame(false),
+      parkTaxi: (x, z, yaw) => this.spawner.parkTaxiNear(this.ctx, x, z, yaw),
+    })
+    this.interactions.jobs = this.jobs
     this.quests = new Quests(this.ctx)
     this.quests.toast = (t, sec) => this.hud.toast(t, sec)
-    this.law.setToast((s, sec) => this.hud.toast(s, sec))
-    this.weapon = new Weapon(this.scene)
-    this.weather = new Weather(this.scene, this.dayNight, this.audio)
+
+    // 视距：真实城市雾放远到 ~900 m 看天际线，相机远裁剪面随之加大；方格城保持原值
+    this.dayNight.fogScale = sg ? 900 / 380 : 1
+    this.cam.setFar(sg ? 1600 : 420)
     // 世界与实体都已挂到 scene：读取 userData 约定、设置阴影标记、生成路灯光晕
     this.dayNight.attachWorld()
     this.weather.attachWorld()
 
-    // 医院（重生点）：hospital POI 的门口；没有则回退到路口 (1,1) 东向路段的人行道
-    const hosp = this.pois.byType('hospital')[0]
-    if (hosp) this.hospital = { x: hosp.door.x, z: hosp.door.z }
-    else {
-      const n = this.graph.node(1, 1)
-      const e = n.out.find((o) => o.to === this.graph.node(2, 1))!
-      this.hospital = this.graph.sidewalkPoint(e, 14, { x: 0, z: 0 })
-    }
-    // 出生点：身份对应的家门口，门口车道上停一辆车
-    const home = this.pois.byId(this.role.home)
-    if (home) this.homeDoor = { ...home.door }
-    else this.homeDoor = { x: this.hospital.x, z: this.hospital.z, yaw: Math.PI / 2 }
+    // 重生点 = 医院门口，被捕 = 警署门口，出生/昏倒 = 自己家门口；缺失时回退到世界默认出生点
+    const fallback = { ...src.spawn }
+    const door = (p: Poi | undefined | null) => (p ? { ...p.door } : { ...fallback })
+    this.hospitalDoor = door(this.pois.byType('hospital')[0])
+    this.policeDoor = door(this.pois.byType('police')[0] ?? this.pois.byType('hospital')[0])
+    this.hospital = { x: this.hospitalDoor.x, z: this.hospitalDoor.z }
+    this.homeDoor = door(this.pois.byId(this.role.home))
     this.player.place(this.homeDoor.x, this.homeDoor.z, this.homeDoor.yaw)
-    this.parkCarNearDoor(this.homeDoor.x, this.homeDoor.z)
-    // 存档：同身份且未带 ?fresh=1 则读档
+    // 存档：同身份且未带 ?fresh=1 则读档；存档来自另一个世界时不恢复位置
     const fresh = new URLSearchParams(location.search).has('fresh')
     const saved = fresh ? null : Save.load()
     if (saved && saved.role === this.role.id) {
       Save.apply(this.ctx, saved); this.jobs.restore(saved.jobs); this.quests.init(saved.quests)
+      if ((saved.world ?? 'grid') !== src.kind) this.player.place(this.homeDoor.x, this.homeDoor.z, this.homeDoor.yaw)
       console.info(`[REA] 读取存档：第${saved.day}天 $${saved.money}`)
     } else this.quests.init(null)
+    this.parkCarNearDoor(this.player.x, this.player.z)
 
     this.wireEvents()
-    window.addEventListener('resize', () => this.fitViewport())
-    document.addEventListener('fullscreenchange', () => this.fitViewport())
-    new ResizeObserver(() => this.fitViewport()).observe(document.documentElement)
-    this.hud.showOverlay('REA CITY', '程序生成的开放城市 · 偷车、飙车、躲警察、做任务', '', true, '按任意键或点击开始')
-    this.exposeDebug()
+    // 开场环绕镜头：方格城绕原点，真实城市绕出生点
+    if (sg) {
+      this.cam.orbitCenter = { x: this.player.x, z: this.player.z }
+      this.cam.orbitRadius = 140; this.cam.orbitHeight = 60
+    }
+    this.cam.camera.position.set(this.cam.orbitCenter.x, this.cam.orbitHeight, this.cam.orbitCenter.z + this.cam.orbitRadius)
+    this.readyAt = performance.now()
+    this.ready = true
+    this.hud.showOverlay('REA CITY', sg ? '新加坡 · 牛车水 / 莱佛士坊 / 滨海湾 / 中峇鲁' : '程序生成的开放城市 · 偷车、飙车、躲警察、做任务', '', true, '按任意键或点击开始')
+    this.hud.attribution((src.attribution ?? []).join('\n'))
   }
 
   /** 画布与相机跟随窗口尺寸；每帧也会校验一次，防止漏掉 resize 事件 */
@@ -246,6 +284,7 @@ export class Game {
       requestAnimationFrame(loop)
       const dt = Math.min(0.1, (now - this.last) / 1000)
       this.last = now
+      if (!this.ready) { this.fitViewport(); return }   // 世界加载中：只显示覆盖层
       this.acc += dt
       let steps = 0
       while (this.acc >= FIXED_DT && steps < 5) { this.step(FIXED_DT); this.acc -= FIXED_DT; steps++ }
@@ -258,9 +297,11 @@ export class Game {
   }
 
   private beginPlay() {
+    if (!this.ready) return
     this.state = 'play'
     this.unlockHintAt = this.time
     this.hud.hideOverlay()
+    this.hud.attribution('')
     this.audio.unlock()
     this.cam.snap(this.player.yaw)
     this.cam.camera.position.set(this.player.x - Math.sin(this.player.yaw) * 6, 3, this.player.z - Math.cos(this.player.yaw) * 6)
@@ -325,6 +366,10 @@ export class Game {
   private step(dt: number) {
     this.time += dt
     this.ctx.time = this.time
+    // 世界流式加载（区块随玩家位置增删）与 POI 名牌远近开关
+    const wx = this.player.worldX, wz = this.player.worldZ
+    this.source.update(wx, wz, dt)
+    this.poiMarkers.update(wx, wz)
     this.ctx.pursuitLevel = this.law.chase ? this.law.pursuitLevel : 0
     this.signals.update(dt)
     // 时钟/天气/昼夜在任何状态下都推进（含开场与死亡）；面板暂停时不走时钟
@@ -430,15 +475,18 @@ export class Game {
     if (this.player.vehicle) this.player.exit(this.world)
     this.player.health = 100
     const fine = Math.ceil(Math.max(0, this.player.money) * 0.1)
-    if (this.state === 'busted') { this.law.fines += fine; this.law.arrests++ }
+    const busted = this.state === 'busted'
+    if (busted) { this.law.fines += fine; this.law.arrests++ }
     this.player.money -= fine
-    this.player.place(this.hospital.x, this.hospital.z, Math.PI / 2)
+    // 倒下 → 医院门口；被捕 → 警署门口
+    const d = busted ? this.policeDoor : this.hospitalDoor
+    this.player.place(d.x, d.z, d.yaw)
     this.law.reset()
     for (const v of this.vehicles) if (v.driver === 'police') { v.deactivate() }
     this.cam.snap(this.player.yaw)
     this.state = 'play'
     this.hud.hideOverlay()
-    this.hud.toast('在医院醒来', 2)
+    this.hud.toast(busted ? '在警署交了罚金，被释放' : '在医院醒来', 2)
   }
 
   private shoot() {
@@ -485,7 +533,7 @@ export class Game {
       for (const i of [0, 1] as const) {
         v.circle(i, c0)
         for (const b of this.world.query(c0.x, c0.z, v.radius, tmpBoxes)) {
-          const c = circleAABB(c0.x, c0.z, v.radius, b)
+          const c = circleBody(c0.x, c0.z, v.radius, b)
           if (!c) continue
           const imp = pushOut(v, c, 0.25)
           if (imp > 2.5) {
@@ -623,7 +671,7 @@ export class Game {
   private exposeDebug() {
     const self = this
     ;(window as unknown as { __game: unknown }).__game = {
-      get ready() { return true },
+      get ready() { return self.ready },
       get state() { return self.state },
       get stats() { return { fps: self.fps, peds: self.peds.activeCount, cars: self.vehicles.filter((v) => v.active).length, drawCalls: self.renderer.info.render.calls, time: self.time } },
       get player() { return { x: self.player.worldX, z: self.player.worldZ, health: self.player.health, money: self.player.money, inVehicle: self.player.inVehicle, speed: self.player.vehicle?.speed ?? 0 } },
@@ -697,6 +745,23 @@ export class Game {
       startPlay() { if (self.state === 'intro') self['beginPlay']() },
       get grid() { return { PITCH, HALF, DRIVE_SIDE } },
       get graphStats() { return self.graph.stats() },
+      /** 世界数据源：kind / 流式加载统计 / 边界；loadMs = 启动到 init 完成，firstLoadMs = 首个 5×5 区块全部构建 */
+      get world() {
+        const s = self.source
+        return { kind: s.kind, stats: { ...s.stats, firstLoadMs: s.firstLoadMs ?? 0, loadMs: self.readyAt ? Math.round(self.readyAt - self.bootAt) : -1, labels: self.poiMarkers?.visibleLabels ?? 0 }, bounds: { ...s.bounds } }
+      },
+      /** 传送到某 POI 门口（下车、面向门口朝向）；返回是否成功 */
+      teleportTo(poiId: string) {
+        const p = self.pois.byId(poiId); if (!p) return false
+        if (self.player.vehicle) self.player.exit(self.world)
+        self.player.place(p.door.x, p.door.z, p.door.yaw)
+        self.cam.snap(p.door.yaw)
+        return true
+      },
+      /** 测试：路网对象（只读调试用） */
+      get graph() { return self.graph },
+      /** 测试：点是否在某个静态体（建筑多边形等）内 */
+      inside(x: number, z: number) { return self.world.contains(x, z) },
       get settings() { return self.settings },
       clock: {
         set(hour: number, day?: number) { self.clock.set(hour, day) },

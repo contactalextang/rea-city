@@ -44,6 +44,7 @@
     .overlay kbd { display: inline-block; min-width: 18px; text-align: center; padding: 2px 7px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; background: rgba(0,0,0,.4); font-family: inherit; font-size: 13px; }
     .overlay .go { margin-top: 24px; font-size: 18px; color: #7ee787; animation: blink 1.2s infinite; }
     @keyframes blink { 50% { opacity: .35; } }
+    .overlay .attrib { position: absolute; left: 16px; right: 16px; bottom: 12px; font-size: 11px; opacity: .55; text-align: center; white-space: pre-line; line-height: 1.5; }
     .crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; display: none; }
     .crosshair::before, .crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,.9); box-shadow: 0 0 2px #000; }
     .crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
@@ -187,6 +188,7 @@
       <span><kbd>鼠标</kbd></span><span>转动视角（点击画面锁定，Esc 解锁）</span>
     </div>
     <div class="go" id="ov-go">按任意键或点击开始</div>
+    <div class="attrib" id="ov-attrib" style="display:none"></div>
   </div>
   <script type="module" src="/src/main.ts"></script>
 </body>

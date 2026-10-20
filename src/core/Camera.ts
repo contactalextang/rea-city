@@ -14,6 +14,10 @@ export class ChaseCamera {
   private idle = 10        // 距上次鼠标操作的秒数
   private aimBlend = 0     // 0 普通追尾，1 过肩瞄准
   private static readonly SENS = 0.0022
+  /** 开场环绕镜头的中心与半径（方格城绕原点 160 m；真实城市绕出生点） */
+  orbitCenter = { x: 0, z: 0 }
+  orbitRadius = 160
+  orbitHeight = 70
 
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(62, aspect, 0.3, 420)
@@ -33,8 +37,9 @@ export class ChaseCamera {
   update(dt: number, mode: CamMode, target: { x: number; z: number; yaw: number }, speed: number, time: number, moving = true, aiming = false) {
     if (mode === 'orbit') {
       const a = time * 0.08
-      this.pos.set(Math.sin(a) * 160, 70, Math.cos(a) * 160)
-      this.look.set(0, 10, 0)
+      const o = this.orbitCenter, r = this.orbitRadius
+      this.pos.set(o.x + Math.sin(a) * r, this.orbitHeight, o.z + Math.cos(a) * r)
+      this.look.set(o.x, 10, o.z)
       this.camera.position.lerp(this.pos, 1 - Math.exp(-2 * dt))
       this.camera.lookAt(this.look)
       return
@@ -72,6 +77,9 @@ export class ChaseCamera {
     this.camera.position.lerp(this.pos, 1 - Math.exp(-(this.idle < 1.2 || aiming ? 30 : 14) * dt))
     this.camera.lookAt(this.look)
   }
+
+  /** 远裁剪面（真实城市要看到天际线，需 ≥ 1000 m） */
+  setFar(far: number) { this.camera.far = far; this.camera.updateProjectionMatrix() }
 
   resize(aspect: number) { this.camera.aspect = aspect; this.camera.updateProjectionMatrix() }
 }

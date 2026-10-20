@@ -80,4 +80,6 @@ export class Hud {
     this.overlay.classList.remove('hidden')
   }
   hideOverlay() { this.overlay.classList.add('hidden') }
+  /** 覆盖层底部署名（数据来源）；空串隐藏 */
+  attribution(text: string) { const el = $('ov-attrib'); el.textContent = text; el.style.display = text ? '' : 'none' }
 }

@@ -103,8 +103,10 @@ class Pool {
 export class PropMeshes {
   readonly group = new THREE.Group()
   readonly signalLights: SignalLights
-  /** 灯柱池换了 InstancedMesh 时 +1（DayNight 若要重建光晕可据此判断） */
+  /** 灯柱池换了 InstancedMesh 时 +1 */
   lampsVersion = 0
+  /** 每次 flush 实际重写实例时 +1，同步写到 scene.userData.lampsVersion（DayNight 据此重建路灯光晕） */
+  version = 0
   private pools: Record<PoolName, Pool>
   private chunks = new Map<string, Entry[]>()
   private dirty = false
@@ -288,6 +290,8 @@ export class PropMeshes {
       m.count = counts[n]
       m.instanceMatrix.needsUpdate = true
     }
+    this.version++
+    if (this.scene) this.scene.userData.lampsVersion = this.version
     const heads = this.pools.signalHead.mesh
     for (let k = 0; k < heads.count; k++) heads.setColorAt(k, RED)
     if (heads.instanceColor) heads.instanceColor.needsUpdate = true

@@ -4,6 +4,8 @@ import type { Ctx } from '../core/Context'
 import type { Vehicle } from './Vehicle'
 import { steerTowards, throttleFor, obstacleAhead } from './TrafficAI'
 import type { Pedestrians } from './Pedestrians'
+import { rayBody } from '../physics/Collision'
+import type { StaticBody } from '../world/Colliders'
 
 export interface PoliceState {
   edge: RoadEdge; nextEdge: RoadEdge | null
@@ -11,6 +13,22 @@ export interface PoliceState {
   side: number
   leaveTimer: number
   stuck: number
+  /** >0：正在借对向/旁边车道超车（秒） */
+  overtake: number
+  /** 被前车挡住的累计时间 */
+  blocked: number
+}
+const tmpBodies: StaticBody[] = []
+
+/** 两点之间是否没有建筑遮挡（真实城市里警车不能隔着楼直线追撞；细杆类小碰撞体忽略） */
+export function lineClear(ctx: Ctx, ax: number, az: number, bx: number, bz: number): boolean {
+  const dx = bx - ax, dz = bz - az
+  for (const b of ctx.world.queryRay(ax, az, dx, dz, 1, tmpBodies)) {
+    if (b.maxX - b.minX < 1.5 && b.maxZ - b.minZ < 1.5) continue
+    const t = rayBody(ax, az, dx, dz, b)
+    if (t !== null && t < 1) return false
+  }
+  return true
 }
 const tmp: P2 = { x: 0, z: 0 }
 const dirA: P2 = { x: 0, z: 0 }
@@ -22,7 +40,7 @@ export class PoliceAI {
 
   start(v: Vehicle, edge: RoadEdge, side: number) {
     v.driver = 'police'
-    v.ai = { edge, nextEdge: null, mode: 'path', side, leaveTimer: 0, stuck: 0 } satisfies PoliceState
+    v.ai = { edge, nextEdge: null, mode: 'path', side, leaveTimer: 0, stuck: 0, overtake: 0, blocked: 0 } satisfies PoliceState
   }
 
   update(dt: number, ctx: Ctx) {
@@ -30,7 +48,8 @@ export class PoliceAI {
     const px = pl.worldX, pz = pl.worldZ
     const playerLane = ctx.graph.nearestLane(px, pz)
     const playerEdge = playerLane.edge
-    const playerNode = playerEdge.from
+    // 追捕目标路口：玩家所在路段离玩家更近的一端（真实城市单行道长，只取起点常要绕一大圈）
+    const playerNode = playerLane.t < playerEdge.length / 2 ? playerEdge.from : playerEdge.to
     for (const v of ctx.vehicles) {
       if (!v.active || v.driver !== 'police' || v.wrecked) continue
       const s = v.ai as PoliceState
@@ -40,11 +59,9 @@ export class PoliceAI {
         s.leaveTimer += dt
         if (s.leaveTimer > 6 && dist > 90) { v.deactivate(); continue }
       } else {
-        // 与玩家同一条路（任一方向）且 120m 内，或 40m 内 → 直接追撞
-        const sameRoad = s.edge === playerEdge || (playerEdge.reverse !== null && s.edge === playerEdge.reverse)
-        const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw)
-        const behind = ((px - v.x) * fx + (pz - v.z) * fz) < 0
-        s.mode = dist < 40 || (sameRoad && dist < 120) || (behind && dist < 70) ? 'ram' : 'path'
+        // 120 m 内且与玩家之间无建筑遮挡 → 直线追撞（原规则：同路 120 m / 身后 70 m / 40 m 内；真实城市隔着楼会撞墙，故统一改为视线判定）
+        const wantRam = dist < 120
+        s.mode = wantRam && lineClear(ctx, v.x, v.z, px, pz) ? 'ram' : 'path'
       }
 
       let targetSpeed: number
@@ -92,14 +109,18 @@ export class PoliceAI {
           if (!s.nextEdge) { v.deactivate(); continue }
         }
         const look = t + 9
-        if (look <= L) g.lanePoint(s.edge, look, tmp)
-        else g.lanePoint(s.nextEdge, look - L, tmp)
+        // 被前车堵住：借旁边车道（多车道同向）或对向车道（双向路）超车
+        s.overtake = Math.max(0, s.overtake - dt)
+        const lane = s.overtake > 0 ? (s.edge.lanes > 1 ? 1 : s.edge.reverse ? -1 : 0) : 0
+        if (look <= L) g.lanePoint(s.edge, look, tmp, lane)
+        else g.lanePoint(s.nextEdge, look - L, tmp, lane)
         v.controls.steer = steerTowards(v, tmp.x, tmp.z, 2.4)
         g.dirAt(s.edge, L, dirA); g.dirAt(s.nextEdge, 0, dirB)
         const turning = dirA.x * dirB.x + dirA.z * dirB.z < 0.999
         targetSpeed = s.mode === 'leave' ? 12 : 24
         if (turning && L - t < 14) targetSpeed = Math.min(targetSpeed, 9)
         const obs = obstacleAhead(v, ctx, this.peds, 14, 2.4)
+        if (obs < 8 && v.absSpeed < 3 && s.mode !== 'leave') { s.blocked += dt; if (s.blocked > 1) { s.overtake = 4; s.blocked = 0 } } else s.blocked = 0
         if (obs < 10 && s.mode === 'leave') targetSpeed = Math.min(targetSpeed, Math.max(0, (obs - 3) * 1.2))
         else if (obs < 6) targetSpeed = Math.min(targetSpeed, 6)
         v.controls.throttle = throttleFor(v, targetSpeed)

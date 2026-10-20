@@ -11,6 +11,8 @@ import type { Poi } from '../systems/Poi'
  * - minimapBase 给小地图提供 1 px/m 的底图，左上角对应 bounds.minX/minZ。
  */
 export interface WorldSource {
+  /** 'sg' 真实新加坡切片 / 'grid' 方格城 */
+  readonly kind: 'sg' | 'grid'
   graph: RoadGraph
   world: StaticWorld
   pois: Poi[]
@@ -21,4 +23,8 @@ export interface WorldSource {
   update(px: number, pz: number, dt: number): void
   minimapBase(): HTMLCanvasElement | HTMLImageElement
   readonly ready: Promise<void>
+  /** 流式加载统计（loaded = 常驻块数，pending = 目标集合里未完成的块数） */
+  readonly stats: { loaded: number; pending: number }
+  /** 数据署名（开场覆盖层底部显示） */
+  readonly attribution?: string[]
 }

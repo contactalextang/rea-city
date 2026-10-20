@@ -4,7 +4,6 @@ import { GRID, BLOCK, ROAD, SIDEWALK, PITCH, HALF, CITY_MIN, CITY_MAX, rand, ran
 import type { RoadGraph, P2 } from './RoadGraph'
 import type { SignalLights } from '../systems/Signals'
 import { StaticWorld, type AABB } from './Colliders'
-import { POI_COLOR, type Poi } from '../systems/Poi'
 
 export interface Building { box: AABB; h: number; color: THREE.Color }
 export interface BlockInfo { i: number; j: number; cx: number; cz: number; park: boolean }
@@ -200,24 +199,6 @@ export class CityGenerator {
     this.scene.userData.signalLights = { mesh: heads, edgeIds } satisfies SignalLights
   }
 
-  /** 合成 POI 的可见标志：按类型配色的细柱 + 顶部自发光小方块 + 名牌（真实世界接入后由建筑/招牌取代） */
-  addPoiMarkers(pois: Poi[]) {
-    const poleGeo = new THREE.CylinderGeometry(0.09, 0.12, 3.2, 8).translate(0, 1.6, 0)
-    const cubeGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6).translate(0, 3.5, 0)
-    const poleMat = new THREE.MeshLambertMaterial({ color: 0x3a3f47 })
-    for (const p of pois) {
-      const g = new THREE.Group()
-      g.position.set(p.x, 0.15, p.z)
-      const pole = new THREE.Mesh(poleGeo, poleMat)
-      const cube = new THREE.Mesh(cubeGeo, new THREE.MeshBasicMaterial({ color: POI_COLOR[p.type] }))
-      cube.userData.castShadow = false
-      const label = makeLabelSprite(p.name)
-      label.position.y = 4.4
-      g.add(pole, cube, label)
-      this.group.add(g)
-    }
-  }
-
   private walls() {
     const mat = new THREE.MeshLambertMaterial({ color: 0x8a8a86 })
     const size = CITY_MAX - CITY_MIN + 2
@@ -288,26 +269,6 @@ function buildingGeometry(x: number, z: number, w: number, d: number, h: number,
   g.setAttribute('color', new THREE.BufferAttribute(colors, 3))
   g.translate(x, h / 2, z)
   return g
-}
-
-/** 名牌：canvas 文字精灵（固定像素比例，距离远时自然缩小） */
-function makeLabelSprite(text: string) {
-  const c = document.createElement('canvas')
-  const g = c.getContext('2d')!
-  const font = 'bold 28px -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif'
-  g.font = font
-  const w = Math.ceil(g.measureText(text).width) + 28
-  c.width = w; c.height = 48
-  g.font = font
-  g.fillStyle = 'rgba(0,0,0,0.6)'
-  g.beginPath(); g.roundRect(0, 0, w, 48, 10); g.fill()
-  g.fillStyle = '#ffffff'; g.textBaseline = 'middle'; g.textAlign = 'center'
-  g.fillText(text, w / 2, 25)
-  const tex = new THREE.CanvasTexture(c)
-  tex.colorSpace = THREE.SRGBColorSpace
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }))
-  sprite.scale.set(w / 48 * 0.9, 0.9, 1)
-  return sprite
 }
 
 /** 贴图每边窗格数：漫反射每格相同，自发光图随机点亮约 55% 的窗格 */

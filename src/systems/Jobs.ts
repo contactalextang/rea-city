@@ -369,8 +369,9 @@ class BlueTaxi extends BaseJob {
     if (!p) {
       const tmp = { x: 0, z: 0 }
       for (let k = 0; k < 40 && !p; k++) {
-        const e = ctx.graph.randomEdge()
-        if (e.length < 14 || e.kind === 'expressway') continue
+        const e = ctx.graph.randomEdgeNear(px, pz, T.hailMax, ['expressway', 'trunk'])
+        if (!e) break
+        if (e.length < 14) continue
         const t = rand(6, e.length - 6)
         ctx.graph.sidewalkPoint(e, t, tmp)
         const d = Math.hypot(tmp.x - px, tmp.z - pz)

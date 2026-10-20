@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { PED_R, clamp } from '../config'
 import type { Body } from '../physics/Collision'
-import { circleAABB } from '../physics/Collision'
+import { circleBody } from '../physics/Collision'
 import type { AABB, StaticWorld } from '../world/Colliders'
 import type { Vehicle } from './Vehicle'
 import type { Input } from '../core/Input'
@@ -106,7 +106,7 @@ export class Player implements Body {
     this.x += this.vx * dt; this.z += this.vz * dt
     // 与楼房/路灯/围墙碰撞：只推出不反弹
     for (const b of world.query(this.x, this.z, this.radius, tmpBoxes)) {
-      const c = circleAABB(this.x, this.z, this.radius, b)
+      const c = circleBody(this.x, this.z, this.radius, b)
       if (c) { this.x += c.nx * c.depth; this.z += c.nz * c.depth }
     }
     this.phase += Math.hypot(this.vx, this.vz) * dt * 2.2
@@ -136,7 +136,7 @@ export class Player implements Body {
     const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw)
     const rx = -fz, rz = fx            // 右侧单位向量
     let ex = v.x + rx * 2.3, ez = v.z + rz * 2.3
-    const blocked = world.query(ex, ez, this.radius, tmpBoxes).some((b) => circleAABB(ex, ez, this.radius, b) !== null)
+    const blocked = world.query(ex, ez, this.radius, tmpBoxes).some((b) => circleBody(ex, ez, this.radius, b) !== null)
     if (blocked) { ex = v.x - rx * 2.3; ez = v.z - rz * 2.3 }
     this.place(ex, ez, v.yaw)
     this.vx = v.vx * 0.3; this.vz = v.vz * 0.3

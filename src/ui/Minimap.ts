@@ -1,7 +1,8 @@
-import { CITY_MIN, CITY_MAX } from '../config'
-import type { CityGenerator } from '../world/CityGenerator'
 import type { P2 } from '../world/RoadGraph'
-import { POI_COLOR, type Poi } from '../systems/Poi'
+import { POI_COLOR, type Poi, type PoiType } from '../systems/Poi'
+
+const MINOR = new Set<PoiType>(['bus', 'taxi'])
+const NAMED = new Set<PoiType>(['mrt', 'home', 'office', 'police', 'hospital', 'landmark', 'site'])
 
 /** 预烘焙底图：1 px/m，图片左上角对应世界 (minX, minZ) */
 export interface MinimapImageSource { image: HTMLImageElement | HTMLCanvasElement; minX: number; minZ: number }
@@ -12,38 +13,19 @@ export class Minimap {
   private ctx = this.canvas.getContext('2d')!
   private base: HTMLCanvasElement | HTMLImageElement
   private size = 200
-  private scale = 0.75   // px / m
+  private scale: number   // px / m
   /** 底图左上角对应的世界坐标与底图尺寸（米 = 像素） */
   private minX: number
   private minZ: number
   private baseW: number
   private baseH: number
 
-  /** 传 CityGenerator 时按方格城合成底图；传 { image, minX, minZ } 时直接用预烘焙 PNG */
-  constructor(source: CityGenerator | MinimapImageSource) {
-    if ('image' in source) {
-      this.base = source.image
-      this.minX = source.minX; this.minZ = source.minZ
-      this.baseW = source.image.width; this.baseH = source.image.height
-      return
-    }
-    const city = source
-    const span = CITY_MAX - CITY_MIN
-    const base = document.createElement('canvas')
-    base.width = base.height = Math.ceil(span)
-    const c = base.getContext('2d')!
-    c.fillStyle = '#5c5c63'; c.fillRect(0, 0, span, span)
-    for (const b of city.blocks) {
-      c.fillStyle = b.park ? '#4f7a3a' : '#9d9d98'
-      c.fillRect(b.cx - 23 - CITY_MIN, b.cz - 23 - CITY_MIN, 46, 46)
-    }
-    for (const b of city.buildings) {
-      c.fillStyle = '#' + b.color.clone().multiplyScalar(0.85).getHexString()
-      c.fillRect(b.box.minX - CITY_MIN, b.box.minZ - CITY_MIN, b.box.maxX - b.box.minX, b.box.maxZ - b.box.minZ)
-    }
-    this.base = base
-    this.minX = CITY_MIN; this.minZ = CITY_MIN
-    this.baseW = base.width; this.baseH = base.height
+  /** 底图来源：方格城由 GridWorld 合成 canvas，真实城市用预烘焙 PNG；scale = 圆形小地图 px/m */
+  constructor(source: MinimapImageSource, scale = 0.75) {
+    this.base = source.image
+    this.minX = source.minX; this.minZ = source.minZ
+    this.baseW = source.image.width; this.baseH = source.image.height
+    this.scale = scale
   }
 
   draw(px: number, pz: number, yaw: number, target: P2 | null, starts: P2[], police: P2[], gold: P2 | null, hospital: P2, pois: Poi[] = []) {
@@ -64,7 +46,14 @@ export class Minimap {
       g.fillStyle = color; g.fill()
       if (ring) { g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke() }
     }
-    for (const p of pois) dot(p, '#' + POI_COLOR[p.type].toString(16).padStart(6, '0'), 3, true)
+    // POI 不夹到边缘（真实城市有几百个，夹边会围成一圈）；巴士/的士站画小点
+    const view2 = ((R - 6) / this.scale) ** 2
+    for (const p of pois) {
+      const dx = p.x - px, dz = p.z - pz
+      if (dx * dx + dz * dz > view2) continue
+      const minor = MINOR.has(p.type)
+      dot(p, '#' + POI_COLOR[p.type].toString(16).padStart(6, '0'), minor ? 1.8 : 3, !minor)
+    }
     for (const s of starts) dot(s, '#ffd33d', 5, true)
     if (gold) dot(gold, '#f5b400', 4)
     if (target) dot(target, '#3ea6ff', 6, true)
@@ -89,11 +78,16 @@ export class Minimap {
     const X = (x: number) => (x - this.minX) * k, Z = (z: number) => (z - this.minZ) * k
     g.font = '10px -apple-system, "PingFang SC", Arial, sans-serif'
     g.textBaseline = 'middle'
+    // POI 多时（真实城市）只给主要地点写名字，巴士/的士站画小点
+    const many = pois.length > 60
     for (const p of pois) {
       const x = X(p.x), z = Z(p.z)
-      g.beginPath(); g.arc(x, z, 4, 0, Math.PI * 2)
+      const minor = MINOR.has(p.type)
+      g.beginPath(); g.arc(x, z, minor ? 1.5 : many ? 3 : 4, 0, Math.PI * 2)
       g.fillStyle = '#' + POI_COLOR[p.type].toString(16).padStart(6, '0'); g.fill()
+      if (minor) continue
       g.lineWidth = 1; g.strokeStyle = '#fff'; g.stroke()
+      if (many && !NAMED.has(p.type)) continue
       g.fillStyle = '#fff'; g.shadowColor = '#000'; g.shadowBlur = 3
       g.fillText(p.name, x + 6, z)
       g.shadowBlur = 0

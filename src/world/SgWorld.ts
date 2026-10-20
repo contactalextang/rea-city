@@ -45,6 +45,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 export class SgWorld implements WorldSource {
+  readonly kind = 'sg' as const
   graph!: RoadGraph
   world = new StaticWorld()
   pois: Poi[] = []
@@ -179,6 +180,8 @@ export class SgWorld implements WorldSource {
   get firstLoadMs() { return this.firstLoadedAt ? Math.round(this.firstLoadedAt - this.loadStart) : -1 }
 
   minimapBase(): HTMLImageElement { return this.minimapImg }
+
+  get attribution(): string[] { return this.manifest?.attribution ?? [] }
 
   get stats(): ChunkStats & { skylineTris: number } {
     const s = this.chunks.stats

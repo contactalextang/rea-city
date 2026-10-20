@@ -8,6 +8,8 @@ export const SAVE_KEY = 'rea.save'
 export interface SaveData {
   v: 1
   role: RoleId
+  /** 存档所在世界；与当前世界不同则不恢复位置（旧存档缺省视为 grid） */
+  world?: 'sg' | 'grid'
   money: number
   day: number
   hour: number
@@ -28,7 +30,7 @@ export interface SaveExtra { jobs?: JobsSave; quests?: QuestsSave }
 export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
   const pl = ctx.player, law = ctx.law
   const data: SaveData = {
-    v: 1, role: ctx.role.id, money: pl.money, day: ctx.clock.day, hour: ctx.clock.hour,
+    v: 1, role: ctx.role.id, world: ctx.settings.world, money: pl.money, day: ctx.clock.day, hour: ctx.clock.hour,
     x: pl.worldX, z: pl.worldZ, yaw: pl.vehicle ? pl.vehicle.yaw : pl.yaw, inVehicle: false,
     needs: { hunger: ctx.needs.hunger, energy: ctx.needs.energy },
     law: { demerits: law.demerits, fines: law.fines, arrests: law.arrests, licenseSuspendedUntilDay: law.licenseSuspendedUntilDay },

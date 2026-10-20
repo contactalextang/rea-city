@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { MAX_PEDS, PED_R, DESPAWN_DIST, rand, pick, wrapAngle, dampAngle } from '../config'
 import type { RoadEdge, P2 } from '../world/RoadGraph'
 import type { Ctx, EventBus } from '../core/Context'
-import { circleAABB } from '../physics/Collision'
+import { circleBody } from '../physics/Collision'
 import type { AABB } from '../world/Colliders'
 
 /** hail：站在路边招手（的士乘客），不走动、不受惊 */
@@ -24,9 +24,9 @@ const circ = { x: 0, z: 0 }
 const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(1, 1, 1)
 const AX = new THREE.Vector3(1, 0, 0)
 
-/** 行人继续前进的下一条人行道：避开快速路；孤立死路返回 null */
+/** 行人继续前进的下一条人行道：避开快速路/主干道；孤立死路返回 null */
 function nextWalkEdge(ctx: Ctx, e: RoadEdge): RoadEdge | null {
-  const opts = ctx.graph.nextEdges(e).filter((o) => o.kind !== 'expressway')
+  const opts = ctx.graph.nextEdges(e).filter((o) => o.kind !== 'expressway' && o.kind !== 'trunk')
   return opts.length ? pick(opts) : ctx.graph.randomNext(e)
 }
 
@@ -134,7 +134,7 @@ export class Pedestrians {
         p.vx = fx * p.speed; p.vz = fz * p.speed
         p.x += p.vx * dt; p.z += p.vz * dt
         for (const b of ctx.world.query(p.x, p.z, p.radius, tmpBoxes)) {
-          const c = circleAABB(p.x, p.z, p.radius, b)
+          const c = circleBody(p.x, p.z, p.radius, b)
           if (c) { p.x += c.nx * c.depth; p.z += c.nz * c.depth; p.yaw += rand(-1.2, 1.2) }
         }
         if (p.timer <= 0) { const n = ctx.graph.nearestLane(p.x, p.z); p.edge = n.edge; p.t = n.t; p.state = 'return'; p.speed = rand(1.2, 1.9) }
@@ -147,7 +147,7 @@ export class Pedestrians {
           p.x += p.vx * dt; p.z += p.vz * dt
           p.yaw = Math.atan2(dx, dz)
           for (const b of ctx.world.query(p.x, p.z, p.radius, tmpBoxes)) {
-            const c = circleAABB(p.x, p.z, p.radius, b)
+            const c = circleBody(p.x, p.z, p.radius, b)
             if (c) { p.x += c.nx * c.depth; p.z += c.nz * c.depth; p.t += 3 }
           }
         }

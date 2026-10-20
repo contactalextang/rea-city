@@ -258,6 +258,35 @@ export class RoadGraph {
     return this.edges[lo]
   }
 
+  /**
+   * 在 (x,z) 半径 r 内（按线段空间哈希粗筛）按 长度 × 道路等级权重 采样一条边；附近没有路返回 null。
+   * 真实路网覆盖数平方公里，全图 randomEdge 落进玩家周围环形区的概率太低，生成器改用这个。
+   * exclude 可排除某些道路等级（行人不上快速路/主干道）。
+   */
+  randomEdgeNear(x: number, z: number, r: number, exclude?: readonly RoadKind[]): RoadEdge | null {
+    const list = this.nearList
+    list.length = 0
+    let total = 0
+    this.stampNow++
+    const x0 = Math.floor((x - r) / CELL), x1 = Math.floor((x + r) / CELL)
+    const z0 = Math.floor((z - r) / CELL), z1 = Math.floor((z + r) / CELL)
+    for (let cx = x0; cx <= x1; cx++) for (let cz = z0; cz <= z1; cz++) {
+      const cell = this.cells.get(this.cellKey(cx, cz)); if (!cell) continue
+      for (const e of cell) {
+        if (this.stamp[e.id] === this.stampNow) continue
+        this.stamp[e.id] = this.stampNow
+        if (exclude && exclude.includes(e.kind)) continue
+        list.push(e)
+        total += e.length * KIND_WEIGHT[e.kind]
+      }
+    }
+    if (!list.length) return null
+    let pickW = Math.random() * total
+    for (const e of list) { pickW -= e.length * KIND_WEIGHT[e.kind]; if (pickW <= 0) return e }
+    return list[list.length - 1]
+  }
+  private nearList: RoadEdge[] = []
+
   /** 沿最短路（Dijkstra，按长度）朝 target 前进的下一条边；不可达时随机 */
   nextTowards(e: RoadEdge, target: RoadNode): RoadEdge | null {
     const { dist } = this.pathfinder.tableFor(target)
@@ -267,6 +296,10 @@ export class RoadGraph {
       if (d < bestD) { bestD = d; best = o }
     }
     return best ?? this.randomNext(e)
+  }
+  /** 从边 e 上弧长 t 处沿路网开到 target 节点的路程（m）；不可达为 Infinity */
+  routeDist(e: RoadEdge, t: number, target: RoadNode): number {
+    return e.length - t + this.pathfinder.tableFor(target).dist[e.to.id]
   }
   /** 目标点移动/路网变化后清掉寻路缓存 */
   invalidatePaths() { this.pathfinder.invalidate() }

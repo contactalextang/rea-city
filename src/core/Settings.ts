@@ -9,7 +9,7 @@ export interface Settings {
   role: RoleId               // 玩家身份（见 data/roles.ts）
 }
 
-export const DEFAULT_SETTINGS: Settings = { world: 'grid', timeSpeed: 1, chars: 'box', shadows: true, role: DEFAULT_ROLE }
+export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'box', shadows: true, role: DEFAULT_ROLE }
 const KEY = 'rea.settings'
 
 const parseBool = (v: string) => !(v === '0' || v === 'false' || v === 'off' || v === 'no')
