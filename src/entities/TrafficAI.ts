@@ -46,7 +46,8 @@ export function obstacleAhead(v: Vehicle, ctx: Ctx, peds: Pedestrians, range: nu
     const f = dx * fx + dz * fz
     if (f < 0.5 || f > range) continue
     const l = Math.abs(dx * fz - dz * fx)
-    if (l < lateral) best = Math.min(best, f - 2.3)
+    // 前向距离减去两车半长之和（轿车 2.3 + 2.3 时与原先 f - 2.3 后再停 3.5 m 等价；巴士更长）
+    if (l < lateral) best = Math.min(best, f + 2.3 - v.halfLen - o.halfLen)
   }
   for (const p of peds.peds) {
     if (!p.active || p.state === 'down') continue
@@ -122,7 +123,8 @@ export class TrafficAI {
     v.driver = 'traffic'
     v.kinematic = true
     const segT = clamp(t, edge.from.jr, edge.length - edge.to.jr)
-    const cruise = Math.min(edge.speedLimit / 3.6 * 0.9, 10 + Math.random() * 3)
+    let cruise = Math.min(edge.speedLimit / 3.6 * 0.9, 10 + Math.random() * 3)
+    if (v.kind === 'bus') cruise = Math.min(cruise, 11)   // 巴士巡航 ≤ 40 km/h
     v.ai = {
       mode: 'kin', edge, nextEdge: next, seg: 'edge', segT, turn: null,
       v: 8, token: null, wait: 0, forceGo: 0, redWait: 0, physTimer: 0, cruise, dbg: '',

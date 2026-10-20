@@ -548,6 +548,7 @@ export class Game {
     if (control && gun && (input.mouseDown(0) || input.down('ControlLeft')) && this.weapon.ready) this.shoot()
     if (control && input.justPressed('KeyF') && !this.jobs.keyF(this.ctx)) this.toggleVehicle()
     this.interactions.update()
+    if (control && input.justPressed('KeyH') && this.player.vehicle) this.audio.horn(true, this.player.vehicle.kind === 'bus')
     if (control && input.justPressed('KeyE') && this.interactions.near) { this.openPanel(this.interactions.near); return }
     if (playing && input.justPressed('KeyM')) this.hud.toast(this.quests.active ? `任务「${this.quests.active.title}」：${this.quests.stepLabel()}` : `任务 ${this.quests.completed}/${this.quests.defs.length} · 黄色标记接任务 · Tab 手机开工`, 3)
     if (input.justPressed('Enter')) this.toggleFullscreen()
@@ -662,7 +663,7 @@ export class Game {
     // 车 vs 静态
     for (const v of V) {
       if (!v.active || v.kinematic) continue
-      for (const i of [0, 1] as const) {
+      for (let i = 0; i < v.circleCount; i++) {
         v.circle(i, c0)
         for (const b of this.world.query(c0.x, c0.z, v.radius, tmpBoxes)) {
           const c = circleBody(c0.x, c0.z, v.radius, b)
@@ -685,8 +686,8 @@ export class Game {
       for (let j = i + 1; j < V.length; j++) {
         const b = V[j]; if (!b.active) continue
         const dx = a.x - b.x, dz = a.z - b.z
-        if (dx * dx + dz * dz > 7 * 7) continue
-        for (const ia of [0, 1] as const) for (const ib of [0, 1] as const) {
+        if (dx * dx + dz * dz > (a.halfLen + b.halfLen + 2.4) ** 2) continue
+        for (let ia = 0; ia < a.circleCount; ia++) for (let ib = 0; ib < b.circleCount; ib++) {
           a.circle(ia, c0); b.circle(ib, c1)
           const imp = circleCircle(a, a.radius, a.mass, b, b.radius, b.mass, 0.3, c0.x, c0.z, c1.x, c1.z)
           if (imp > 0) {
@@ -711,8 +712,8 @@ export class Game {
       for (const v of V) {
         if (!v.active) continue
         const dx = v.x - pl.x, dz = v.z - pl.z
-        if (dx * dx + dz * dz > 25) continue
-        for (const i of [0, 1] as const) {
+        if (dx * dx + dz * dz > (v.halfLen + 2.7) ** 2) continue
+        for (let i = 0; i < v.circleCount; i++) {
           v.circle(i, c0)
           const ex = pl.x - c0.x, ez = pl.z - c0.z, d2 = ex * ex + ez * ez, rr = v.radius + pl.radius
           if (d2 >= rr * rr) continue
@@ -771,6 +772,7 @@ export class Game {
     const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
     this.hud.update(dt, pl.health, pl.money, this.law.stars, this.law.flash, speedKmh, this.missionCard(), dbg)
     this.audio.update(this.time, pl.inVehicle, pl.vehicle?.speed ?? 0, pl.vehicle?.controls.throttle ?? 0, this.law.policeStars, policeDist)
+    this.audio.ambient(this.ctx, dt)
   }
 
   /** HUD 底部任务卡：进行中的工作优先，任务作为副行 */

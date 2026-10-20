@@ -1,13 +1,20 @@
 import * as THREE from 'three'
-import { MAX_PEDS, MAX_TRAFFIC, MAX_POLICE, SPAWN_MIN, SPAWN_MAX, DESPAWN_DIST, TAXI_COLORS, pick, rand } from '../config'
+import { MAX_PEDS, MAX_TRAFFIC, MAX_POLICE, SPAWN_MIN, SPAWN_MAX, DESPAWN_DIST, TAXI_COLORS, BUS_COLOR, pick, rand } from '../config'
 import type { Ctx } from '../core/Context'
 import type { RoadEdge, RoadKind, P2 } from '../world/RoadGraph'
-import { Vehicle } from '../entities/Vehicle'
+import { Vehicle, type CarModel } from '../entities/Vehicle'
 import type { Pedestrians } from '../entities/Pedestrians'
 import { TrafficAI, releaseToken } from '../entities/TrafficAI'
 import type { PoliceAI } from '../entities/PoliceAI'
 
-const CAR_COLORS = [0xc0392b, 0x2980b9, 0x27ae60, 0xf39c12, 0x8e44ad, 0xecf0f1, 0x2c3e50, 0x16a085, 0xd35400, 0x7f8c8d, 0xf5f5f5, 0x1f1f1f, 0xe84393, 0x74b9ff]
+/** 新加坡私家车配色：白 / 银 / 黑 / 灰占多数，少量彩色 */
+const NEUTRAL_COLORS = [0xf4f4f4, 0xe9e9e6, 0xffffff, 0xc3c7cc, 0xa9adb3, 0x8a8f96, 0x5d6168, 0x3a3d42, 0x1b1c1f, 0x111214]
+const ACCENT_COLORS = [0x8e1b1b, 0xb8282e, 0x1f3a7a, 0x2f6fb5, 0x3e5f4a, 0x6b4a32, 0xc9a66b, 0xd35400, 0x4a2c5e]
+const LUXURY_COLORS = [0x0e0f12, 0x1c1f26, 0x2b2b2e, 0x3b0d12, 0x0d1b2a, 0xf2f2f2]
+const carColor = () => (Math.random() < 0.72 ? pick(NEUTRAL_COLORS) : pick(ACCENT_COLORS))
+const civilModel = (): CarModel => { const r = Math.random(); return r < 0.5 ? 'sedan' : r < 0.75 ? 'mpv' : 'suv' }
+/** 巴士只在主干道 / 次干道 / 一级公路上生成 */
+const BUS_ROADS: readonly RoadKind[] = ['trunk', 'primary', 'secondary']
 const tmp: P2 = { x: 0, z: 0 }
 const tmpDir: P2 = { x: 0, z: 0 }
 const camDir = new THREE.Vector3()
@@ -20,12 +27,23 @@ export class Spawner {
   police: Vehicle[] = []
   /** 租用的士池（不参与自动回收） */
   taxis: Vehicle[] = []
+  /** 金领身份的私人豪车（开局停在家门口） */
+  private ownCar: Vehicle | null = null
   private timer = 0
 
   /** maxTraffic：交通车池大小（方格城 MAX_TRAFFIC，真实城市更大） */
   constructor(ctx: Ctx, private peds: Pedestrians, private trafficAI: TrafficAI, private policeAI: PoliceAI, readonly maxTraffic = MAX_TRAFFIC) {
+    // 交通车池：10% 巴士、8% 的士、少量豪车，其余私家车（轿车 / MPV / SUV）
+    const nBus = Math.round(maxTraffic * 0.1), nTaxi = Math.round(maxTraffic * 0.08), nLux = Math.max(1, Math.round(maxTraffic * 0.04))
     for (let i = 0; i < maxTraffic; i++) {
-      const v = new Vehicle('civil', pick(CAR_COLORS)); ctx.scene.add(v.group); ctx.vehicles.push(v); this.traffic.push(v)
+      const v = i < nBus ? new Vehicle('bus', BUS_COLOR)
+        : i < nBus + nTaxi ? new Vehicle('taxi', pick(TAXI_COLORS))
+        : i < nBus + nTaxi + nLux ? new Vehicle('luxury', pick(LUXURY_COLORS))
+        : new Vehicle('civil', carColor(), civilModel())
+      ctx.scene.add(v.group); ctx.vehicles.push(v); this.traffic.push(v)
+    }
+    if (ctx.role.id === 'gold') {
+      this.ownCar = new Vehicle('luxury', pick(LUXURY_COLORS)); ctx.scene.add(this.ownCar.group); ctx.vehicles.push(this.ownCar)
     }
     for (let i = 0; i < MAX_POLICE; i++) {
       const v = new Vehicle('police', 0xf4f4f4); ctx.scene.add(v.group); ctx.vehicles.push(v); this.police.push(v)
@@ -80,10 +98,15 @@ export class Spawner {
     budget = 2
     const trafficActive = this.traffic.filter((v) => v.active).length
     for (let i = trafficActive; i < this.maxTraffic && budget > 0; i++) {
-      const v = this.traffic.find((q) => !q.active); if (!v) break
       const spot = this.pickSpot(ctx, SPAWN_MIN, SPAWN_MAX, true); if (!spot) break
+      // 随机取一辆空闲车（保持池内车型比例）；路段不允许巴士时只取非巴士
+      const busOk = BUS_ROADS.includes(spot.edge.kind)
+      const free = this.traffic.filter((q) => !q.active && (busOk || q.kind !== 'bus'))
+      if (!free.length) break
+      const v = pick(free)
       ctx.graph.lanePoint(spot.edge, spot.t, tmp)
-      if (ctx.vehicles.some((o) => o.active && Math.hypot(o.x - tmp.x, o.z - tmp.z) < 14)) continue
+      const gap = v.kind === 'bus' ? 20 : 14
+      if (ctx.vehicles.some((o) => o.active && Math.hypot(o.x - tmp.x, o.z - tmp.z) < gap)) continue
       ctx.graph.dirAt(spot.edge, spot.t, tmpDir)
       v.activate(tmp.x, tmp.z, Math.atan2(tmpDir.x, tmpDir.z))
       if (!this.trafficAI.start(v, spot.edge, spot.t, ctx)) { v.deactivate(); continue }
@@ -131,12 +154,15 @@ export class Spawner {
 
   /** 确保指定位置附近存在一辆可用的空车（开局/重生用） */
   parkCarNear(ctx: Ctx, x: number, z: number, yaw: number): Vehicle | null {
-    const v = this.traffic.find((q) => !q.active); if (!v) return null
+    // 金领：停自己的豪车；其他身份：一辆空闲私家车（不停巴士 / 的士）
+    const own = this.ownCar && this.ownCar.driver !== 'player' ? this.ownCar : null
+    const v = own ?? this.traffic.find((q) => !q.active && q.kind === 'civil') ?? this.traffic.find((q) => !q.active && q.kind !== 'bus')
+    if (!v) return null
     v.activate(x, z, yaw); v.driver = 'none'; v.controls.handbrake = true
     return v
   }
 
-  /** 在指定位置停一辆的士（涂装随机 Comfort 蓝 / CityCab 黄）；池满则复用最旧的一辆 */
+  /** 在指定位置停一辆的士（涂装随机 Comfort / CityCab / Strides / TransCab）；池满则复用最旧的一辆 */
   parkTaxiNear(ctx: Ctx, x: number, z: number, yaw: number): Vehicle | null {
     const v = this.taxis.find((q) => !q.active) ?? this.taxis.find((q) => q.driver !== 'player') ?? null
     if (!v) return null
