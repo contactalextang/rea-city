@@ -14,9 +14,13 @@ export function steerFactor(speed: number) {
   return lowRamp * highDecay
 }
 
+/** 调参倍率（玩家自有车 / 引擎升级）：只乘加速与前进极速 */
+export interface TuneMul { accel: number; maxFwd: number }
+
 /** 街机车辆运动学：纵向加速/阻力、横向抓地、转向随速度变化 */
-export function stepVehicle(b: VehicleBody, c: Controls, kind: VehicleKind, dt: number, grounded = true) {
-  const p = VEHICLE_PARAMS[kind]
+export function stepVehicle(b: VehicleBody, c: Controls, kind: VehicleKind, dt: number, grounded = true, mul?: TuneMul) {
+  const base = VEHICLE_PARAMS[kind]
+  const p = mul && (mul.accel !== 1 || mul.maxFwd !== 1) ? { ...base, accel: base.accel * mul.accel, maxFwd: base.maxFwd * mul.maxFwd } : base
   const fx = Math.sin(b.yaw), fz = Math.cos(b.yaw)   // 车头方向（局部 +z）
   const rx = -fz, rz = fx                            // 右侧：朝向 (dx,dz) 的右侧是 (-dz,dx)
   let vF = b.vx * fx + b.vz * fz

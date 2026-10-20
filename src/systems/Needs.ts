@@ -1,5 +1,6 @@
 import type { Clock } from './Clock'
 import { clamp } from '../config'
+import { playerEffects } from './Assets'
 
 export const NEED_LOW = 20
 
@@ -20,8 +21,9 @@ export class Needs {
     this.lastAbs = now
     if (dh > 0) {
       if (dh > 48) dh = 48   // 读档/调试大跳保护
-      this.hunger = clamp(this.hunger - 6 * this.rate * dh, 0, 100)
-      this.energy = clamp(this.energy - (4 * this.rate + (running ? 2 : 0)) * dh, 0, 100)
+      const k = playerEffects().needsMul   // 人体工学装备 ×0.85
+      this.hunger = clamp(this.hunger - 6 * this.rate * k * dh, 0, 100)
+      this.energy = clamp(this.energy - (4 * this.rate + (running ? 2 : 0)) * k * dh, 0, 100)
     }
     return this.energy <= 0
   }

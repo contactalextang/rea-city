@@ -5,6 +5,7 @@ import type { Ped, Pedestrians } from '../entities/Pedestrians'
 import { BUS_HEIGHT } from '../config'
 import { rayBody } from '../physics/Collision'
 import type { StaticBody } from '../world/Colliders'
+import { playerEffects } from './Assets'
 
 export type ShotHit =
   | { kind: 'ped'; ped: Ped; point: THREE.Vector3 }
@@ -19,7 +20,9 @@ const tmpBodies: StaticBody[] = []
 /** 手枪：从相机准星发出的即时射线，命中行人/车辆/建筑；带曳光、枪口焰、击中火花 */
 export class Weapon {
   readonly fireInterval = 0.26
-  readonly vehicleDamage = 14
+  readonly baseVehicleDamage = 14
+  /** 对车辆的单发伤害（改装手枪 ×1.5） */
+  get vehicleDamage() { return this.baseVehicleDamage * playerEffects().dmgMul }
   private cooldown = 0
   private tracer: THREE.Line
   private tracerMat: THREE.LineBasicMaterial

@@ -258,8 +258,8 @@ export class Game {
     this.quests = new Quests(this.ctx)
     this.quests.toast = (t, sec) => this.hud.toast(t, sec)
     // Phase 8 子系统：资产 / 产业（P8.2 / P8.3 填实）→ 钱包 → 成长
-    this.assets = new Assets(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), spawner: this.spawner })
-    this.business = new Business(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false) })
+    this.assets = new Assets(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), spawner: this.spawner, level: () => this.progress.level, closePanel: () => this.closePanel(), refresh: () => { const c = this.interactions.current; if (c && this.panels.open) this.interactions.open(c) } })
+    this.business = new Business(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), level: () => this.progress.level, refresh: () => { const c = this.interactions.current; if (c && this.panels.open) this.interactions.open(c) } })
     this.wallet = new Wallet(this.ctx, () => { const v = this.jobs.stats.invest; return v.fixed + v.index + v.crypto }, this.assets, this.business)
     this.progress = new Progress(this.ctx, { netWorth: () => this.wallet.netWorth(), bizCount: () => this.business.list().length })
     this.interactions.addProvider((p) => this.jobs.poiButtons(p))
@@ -855,8 +855,8 @@ export class Game {
     let policeDist = Infinity
     for (const v of this.vehicles) if (v.active && v.driver === 'police') { police.push(v); policeDist = Math.min(policeDist, Math.hypot(v.x - pl.worldX, v.z - pl.worldZ)) }
     // 目标优先级：进行中的工作 > 任务 > 被动工作（打卡/投资 → 最近办公楼）
-    const target = this.jobs.targetPoint ?? this.quests.targetPoint ?? this.jobs.passiveTarget
-    this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, target, this.quests.starts, police, this.quests.carPoint, this.hospital, this.pois.all, pl.health)
+    const target = this.jobs.targetPoint ?? this.quests.targetPoint ?? this.business.navTarget ?? this.jobs.passiveTarget
+    this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, target, this.quests.starts, police, this.quests.carPoint, this.hospital, this.pois.all, pl.health, this.business.points())
     this.phoneTimer += dt
     if (this.phone.open && this.phoneTimer >= 0.25) {
       this.phoneTimer = 0
@@ -1079,6 +1079,9 @@ export class Game {
       /** 测试：直接设置现金（不计入终身收支） */
       money(n: number) { self.player.money = n; self.progress.resync(); return n },
       get netWorth() { return self.wallet.netWorth() },
+      /** 商店 / 资产：catalog, owned, buy, setHome, spawnCar, garage… */
+      get shop() { return self.assets.debug },
+      get biz() { return self.business.debugApi() },
       save() { return self.saveGame(false) },
       load() { return self.loadGame() },
       get dayNight() { const d = self.dayNight; return { sunIntensity: d.sun.intensity, hemiIntensity: d.hemi.intensity, lights: d.lights, gloom: d.gloom, shadows: self.renderer.shadowMap.enabled, sunDir: d.sun.position.clone().sub(d.sun.target.position).normalize().toArray().map((n) => +n.toFixed(2)) } },

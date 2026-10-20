@@ -4,6 +4,8 @@ import { TARGET_CSS } from '../world/Marker'
 
 const MINOR = new Set<PoiType>(['bus', 'taxi'])
 const NAMED = new Set<PoiType>(['mrt', 'home', 'office', 'police', 'hospital', 'landmark', 'site'])
+/** 已拥有产业的金圈颜色（与品红目标 TARGET_CSS、黄色任务点 #ffd33d 区分：空心粗环 + 深色描边） */
+export const BIZ_RING_CSS = '#ffb300'
 
 /** 距离文字：320m / 1.2km（米数取整到 5，减少跳动；sep 为数字与单位间的分隔） */
 export const fmtDist = (d: number, sep = '') => d < 1000 ? `${Math.round(d / 5) * 5}${sep}m` : `${(d / 1000).toFixed(d < 10000 ? 1 : 0)}${sep}km`
@@ -27,6 +29,8 @@ export class Minimap {
   private baseW: number
   private baseH: number
   private dpr = 0
+  /** 最近一次 draw 传入的已拥有产业位置（大地图沿用） */
+  private owned: P2[] = []
 
   /** 底图来源：方格城由 GridWorld 合成 canvas，真实城市用预烘焙 PNG；scale = 圆形小地图 px/m */
   constructor(source: MinimapImageSource, scale = 0.75) {
@@ -44,8 +48,9 @@ export class Minimap {
     this.canvas.width = this.canvas.height = Math.round(this.size * d)
   }
 
-  /** health 可选：低于 35 时医院点夹到边缘常驻，否则只在视野内画 */
-  draw(px: number, pz: number, yaw: number, target: P2 | null, starts: P2[], police: P2[], gold: P2 | null, hospital: P2, pois: Poi[] = [], health?: number) {
+  /** health 可选：低于 35 时医院点夹到边缘常驻，否则只在视野内画；owned = 已拥有产业位置（金圈，视野内才画） */
+  draw(px: number, pz: number, yaw: number, target: P2 | null, starts: P2[], police: P2[], gold: P2 | null, hospital: P2, pois: Poi[] = [], health?: number, owned: P2[] = []) {
+    this.owned = owned
     this.fitDpr()
     const g = this.ctx, S = this.size, R = S / 2
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
@@ -75,6 +80,15 @@ export class Minimap {
       dot(p, poiCss(p.type), minor ? 1.6 : 2.6, !minor)
     }
     g.globalAlpha = 1
+    // 已拥有产业：金色空心圈（屏幕上约 7 px 半径，不随缩放变细）
+    for (const o of owned) {
+      const dx = o.x - px, dz = o.z - pz
+      if (dx * dx + dz * dz > view2) continue
+      const r = 7 / this.scale
+      g.beginPath(); g.arc(dx, dz, r, 0, Math.PI * 2)
+      g.lineWidth = 5 / this.scale; g.strokeStyle = 'rgba(0,0,0,.6)'; g.stroke()
+      g.lineWidth = 3 / this.scale; g.strokeStyle = BIZ_RING_CSS; g.stroke()
+    }
     for (const s of starts) dot(s, '#ffd33d', 5, true)
     if (gold) dot(gold, '#f5b400', 4)
     for (const p of police) dot(p, '#ff3b3b', 3.5)
@@ -151,6 +165,7 @@ export class Minimap {
       g.shadowBlur = 0
     }
     for (const p of police) { g.beginPath(); g.arc(X(p.x), Z(p.z), 3.5, 0, Math.PI * 2); g.fillStyle = '#ff3b3b'; g.fill() }
+    for (const o of this.owned) { g.beginPath(); g.arc(X(o.x), Z(o.z), 7, 0, Math.PI * 2); g.lineWidth = 2.5; g.strokeStyle = BIZ_RING_CSS; g.stroke() }
     g.save(); g.translate(X(px), Z(pz)); g.rotate(-yaw + Math.PI)
     g.beginPath(); g.moveTo(0, -8); g.lineTo(6, 7); g.lineTo(0, 4); g.lineTo(-6, 7); g.closePath()
     g.fillStyle = '#ffffff'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#000'; g.stroke()

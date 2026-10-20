@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { CAR_LEN, CAR_CIRCLE_OFF, CAR_CIRCLE_R, BUS_LEN, BUS_WID, BUS_HEIGHT, BUS_CIRCLE_OFFS, BUS_CIRCLE_R, type VehicleKind } from '../config'
-import { stepVehicle, forwardSpeed, steerFactor, type Controls, type VehicleBody } from '../physics/ArcadeVehicle'
+import { stepVehicle, forwardSpeed, steerFactor, type Controls, type VehicleBody, type TuneMul } from '../physics/ArcadeVehicle'
+import { playerEffects } from '../systems/Assets'
 import type { Body } from '../physics/Collision'
 
 export type Driver = 'none' | 'player' | 'traffic' | 'police'
@@ -317,6 +318,8 @@ export class Vehicle implements VehicleBody, Body {
   /** 半车长（交通 AI 跟车间距用） */
   readonly halfLen: number
   health = 100
+  /** 这辆车自己的调校倍率（商店车辆，如超跑）；NPC 车为 1 */
+  tune: TuneMul = { accel: 1, maxFwd: 1 }
   wrecked = false
   active = false
   /** 运动学模式：位置由 AI 直接设置，不跑物理积分、不与静态体碰撞 */
@@ -394,7 +397,14 @@ export class Vehicle implements VehicleBody, Body {
 
   step(dt: number) {
     if (this.wrecked) { this.controls.throttle = 0; this.controls.steer = 0; this.controls.handbrake = true }
-    stepVehicle(this, this.controls, this.kind, dt)
+    stepVehicle(this, this.controls, this.kind, dt, true, this.tuneMul)
+  }
+
+  /** 实际生效的调参倍率：车自身 tune × 玩家驾驶时的升级效果（引擎套件只作用于玩家开的车） */
+  get tuneMul(): TuneMul {
+    if (this.driver !== 'player') return this.tune
+    const e = playerEffects()
+    return { accel: this.tune.accel * e.accelMul, maxFwd: this.tune.maxFwd * e.maxFwdMul }
   }
 
   damage(amount: number) {

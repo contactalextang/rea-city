@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { VehicleKind } from '../config'
 import { MAX_PEDS, MAX_TRAFFIC, MAX_POLICE, SPAWN_MIN, SPAWN_MAX, DESPAWN_DIST, TAXI_COLORS, BUS_COLOR, pick, rand } from '../config'
 import type { Ctx } from '../core/Context'
 import type { RoadEdge, RoadKind, P2 } from '../world/RoadGraph'
@@ -27,8 +28,12 @@ export class Spawner {
   police: Vehicle[] = []
   /** 租用的士池（不参与自动回收） */
   taxis: Vehicle[] = []
-  /** 金领身份的私人豪车（开局停在家门口） */
+  /** 金领身份的私人豪车（开局停在家门口；Assets 接管后并入车库，由 spawnOwned 取出） */
   private ownCar: Vehicle | null = null
+  /** Assets 已接管金领豪车：parkCarNear 不再拿它当「门口空车」 */
+  private ownCarManaged = false
+  /** 玩家自有车池（商店车辆，按 id 复用；不参与自动回收） */
+  private ownedPool = new Map<string, Vehicle>()
   private timer = 0
 
   /** maxTraffic：交通车池大小（方格城 MAX_TRAFFIC，真实城市更大） */
@@ -155,12 +160,28 @@ export class Spawner {
   /** 确保指定位置附近存在一辆可用的空车（开局/重生用） */
   parkCarNear(ctx: Ctx, x: number, z: number, yaw: number): Vehicle | null {
     // 金领：停自己的豪车；其他身份：一辆空闲私家车（不停巴士 / 的士）
-    const own = this.ownCar && this.ownCar.driver !== 'player' ? this.ownCar : null
+    const own = !this.ownCarManaged && this.ownCar && this.ownCar.driver !== 'player' ? this.ownCar : null
     const v = own ?? this.traffic.find((q) => !q.active && q.kind === 'civil') ?? this.traffic.find((q) => !q.active && q.kind !== 'bus')
     if (!v) return null
     v.activate(x, z, yaw); v.driver = 'none'; v.controls.handbrake = true
     return v
   }
+
+  /** 金领豪车交给资产系统管理（之后只通过 spawnOwned 取出） */
+  claimOwnCar() { this.ownCarManaged = true; return this.ownCar }
+
+  /**
+   * 在 (x,z,yaw) 停一辆玩家自有车：key = 商店物品 id（同 id 复用同一辆）；useOwnCar = 用金领开局那辆豪车。
+   * 池里还没有这辆车时按 preset（车种 / 颜色 / 车型）新建。
+   */
+  spawnOwned(ctx: Ctx, key: string, x: number, z: number, yaw: number, preset: { kind: VehicleKind; color: number; model: CarModel }, useOwnCar = false): Vehicle {
+    let v = useOwnCar && this.ownCar ? this.ownCar : this.ownedPool.get(key)
+    if (!v) { v = new Vehicle(preset.kind, preset.color, preset.model); ctx.scene.add(v.group); ctx.vehicles.push(v); this.ownedPool.set(key, v) }
+    v.activate(x, z, yaw); v.driver = 'none'; v.controls.handbrake = true
+    return v
+  }
+  /** 收回一辆自有车（玩家正在开时不收） */
+  recallOwned(v: Vehicle) { if (v.driver !== 'player') v.deactivate() }
 
   /** 在指定位置停一辆的士（涂装随机 Comfort / CityCab / Strides / TransCab）；池满则复用最旧的一辆 */
   parkTaxiNear(ctx: Ctx, x: number, z: number, yaw: number): Vehicle | null {
