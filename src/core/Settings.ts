@@ -6,12 +6,13 @@ export interface Settings {
   timeSpeed: number          // 游戏时间流速倍率
   chars: 'gltf' | 'box'     // 角色渲染：骨骼 glTF 或方块
   shadows: boolean
+  music: boolean             // 背景音乐（?music=0 关闭）
   role: RoleId               // 玩家身份（见 data/roles.ts）
   lawStrictness: LawStrictness   // 执法松紧：relaxed 默认宽松 / real 接近真实（见 systems/Law.ts LAW_TUNING）
 }
 export type LawStrictness = 'relaxed' | 'real'
 
-export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'gltf', shadows: true, role: DEFAULT_ROLE, lawStrictness: 'relaxed' }
+export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'gltf', shadows: true, music: true, role: DEFAULT_ROLE, lawStrictness: 'relaxed' }
 const KEY = 'rea.settings'
 
 const parseBool = (v: string) => !(v === '0' || v === 'false' || v === 'off' || v === 'no')
@@ -46,5 +47,6 @@ function apply(s: Settings, src: Record<string, unknown>) {
   if (isRoleId(src.role)) s.role = src.role
   // ?law=real 是 ?lawStrictness=real 的简写
   for (const v of [src.lawStrictness, src.law]) if (v === 'relaxed' || v === 'real') s.lawStrictness = v
+  if (src.music !== undefined) s.music = typeof src.music === 'boolean' ? src.music : parseBool(String(src.music))
   if (src.shadows !== undefined) s.shadows = typeof src.shadows === 'boolean' ? src.shadows : parseBool(String(src.shadows))
 }

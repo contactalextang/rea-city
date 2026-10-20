@@ -6,6 +6,7 @@ import { INVEST_AMOUNTS } from '../data/jobs'
 export interface PhoneHost {
   setTimeSpeed(v: number): void
   setShadows(on: boolean): void
+  setMusic(on: boolean): void
   save(): void
   load(): void
   restart(): void
@@ -27,6 +28,7 @@ export interface PhoneStatus {
   energy: number
   timeSpeed: number
   shadows: boolean
+  music: boolean
   work: JobsView
   quest: { title: string; step: string } | null
 }
@@ -55,6 +57,9 @@ export class Phone {
     }
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-shadows]')) {
       b.addEventListener('click', () => { host.setShadows(b.dataset.shadows === '1'); this.refreshSettings() })
+    }
+    for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-music]')) {
+      b.addEventListener('click', () => { host.setMusic(b.dataset.music === '1'); if (this.status) this.status.music = b.dataset.music === '1'; this.refreshSettings() })
     }
   }
 
@@ -94,6 +99,7 @@ export class Phone {
     const st = this.status; if (!st) return
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-speed]')) b.classList.toggle('on', Number(b.dataset.speed) === st.timeSpeed)
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-shadows]')) b.classList.toggle('on', (b.dataset.shadows === '1') === st.shadows)
+    for (const b of this.root.querySelectorAll<HTMLButtonElement>('[data-music]')) b.classList.toggle('on', (b.dataset.music === '1') === st.music)
   }
 
   /** 工作页：内容签名不变就不重建 DOM，避免点击时按钮被替换 */

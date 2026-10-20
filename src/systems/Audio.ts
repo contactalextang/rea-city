@@ -1,13 +1,14 @@
 import type { Ctx } from '../core/Context'
 import type { Vehicle } from '../entities/Vehicle'
 import type { Poi } from './Poi'
+import { Music } from './Music'
 
 /** 新加坡 MRT 进站提示音 "叮-咚-叮"（Hz） */
 const MRT_CHIME = [1318.5, 987.8, 1318.5]
 
 /**
  * WebAudio 合成音效：引擎、警笛、撞击、雨声、雷声、喇叭，以及环境音（城市车流底噪、鸟鸣/蟋蟀、
- * MRT 进站提示音、路口行人过街提示音、交通车被挡鸣笛）。无外部音频文件
+ * MRT 进站提示音、路口行人过街提示音、交通车被挡鸣笛）与程序合成背景音乐（见 Music）。无外部音频文件
  */
 export class Audio {
   private ac: AudioContext | null = null
@@ -34,6 +35,14 @@ export class Audio {
   /** 最近的信号灯路口：{ 距离, 行人是否绿灯 }（每 0.25 s 刷新） */
   private nearSignal: { d: number; green: boolean } | null = null
   private blocked = new Map<Vehicle, { t: number; cool: number }>()
+  // ---- 撞击音节流 ----
+  private lastCrashAt = -1
+  private lastCrashImp = 0
+  /** 实际播放过的撞击音次数（测试用） */
+  crashCount = 0
+  // ---- 背景音乐 ----
+  private music: Music | null = null
+  private musicOn = true
 
   /** 必须在用户手势后调用 */
   unlock() {
@@ -71,9 +80,11 @@ export class Audio {
       // 城市车流底噪：同一段白噪（偏移起点避免与雨声相关）→ 低通 → 增益（按附近车流量调）
       const hum = ac.createBufferSource(); hum.buffer = this.rumble; hum.loop = true
       const hlp = ac.createBiquadFilter(); hlp.type = 'lowpass'; hlp.frequency.value = 260
-      const hpk = ac.createBiquadFilter(); hpk.type = 'peaking'; hpk.frequency.value = 90; hpk.gain.value = 6
+      const hpk = ac.createBiquadFilter(); hpk.type = 'peaking'; hpk.frequency.value = 90; hpk.gain.value = 3
       this.trafficGain = ac.createGain(); this.trafficGain.gain.value = 0
       hum.connect(hlp).connect(hpk).connect(this.trafficGain).connect(master); hum.start(0, 1.37)
+      this.music = new Music(ac, out)
+      if (!this.musicOn) this.music.setEnabled(false)
     } catch { this.ac = null }
   }
 
@@ -101,12 +112,16 @@ export class Audio {
     osc.connect(og).connect(this.out!); osc.start(); osc.stop(t + 0.1)
   }
 
+  /** 撞击音：只由玩家自己的碰撞触发；轻擦不响，0.35 s 内同等力度不重复（贴墙蹭不再连响） */
   crash(impulse: number) {
-    if (!this.ac || !this.noise) return
+    if (!this.ac || !this.noise || impulse < 4) return
+    const t = this.ac.currentTime
+    if (t - this.lastCrashAt < 0.35 && impulse < this.lastCrashImp * 1.5) return
+    this.lastCrashAt = t; this.lastCrashImp = impulse; this.crashCount++
     const src = this.ac.createBufferSource(); src.buffer = this.noise
-    const g = this.ac.createGain(); g.gain.value = Math.min(0.8, impulse * 0.05)
+    const g = this.ac.createGain(); g.gain.value = Math.min(0.5, impulse * 0.035)
     const lp = this.ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900
-    src.connect(lp).connect(g).connect(this.out!); src.start()
+    src.connect(lp).connect(g).connect(this.master!); src.start()
   }
 
   /** 雨声音量 0–1（每帧调用，平滑淡入淡出） */
@@ -138,6 +153,13 @@ export class Audio {
     if (this.ac && this.out) this.out.gain.setTargetAtTime(this.masterVol, this.ac.currentTime, 0.05)
   }
   get masterVolume() { return this.masterVol }
+  /** 背景音乐开关（未解锁时先记下） */
+  setMusic(on: boolean) {
+    this.musicOn = on
+    this.music?.setEnabled(on)
+  }
+  /** 当前音乐模式；未解锁 / 关闭时为 null（测试用） */
+  get musicMode() { return this.music && this.musicOn ? this.music.currentMode : null }
   /** 音频是否已解锁并在运行（headless / 未交互时可能 suspended） */
   get state() { return this.ac?.state ?? 'locked' }
 
@@ -207,6 +229,7 @@ export class Audio {
     const pl = ctx.player, px = pl.worldX, pz = pl.worldZ
     const now = this.ac.currentTime
     const rainy = this.rainLevel > 0.15
+    this.music?.update({ inVehicle: pl.inVehicle, hour: ctx.clock.hour, rain: this.rainLevel, stars: ctx.law.policeStars })
     this.ambT -= dt
     if (this.ambT <= 0) {
       this.ambT = 0.25
@@ -218,7 +241,7 @@ export class Audio {
         if (d < 120) n += v.absSpeed > 1 ? 1 - d / 160 : 0.3 * (1 - d / 160)
       }
       const busy = Math.min(1, n / 14)
-      this.trafficGain?.gain.setTargetAtTime(0.02 + busy * 0.11, now, 0.8)
+      this.trafficGain?.gain.setTargetAtTime(0.02 + busy * 0.07, now, 0.8)
       // 最近信号灯路口（20 m 内）
       this.nearSignal = null
       if (!pl.inVehicle) {

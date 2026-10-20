@@ -164,6 +164,7 @@ export class Game {
     this.phone = new Phone({
       setTimeSpeed: (v) => { this.settings.timeSpeed = v; this.clock.speed = v; saveSettings(this.settings); this.hud.toast(`时间流速 ${v}×`) },
       setShadows: (on) => { this.settings.shadows = on; this.dayNight.setShadows(on); saveSettings(this.settings); this.hud.toast(on ? '阴影已开启' : '阴影已关闭') },
+      setMusic: (on) => { this.settings.music = on; this.audio.setMusic(on); saveSettings(this.settings); this.hud.toast(on ? '音乐已开启' : '音乐已关闭') },
       save: () => this.saveGame(true),
       load: () => this.loadGame(),
       restart: () => { Save.clear(); const q = new URLSearchParams(location.search); q.set('fresh', '1'); location.search = q.toString() },
@@ -303,7 +304,8 @@ export class Game {
 
   private wireEvents() {
     this.events.on('vehicleHitPed', ({ v, speed }) => {
-      if (v.driver === 'player') this.law.crime('hitPed', 1, this.ctx)
+      if (v.driver !== 'player') return   // NPC 撞人不出声（之前全城车祸都会“嘭”）
+      this.law.crime('hitPed', 1, this.ctx)
       this.audio.crash(Math.min(speed, 8))
     })
     this.events.on('vehicleHitVehicle', ({ a, b, impulse }) => {
@@ -377,6 +379,7 @@ export class Game {
     this.unlockHintAt = this.time
     this.hud.hideOverlay()
     this.hud.attribution('')
+    this.audio.setMusic(this.settings.music)
     this.audio.unlock()
     this.cam.snap(this.player.yaw)
     this.cam.camera.position.set(this.player.x - Math.sin(this.player.yaw) * 6, 3, this.player.z - Math.cos(this.player.yaw) * 6)
@@ -807,7 +810,7 @@ export class Game {
     if (this.phone.open && this.phoneTimer >= 0.25) {
       this.phoneTimer = 0
       const q = this.quests.active ? { title: this.quests.active.title, step: this.quests.stepLabel() } : null
-      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, work: this.jobs.view(), quest: q })
+      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, music: this.settings.music, work: this.jobs.view(), quest: q })
     }
     const speedKmh = pl.vehicle ? pl.vehicle.speed * 3.6 : null
     const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
@@ -985,6 +988,7 @@ export class Game {
       /** 测试：点是否在某个静态体（建筑多边形等）内 */
       inside(x: number, z: number) { return self.world.contains(x, z) },
       get settings() { return self.settings },
+      audio: { get state() { return self.audio.state }, get musicMode() { return self.audio.musicMode }, get crashCount() { return self.audio.crashCount } },
       clock: {
         set(hour: number, day?: number) { self.clock.set(hour, day) },
         skip(hours: number) { self.clock.skip(hours) },
