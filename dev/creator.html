@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>REA · 建角色界面</title>
+  <link rel="icon" href="data:," />
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; color: #fff; font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif; }
+    canvas { display: block; position: fixed; inset: 0; }
+    #bar { position: fixed; left: 16px; top: 16px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 10; }
+    #bar button { font: 14px inherit; padding: 8px 14px; border: 1px solid #7ee787; border-radius: 6px; background: rgba(126,231,135,.15); color: #fff; cursor: pointer; }
+    #out { position: fixed; left: 16px; top: 64px; right: 16px; max-width: 640px; z-index: 10; font: 12px/1.5 Menlo, monospace; white-space: pre-wrap; background: rgba(0,0,0,.45); padding: 10px 12px; border-radius: 8px; }
+    #err { position: fixed; left: 50%; top: 40%; transform: translateX(-50%); z-index: 100; color: #ff6b6b; font-size: 16px; background: rgba(0,0,0,.8); padding: 12px 18px; border-radius: 8px; display: none; }
+  </style>
+</head>
+<body>
+  <div id="bar"></div>
+  <div id="out">加载中…</div>
+  <div id="err"></div>
+  <script type="module" src="../src/dev/creatorViewer.ts"></script>
+</body>
+</html>
