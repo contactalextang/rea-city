@@ -24,8 +24,8 @@
 ## Phase 2 — 首个可玩版本（真实地图）
 - [x] P2.1 SgWorld + ChunkManager + 查看页（牛车水首屏 0.8 s，draw ~60，fps 120；接入提示：灯柱光晕需在块变化后重建、雾 far 放远看天际线、MBS 是单盒子待地标精做）
 - [x] P2.2 RoadMarkings + 建筑分类着色 + 天际线 + 小地图 PNG（并入 P2.1）
-- [ ] P2.3 Game 接入、出生点、__game 新钩子
-- [ ] P2.V 验收清单（见计划）
+- [x] P2.3 Game 接入 sg（默认）；init 0.36 s；交通 70–79% 在走；警车 5–21 s 追到；draw 99–179
+- [x] P2.V 验收通过（遗留：sg 无 shop POI，m_race 无发布人；夜间光晕偏淡；局部排队）
 
 ## Phase 3 — 时钟 / 昼夜 / 天气
 - [x] P3.1 Clock + DayNight（阴影 2048 跟随玩家；窗户自发光；路灯光晕；世界约定 scene.userData.windows/lamps/lampHead/roads）
@@ -35,7 +35,7 @@
 - [x] P4.1 资产评估：选定 Quaternius Ultimate Modular Men/Women（CC0，62 骨男女同序，纯色材质，24 clip 含 Aim/Shoot，无 Jump/Sit）；详见 data/assets-eval/REPORT.md（gitignored）
 - [x] P4.2 scripts/char/build.ts → public/assets/characters（glb 3.75 MB，46 部件，24 clip，14 预设；女包重蒙皮到男包绑定姿态；无 Jump/Sit/Drive 动画；three 会去掉节点名中的 : 用 userData.part 查找）
 - [~] P4.3 角色运行时：库与查看页已完成（d262be0）；待 P5.3 后把 Player/Pedestrians 换成 CharacterInstance
-- [ ] P4.4 roles.ts + presets.json + Creator UI + 存档
+- [~] P4.4 roles.ts + presets.json + Creator UI + 存档
 
 ## Phase 5 — 生活模拟
 - [x] P5.1 Needs + Poi/Interactions/Panels/Phone/Save（方格城合成 POI 验证通过；真实世界只需 pois.load；遗留：的士与车辆不进存档）
