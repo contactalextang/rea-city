@@ -589,7 +589,7 @@ export class Game {
     const target = this.player.vehicle ?? this.player
     const moving = this.player.inVehicle ? Math.abs(this.player.vehicle!.speed) > 1 : Math.hypot(this.player.vx, this.player.vz) > 0.5
     if (this.camShot) { this.cam.camera.position.fromArray(this.camShot, 0); this.cam.camera.lookAt(this.camShot[3], this.camShot[4], this.camShot[5]) }
-    else this.cam.update(dt, this.player.inVehicle ? 'car' : 'foot', target, this.player.vehicle?.speed ?? 0, this.time, moving, this.state === 'play' && (this.input.locked || this.forceAim))
+    else this.cam.update(dt, this.player.inVehicle ? 'car' : 'foot', target, this.player.vehicle?.speed ?? 0, this.time, moving, this.state === 'play' && (this.input.locked || this.forceAim), this.player.vehicle?.halfLen ?? 2.3)
     this.player.sync()
     for (const v of this.vehicles) if (v.active) v.sync(this.time)
     this.jobs.sync(this.time); this.quests.sync(this.time)

@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { Ctx } from '../core/Context'
 import type { Vehicle } from '../entities/Vehicle'
 import type { Ped, Pedestrians } from '../entities/Pedestrians'
-import { CAR_CIRCLE_R } from '../config'
+import { BUS_HEIGHT } from '../config'
 import { rayBody } from '../physics/Collision'
 import type { StaticBody } from '../world/Colliders'
 
@@ -68,18 +68,20 @@ export class Weapon {
       const t = rayBody(o.x, o.z, dir.x, dir.z, b)
       if (t !== null && t > tMin && t < best && o.y + dir.y * t < b.h && o.y + dir.y * t > -0.1) { best = t; hit = { kind: 'world', point: o.clone().addScaledVector(dir, t) } }
     }
-    // 车辆：两个圆柱
+    // 车辆：沿车身的若干圆柱（轿车 2 个，巴士 4 个）
     const c = { x: 0, z: 0 }
     for (const v of ctx.vehicles) {
       if (!v.active || v === ctx.player.vehicle) continue
       const dx = v.x - o.x, dz = v.z - o.z
-      if (dx * dx + dz * dz > (best + 3) * (best + 3)) continue
-      for (const i of [0, 1] as const) {
+      const reach = best + v.halfLen + 1
+      if (dx * dx + dz * dz > reach * reach) continue
+      const topY = v.model === 'bus' ? BUS_HEIGHT : 1.6
+      for (let i = 0; i < v.circleCount; i++) {
         v.circle(i, c)
-        const t = rayCircle(o, dir, c.x, c.z, CAR_CIRCLE_R + 0.1)
+        const t = rayCircle(o, dir, c.x, c.z, v.radius + 0.1)
         if (t !== null && t > tMin && t < best) {
           const y = o.y + dir.y * t
-          if (y >= 0 && y <= 1.6) { best = t; hit = { kind: 'vehicle', vehicle: v, point: o.clone().addScaledVector(dir, t) } }
+          if (y >= 0 && y <= topY) { best = t; hit = { kind: 'vehicle', vehicle: v, point: o.clone().addScaledVector(dir, t) } }
         }
       }
     }

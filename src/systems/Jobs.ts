@@ -8,7 +8,7 @@ import type { Vehicle } from '../entities/Vehicle'
 import { Marker } from '../world/Marker'
 import { JOB_TEXT, JOB_PARAMS, ASSETS, type AssetId, type JobText } from '../data/jobs'
 import { ECONOMY } from '../data/menus'
-import { rand, pick } from '../config'
+import { rand, pick, type VehicleKind } from '../config'
 
 /**
  * 工作系统：按身份提供可开工/下班的工作（的士、外卖、偷车、收保护费、赶会议…）
@@ -72,6 +72,8 @@ export interface JobsView {
 
 export interface TaxiTrip { dist: number; wait: number; peak: boolean; rating: number; fare: number }
 
+/** 偷车任务可选目标：普通车、的士、豪车（警车与巴士不算） */
+const STEALABLE: ReadonlySet<VehicleKind> = new Set<VehicleKind>(['civil', 'taxi', 'luxury'])
 const round2 = (n: number) => Math.round(n * 100) / 100
 const dist2 = (a: P2, b: P2) => Math.hypot(a.x - b.x, a.z - b.z)
 const defaultStats = (): JobStats => ({
@@ -126,7 +128,7 @@ class GangSteal extends BaseJob {
   }
   private pickTarget(ctx: Ctx) {
     const px = ctx.player.worldX, pz = ctx.player.worldZ
-    const cars = ctx.vehicles.filter((v) => v.active && v.driver === 'traffic' && !v.wrecked && v.kind === 'civil')
+    const cars = ctx.vehicles.filter((v) => v.active && v.driver === 'traffic' && !v.wrecked && STEALABLE.has(v.kind))
     const inRange = cars.filter((v) => { const d = Math.hypot(v.x - px, v.z - pz); return d >= JOB_PARAMS.steal.pickMin && d <= JOB_PARAMS.steal.pickMax })
     this.car = inRange.length ? pick(inRange) : cars.length ? pick(cars) : null
   }

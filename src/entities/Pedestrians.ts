@@ -208,8 +208,9 @@ export class Pedestrians {
         for (const v of ctx.vehicles) {
           if (!v.active) continue
           const dx = v.x - p.x, dz = v.z - p.z
-          if (dx * dx + dz * dz > 36) continue
-          for (const i of [0, 1] as const) {
+          const reach = v.halfLen + 3.5
+          if (dx * dx + dz * dz > reach * reach) continue
+          for (let i = 0; i < v.circleCount; i++) {
             v.circle(i, circ)
             const ex = p.x - circ.x, ez = p.z - circ.z, d2 = ex * ex + ez * ez, rr = v.radius + p.radius
             if (d2 >= rr * rr) continue

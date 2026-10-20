@@ -60,7 +60,7 @@ function makeGeometries(): Record<PoolName, THREE.BufferGeometry> {
     taxistand: merge([cyl(0.04, 0.05, 2.5, 0, 1.25, 0, METAL), box(0.6, 0.4, 0.06, 0, 2.2, 0, 0xf2c516)]),
     // 横梁单位长（沿 z），实例按 len 缩放 z
     gantryBeam: merge([box(0.5, 0.6, 1, 0, 5.6, 0, WHITE), box(0.52, 0.2, 1, 0, 5.3, 0, BLUE)]),
-    mrtexit: merge([box(3, 3, 3, 0, 1.5, 0, 0x8f949c), box(3.6, 0.2, 3.6, 0, 3.1, 0, 0x5a5f66), box(1.6, 0.5, 0.1, 0, 3.55, 1.55, 0x2ecc71)]),
+    mrtexit: merge([box(3, 3, 3, 0, 1.5, 0, 0x8f949c), box(3.6, 0.2, 3.6, 0, 3.1, 0, 0x5a5f66)]),   // 站名牌由 Signage 提供
     linkwayRoof: merge([box(2.5, 0.12, 1, 0, 2.75, 0, 0xb8bcc2)]),
     bridgeDeck: merge([box(2.5, 0.4, 1, 0, 5.5, 0, CONCRETE), box(0.08, 1.0, 1, -1.21, 6.2, 0, METAL), box(0.08, 1.0, 1, 1.21, 6.2, 0, METAL)]),
     stair: merge([box(2.5, 5.5, 4, 0, 2.75, 0, CONCRETE)]),

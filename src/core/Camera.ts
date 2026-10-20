@@ -34,7 +34,10 @@ export class ChaseCamera {
     this.idle = 0
   }
 
-  update(dt: number, mode: CamMode, target: { x: number; z: number; yaw: number }, speed: number, time: number, moving = true, aiming = false) {
+  /**
+   * @param halfLen 驾驶时车辆半车长（轿车 2.3；巴士 6），长车相机拉远、抬高，避免车身挡住视线
+   */
+  update(dt: number, mode: CamMode, target: { x: number; z: number; yaw: number }, speed: number, time: number, moving = true, aiming = false, halfLen = 2.3) {
     if (mode === 'orbit') {
       const a = time * 0.08
       const o = this.orbitCenter, r = this.orbitRadius
@@ -46,7 +49,8 @@ export class ChaseCamera {
     }
     const car = mode === 'car'
     this.idle += dt
-    const wantDist = car ? 8.5 + Math.min(Math.abs(speed), 34) * 0.09 : 5.5
+    const extra = car ? Math.max(0, halfLen - 2.3) : 0   // 比普通轿车长出来的部分
+    const wantDist = car ? 8.5 + Math.min(Math.abs(speed), 34) * 0.09 + extra * 1.5 : 5.5
     this.dist = damp(this.dist, wantDist, 3, dt)
     // 鼠标空闲一段时间后自动回到目标身后（开车 1.2s；步行只在移动时 1.5s 后缓慢跟随）
     const follow = car ? this.idle > 1.2 : (moving && this.idle > 1.5)
@@ -60,14 +64,14 @@ export class ChaseCamera {
     const b = this.aimBlend
     // 普通追尾：注视点在目标身前
     const ahead = car ? 3 : 0.8
-    const lookH = car ? 1.0 : 1.3
+    const lookH = car ? 1.0 + extra * 0.4 : 1.3   // 巴士约 2.5
     const hd = this.dist * Math.cos(this.pitch), vd = this.dist * Math.sin(this.pitch)
     const nx = target.x + fx * ahead - fx * hd, ny = Math.max(0.6, lookH + vd), nz = target.z + fz * ahead - fz * hd
     const nlx = target.x + fx * ahead, nly = lookH, nlz = target.z + fz * ahead
     // 过肩瞄准：相机偏到右肩、拉近，注视点沿视线推到 30m 外，准星落在远处
     const shoulder = car ? 1.6 : 0.9
     const aimDist = car ? 5.5 : 3.0
-    const eyeH = car ? 1.9 : 1.6
+    const eyeH = car ? 1.9 + extra * 0.5 : 1.6
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch)
     const ax = target.x + rx * shoulder - fx * aimDist * cp, ay = eyeH + aimDist * sp, az = target.z + rz * shoulder - fz * aimDist * cp
     const alx = ax + fx * cp * 30, aly = ay - sp * 30, alz = az + fz * cp * 30
