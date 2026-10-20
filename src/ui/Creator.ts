@@ -438,7 +438,22 @@ export class Creator {
 
   private buildDom() {
     const root = el('div', 'cr-root')
-    root.addEventListener('keydown', (e) => e.stopPropagation()) // 输入框打字不触发游戏按键
+    // 焦点在界面内时 keydown 不冒泡到游戏（输入框打字不触发游戏按键），但 Enter/Esc 在这里直接处理，
+    // 否则点过身份卡/按钮后焦点留在 root 内，window 上的 onKey 收不到，「Enter 确认」失效
+    root.addEventListener('keydown', (e) => {
+      e.stopPropagation()
+      if (e.isComposing || e.repeat) return   // 输入法选词的 Enter / 长按连发不算确认
+      const inText = e.target === this.nameInput
+      if (e.key === 'Enter') {
+        // preventDefault 阻止按钮自身的 Enter 激活（click），避免与这里的确认双重触发
+        e.preventDefault()
+        if (inText) this.nameInput?.blur()   // 名字框：先失焦（提交输入）再确认
+        this.onKey(e)
+      } else if (e.key === 'Escape' && !inText) {
+        e.preventDefault()
+        this.onKey(e)
+      }
+    })
     const panel = el('div', 'cr-panel')
     const head = el('div', 'cr-head')
     head.append(el('h2', '', this.mode === 'wardrobe' ? '衣柜' : '创建角色'))

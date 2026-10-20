@@ -393,9 +393,11 @@ class BlueTaxi extends BaseJob {
     if (Math.hypot(t.x - p.x, t.z - p.z) > JOB_PARAMS.taxi.pickupRadius) return false
     this.J.peds.board(p)
     this.passenger = null
-    // 目的地：≥120 m 的随机 POI 门口；没有就取最远的
-    const all = ctx.pois.all.filter((q) => dist2(q.door, t) >= 120)
-    this.dest = all.length ? pick(all) : ctx.pois.all.slice().sort((a, b) => dist2(b.door, t) - dist2(a.door, t))[0] ?? null
+    // 目的地：≥120 m、且门口贴近车道（车停路上能进到达半径）的随机 POI；没有就退回任意 ≥120 m，再没有取最远的
+    const far = ctx.pois.all.filter((q) => dist2(q.door, t) >= 120)
+    const reachable = far.filter((q) => this.laneDist(ctx, q) <= JOB_PARAMS.taxi.destLaneMax)
+    const pool = reachable.length ? reachable : far
+    this.dest = pool.length ? pick(pool) : ctx.pois.all.slice().sort((a, b) => dist2(b.door, t) - dist2(a.door, t))[0] ?? null
     if (!this.dest) { this.J.toast('没有目的地可去'); this.phase = 'wait'; this.nextTimer = 2; return true }
     this.phase = 'ride'; this.odometer = 0; this.waitSec = 0; this.rating = 5; this.stopTimer = 0; this.awayTimer = 0
     this.peak = isTaxiPeak(ctx.clock.hour); this.lastX = t.x; this.lastZ = t.z
@@ -419,8 +421,10 @@ class BlueTaxi extends BaseJob {
     this.awayTimer = 0
     if (t.absSpeed < 1) this.waitSec += dt
     const d = this.dest!
-    if (dist2(t, d.door) < JOB_PARAMS.taxi.arriveRadius && t.absSpeed < 0.6) this.stopTimer += dt; else this.stopTimer = 0
-    if (this.stopTimer >= JOB_PARAMS.taxi.settleSec) {
+    // 到达判定：车辆中心距门口 ≤ arriveRadius 且速度 < arriveSpeed 时累计；半径内偶发超速（被碰、刹车倒溜）只暂停不清零，离开半径才清零
+    const T = JOB_PARAMS.taxi
+    if (dist2(t, d.door) <= T.arriveRadius) { if (t.absSpeed < T.arriveSpeed) this.stopTimer += dt } else this.stopTimer = 0
+    if (this.stopTimer >= T.settleSec) {
       const fare = taxiFare(this.odometer, this.waitSec, this.peak, this.rating)
       this.lastTrip = { dist: Math.round(this.odometer), wait: Math.round(this.waitSec), peak: this.peak, rating: this.rating, fare }
       this.J.stats.taxiTrips++; this.J.stats.taxiRatingSum += this.rating
@@ -431,11 +435,23 @@ class BlueTaxi extends BaseJob {
   hudText() {
     if (this.phase === 'wait') return '等待下一位乘客…'
     if (this.phase === 'hail') return `乘客在 ${this.pdist(this.J.ctx, this.passenger!)} m 外招手 · 停到 4 m 内按 F`
-    const d = this.dest!
-    return `送到 ${d.name}（${this.pdist(this.J.ctx, d.door)} m）· 已行驶 ${(this.odometer / 1000).toFixed(2)} km · 停车 3 s 结算`
+    const d = this.dest!, T = JOB_PARAMS.taxi
+    const head = `送到 ${d.name}（${this.pdist(this.J.ctx, d.door)} m）· 已行驶 ${(this.odometer / 1000).toFixed(2)} km`
+    if (this.taxi && dist2(this.taxi, d.door) <= T.arriveRadius) {
+      const left = Math.max(0, T.settleSec - this.stopTimer)
+      return `${head} · 停靠中 ${left.toFixed(1)} s${this.taxi.absSpeed < T.arriveSpeed ? '' : '（请停稳）'}`
+    }
+    return `${head} · 门口 ${T.arriveRadius} m 内停稳 ${T.settleSec} s 结算`
+  }
+  /** POI 门口到最近车道中心线的距离（按 POI 缓存） */
+  private laneCache = new Map<string, number>()
+  private laneDist(ctx: Ctx, q: Poi) {
+    let d = this.laneCache.get(q.id)
+    if (d === undefined) { d = ctx.graph.nearestLane(q.door.x, q.door.z).dist; this.laneCache.set(q.id, d) }
+    return d
   }
   target() { return this.phase === 'hail' && this.passenger ? { x: this.passenger.x, z: this.passenger.z } : this.phase === 'ride' ? this.dest!.door : null }
-  get state() { return { phase: this.phase, passenger: this.passenger ? { x: this.passenger.x, z: this.passenger.z, state: this.passenger.state } : null, dest: this.dest ? { id: this.dest.id, door: this.dest.door } : null, odometer: this.odometer, wait: this.waitSec, rating: this.rating, peak: this.peak } }
+  get state() { return { phase: this.phase, passenger: this.passenger ? { x: this.passenger.x, z: this.passenger.z, state: this.passenger.state } : null, dest: this.dest ? { id: this.dest.id, door: this.dest.door } : null, odometer: this.odometer, wait: this.waitSec, rating: this.rating, peak: this.peak, stopTimer: this.stopTimer } }
 }
 
 class BlueDelivery extends BaseJob {

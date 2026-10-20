@@ -25,7 +25,9 @@ export const JOB_PARAMS = {
   taxi: {
     base: 4.4, baseKm: 1000, unitM: 400, unitFare: 0.26, waitSec: 45, waitFare: 0.26,
     peakMul: 1.25, peaks: [[7, 9.5], [18, 24]] as [number, number][],
-    tipRating: 4, tip: 0.1, pickupRadius: 4, hailMin: 40, hailMax: 150, arriveRadius: 9, settleSec: 3, crashImpulse: 4,
+    tipRating: 4, tip: 0.1, pickupRadius: 4, hailMin: 40, hailMax: 150, arriveRadius: 8, arriveSpeed: 1.5, settleSec: 3, crashImpulse: 4,
+    /** 目的地门口到最近车道中心线的最大距离：超过的 POI（门在楼里/离路太远）不当目的地，否则车停不进 arriveRadius */
+    destLaneMax: 6,
   },
   delivery: { secPerKm: 90, minSec: 60, base: 6, perKm: 1, late: 3, radius: 6 },
 } as const
