@@ -1,10 +1,13 @@
 import type { RoadGraph } from '../world/RoadGraph'
+import { VENUES } from '../data/venues'
 
 /**
  * 兴趣点（POI）提供接口：世界实现（方格城合成 / 真实新加坡烘焙）只需产出 Poi[]，
  * Interactions / Minimap / Phone 都只依赖 PoiRegistry。
  */
 export type PoiType = 'hawker' | 'mrt' | 'bus' | 'taxi' | 'home' | 'office' | 'site' | 'police' | 'hospital' | 'shop' | 'landmark'
+  /** P10 娱乐场馆（数据见 data/venues.ts） */
+  | 'casino' | 'club' | 'race' | 'arena'
 
 export interface Poi {
   id: string
@@ -22,12 +25,14 @@ export interface Poi {
 export const POI_COLOR: Record<PoiType, number> = {
   hawker: 0xff8c2e, mrt: 0x2ecc71, bus: 0x27ae60, taxi: 0xf2c516, home: 0x3ea6ff, office: 0x9b7bff,
   site: 0xffb000, police: 0x4169e1, hospital: 0xff4b4b, shop: 0xff69b4, landmark: 0xffffff,
+  casino: 0xffcf40, club: 0xd94dff, race: 0xff3b30, arena: 0x00c2b8,
 }
 /** CSS 颜色串（小地图 / 手机地图用） */
 export const poiCss = (t: PoiType) => '#' + POI_COLOR[t].toString(16).padStart(6, '0')
 export const POI_LABEL: Record<PoiType, string> = {
   hawker: '小贩中心', mrt: '地铁站', bus: '巴士站', taxi: '的士站', home: '住家', office: '办公楼',
   site: '工地', police: '警署', hospital: '医院', shop: '商店', landmark: '地标',
+  casino: '赌场', club: '夜店', race: '赛车', arena: '射击俱乐部',
 }
 
 export class PoiRegistry {
@@ -53,7 +58,7 @@ export class PoiRegistry {
   }
 }
 
-type Side = 'N' | 'S' | 'E' | 'W'
+export type Side = 'N' | 'S' | 'E' | 'W'
 
 /**
  * 方格城合成 POI 集：按街区 (bi,bj) 与朝向在行驶侧人行道上取门口（graph.sidewalkPoint），
@@ -99,5 +104,7 @@ export function gridPois(graph: RoadGraph): Poi[] {
   // 商店与地标
   add('shop_fairprice', 'shop', 'NTUC FairPrice', 5, 7, 'W')
   add('landmark_merlion', 'landmark', 'Merlion Park', 8, 1, 'N')
+  // P10 娱乐场馆：同一份 VENUES 表，方格城按 grid 槽位落点
+  for (const v of VENUES) add(v.id, v.type, v.name, v.grid.bi, v.grid.bj, v.grid.side, v.grid.t ?? 12, { venue: v.id })
   return out
 }

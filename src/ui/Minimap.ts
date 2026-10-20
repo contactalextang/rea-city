@@ -3,7 +3,9 @@ import { poiCss, type Poi, type PoiType } from '../systems/Poi'
 import { TARGET_CSS } from '../world/Marker'
 
 const MINOR = new Set<PoiType>(['bus', 'taxi'])
-const NAMED = new Set<PoiType>(['mrt', 'home', 'office', 'police', 'hospital', 'landmark', 'site'])
+/** P10 娱乐场馆：小地图上画大点 */
+const VENUE = new Set<PoiType>(['casino', 'club', 'race', 'arena'])
+const NAMED = new Set<PoiType>(['mrt', 'home', 'office', 'police', 'hospital', 'landmark', 'site', 'casino', 'club', 'race', 'arena'])
 /** 已拥有产业的金圈颜色（与品红目标 TARGET_CSS、黄色任务点 #ffd33d 区分：空心粗环 + 深色描边） */
 export const BIZ_RING_CSS = '#ffb300'
 
@@ -77,9 +79,17 @@ export class Minimap {
       const dx = p.x - px, dz = p.z - pz
       if (dx * dx + dz * dz > view2) continue
       const minor = MINOR.has(p.type)
+      if (VENUE.has(p.type)) continue
       dot(p, poiCss(p.type), minor ? 1.6 : 2.6, !minor)
     }
     g.globalAlpha = 1
+    // 娱乐场馆（P10）：不透明大点，夜里找得到
+    for (const p of pois) {
+      if (!VENUE.has(p.type)) continue
+      const dx = p.x - px, dz = p.z - pz
+      if (dx * dx + dz * dz > view2) continue
+      dot(p, poiCss(p.type), 4.5 / this.scale, true)   // 屏幕上约 4.5 px，不随缩放变小
+    }
     // 已拥有产业：金色空心圈（屏幕上约 7 px 半径，不随缩放变细）
     for (const o of owned) {
       const dx = o.x - px, dz = o.z - pz

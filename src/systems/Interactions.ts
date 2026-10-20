@@ -5,7 +5,8 @@ import { HAWKER_MENU, SHOP_MENU, ECONOMY, type MenuItem } from '../data/menus'
 import { POI_LABEL, type Poi } from './Poi'
 import type { Jobs } from './Jobs'
 import type { RestBonus } from './Assets'
-import { spend, earn } from './Wallet'
+import { spend, earn, charge } from './Wallet'
+import { venueOf, venueOpen, hoursText } from '../data/venues'
 
 export const INTERACT_DIST = 3.5
 
@@ -27,6 +28,8 @@ export interface InteractionHost {
 export type ButtonProvider = (poi: Poi) => PanelButton[]
 
 const money = (n: number) => `$${n.toFixed(2)}`
+/** 场馆面板「即将开放」占位（有 provider 按钮时自动移除） */
+const VENUE_PLACEHOLDER: PanelButton = { label: '即将开放', note: '敬请期待', disabled: true, onClick: () => {} }
 
 /** POI 交互：靠近提示、E 打开面板、各类地点的行为（吃饭/坐地铁/睡觉/上班/搬运/租的士） */
 export class Interactions {
@@ -61,7 +64,13 @@ export class Interactions {
 
   private build(poi: Poi): PanelSpec {
     const spec = this.buildBase(poi)
-    const extra = this.providers.flatMap((fn) => fn(poi))
+    let extra = this.providers.flatMap((fn) => fn(poi))
+    const v = venueOf(poi)
+    if (v) {
+      // 场馆：打烊时只留 anyHour 按钮；有任何 provider 按钮就去掉「即将开放」占位
+      if (!venueOpen(v, this.ctx.clock.hour)) extra = extra.filter((b) => b.anyHour)
+      if (extra.length) spec.buttons = spec.buttons.filter((b) => b !== VENUE_PLACEHOLDER)
+    }
     if (extra.length) spec.buttons.splice(Math.max(0, spec.buttons.length - 1), 0, ...extra)
     return spec
   }
@@ -76,6 +85,7 @@ export class Interactions {
       case 'taxi': return this.taxiPanel(poi)
       case 'police': return this.info(poi, ['新加坡警察部队。', '交通罚单与扣分记录在这里查询；扣满 24 分吊销驾照一天。', `当前扣分 ${this.ctx.law.demerits}/24 · 累计罚款 $${this.ctx.law.fines}`])
       case 'hospital': return this.info(poi, ['倒下后会被送到这里醒来。', '血量会恢复，但账户里会扣掉一笔医药费。'])
+      case 'casino': case 'club': case 'race': case 'arena': return this.venuePanel(poi)
       default: return this.info(poi, ['这里只是看看。'])
     }
   }
@@ -86,7 +96,20 @@ export class Interactions {
 
   private status() {
     const n = this.ctx.needs
-    return `现金 ${money(this.ctx.player.money)} · 饱食 ${Math.round(n.hunger)} · 精力 ${Math.round(n.energy)} · ${this.ctx.clock.hhmm}`
+    return `现金 ${money(this.ctx.player.money)} · 饱食 ${Math.round(n.hunger)} · 精力 ${Math.round(n.energy)} · 心情 ${Math.round(n.mood)} · ${this.ctx.clock.hhmm}`
+  }
+
+  // ---------- 娱乐场馆（P10）：默认面板 = 简介 + 营业状态 + 占位；子系统用 addProvider 塞按钮 ----------
+  private venuePanel(poi: Poi): PanelSpec {
+    const v = venueOf(poi)
+    if (!v) return this.info(poi, ['这里只是看看。'])
+    const open = venueOpen(v, this.ctx.clock.hour)
+    const lines = [v.desc, this.status()]
+    if (!open) lines.push(`已打烊 · ${hoursText(v)}（现在 ${this.ctx.clock.hhmm}）`)
+    return {
+      title: poi.name, subtitle: `${POI_LABEL[poi.type]} · ${hoursText(v)} · ${open ? '营业中' : '已打烊'}`, lines,
+      buttons: [...(open ? [VENUE_PLACEHOLDER] : []), { label: '离开', onClick: () => this.close() }],
+    }
   }
 
   // ---------- 小贩中心 / 商店 ----------
@@ -95,7 +118,7 @@ export class Interactions {
       label: m.name,
       note: `${money(m.price)} · 饱食 +${m.hunger}${m.energy ? ` 精力 +${m.energy}` : ''}`,
       onClick: () => {
-        if (!spend(this.ctx, m.price, m.name)) { this.host.toast('钱不够了'); return }
+        if (!spend(this.ctx, m.price, `food:${m.name}`)) { this.host.toast('钱不够了'); return }
         this.ctx.clock.skip((poi.type === 'hawker' ? 20 : 5) / 60)
         this.ctx.needs.sync()
         this.ctx.needs.add(m.hunger, m.energy ?? 0)
@@ -123,7 +146,7 @@ export class Interactions {
         label: `→ ${p.name}`,
         note: `${money(fare)} · ${(dist / 1000).toFixed(1)} km · 约 ${minutes} 分钟`,
         onClick: () => {
-          if (!spend(this.ctx, fare, 'mrt')) { this.host.toast('余额不足，先去充值吧'); return }
+          if (!spend(this.ctx, fare, 'transport:mrt')) { this.host.toast('余额不足，先去充值吧'); return }
           this.ctx.clock.skip(dist / 1000 / ECONOMY.mrtSpeedKmh + 5 / 60)
           this.ctx.needs.sync()
           this.host.teleport(p.door.x, p.door.z, p.door.yaw)
@@ -164,7 +187,7 @@ export class Interactions {
           clock.set(7, clock.day)
           this.ctx.needs.sync()
           this.ctx.needs.set(this.ctx.needs.hunger - hungerCost, 100)
-          if (rent) { this.ctx.player.money -= rent; this.host.toast(`新的一天 · 房租 −${money(rent)}`, 3) }
+          if (rent) { charge(this.ctx, rent, 'rent'); this.host.toast(`新的一天 · 房租 −${money(rent)}`, 3) }
           else this.host.toast('睡了个好觉', 2.5)
           this.ctx.events.emit('slept', { day: clock.day, xpMul })
           this.host.save()
@@ -197,8 +220,8 @@ export class Interactions {
           clock.set(18, clock.day)
           this.ctx.needs.sync()
           this.ctx.needs.add(-30, -25)
-          earn(this.ctx, pay, 'salary')
-          this.host.toast(`下班了 · 薪水 +${money(pay)}`, 3)
+          const got = earn(this.ctx, pay, 'salary')
+          this.host.toast(`下班了 · 薪水 +${money(got)}${got !== pay ? `（心情 ×${this.ctx.needs.moodMul}）` : ''}`, 3)
           this.ctx.events.emit('clockIn', { day: clock.day, pay })
           this.ctx.events.emit('jobDone', { job: 'white_shift', amount: pay })
           this.close()
@@ -223,8 +246,8 @@ export class Interactions {
           this.ctx.clock.skip(1)
           needs.sync()
           needs.add(-6, -12)
-          earn(this.ctx, ECONOMY.siteWage, 'site')
-          this.host.toast(`工钱 +${money(ECONOMY.siteWage)}`)
+          const got = earn(this.ctx, ECONOMY.siteWage, 'site')
+          this.host.toast(`工钱 +${money(got)}`)
           this.ctx.events.emit('jobDone', { job: 'blue_site', amount: ECONOMY.siteWage })
           this.refresh()
         } },
@@ -249,7 +272,7 @@ export class Interactions {
       const d = g.dirAt(lane.edge, t, { x: 0, z: 0 })
       const v = this.host.parkTaxi(p.x, p.z, Math.atan2(d.x, d.z))
       if (!v) { this.host.toast('暂时没有空车'); return }
-      spend(this.ctx, price, 'taxiRent')
+      spend(this.ctx, price, 'transport:taxiRent')
       this.taxiRentedDay = this.ctx.clock.day
       pl.enter(v)
       this.host.toast(`的士到手 · −${money(price)}`, 3)

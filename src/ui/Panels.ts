@@ -4,6 +4,8 @@ export interface PanelButton {
   /** 右侧附注（价格/说明） */
   note?: string
   disabled?: boolean
+  /** 场馆面板（casino/club/race/arena）打烊时，provider 按钮默认被隐藏；anyHour = 打烊也显示（如白天合法赛） */
+  anyHour?: boolean
   onClick: () => void
 }
 export interface PanelSpec {

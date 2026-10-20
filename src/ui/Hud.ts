@@ -85,6 +85,17 @@ export class Hud {
     if (t !== this.nwText) { this.nwText = t; $('networth').textContent = t }
   }
 
+  private moodText = ''
+  /** 左上角心情：`心情 72 · 平静`；低于 30 红色（XP/工资 ×0.85），高于 75 绿色（×1.1） */
+  mood(v: number, mul: number) {
+    const r = Math.round(v)
+    const t = `心情 ${r}${mul < 1 ? ' · 低落 XP/工资 ×0.85' : mul > 1 ? ' · 愉快 XP/工资 ×1.1' : ''}`
+    if (t === this.moodText) return
+    this.moodText = t
+    const el = $('mood'); el.textContent = t
+    el.className = `mood${mul < 1 ? ' low' : mul > 1 ? ' high' : ''}`
+  }
+
   /** 成就横幅（排队显示） */
   achievement(text: string) { this.achQueue.push(text) }
 

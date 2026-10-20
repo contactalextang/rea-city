@@ -71,6 +71,16 @@
 - [x] P9.C 夜景氛围：窗户/招牌/路灯 HDR 发光、路面 Standard + 雨天湿地反光
 - [x] P9.V 截图对比四时段 + 性能 + 回归 + 看板/README/记忆
 
+## Phase 10 — 夜间提亮 + 娱乐消费（计划 ~/.claude/plans/swirling-shimmying-mochi.md）
+> 起因：试玩反馈"晚上太黑、可玩性不够"；用户选定：明显提亮+车灯、类 CS 射击赛、赌场四类玩法全要、夜店带恋爱关系系统。
+- [x] P10.0 娱乐基础层：casino/club/race/arena POI（data/venues.ts）、营业时间、心情需求、Activity 宿主与 'activity' state、新事件/统计/成就、钱包类别
+- [ ] P10.A 夜间提亮：关键帧/调色重调、路灯真实光池（8 盏 PointLight 池）、玩家车灯 SpotLight + NPC 光锥贴花、亮度设置 ?bright=
+- [ ] P10.B 赌场（滨海湾金沙）：21 点/轮盘/骰宝/百家乐/老虎机、入场税、限额解锁、RTP 脚本
+- [ ] P10.C 街头赛车：路线检查点链、3 AI 对手、名次/计时 HUD、报名费/奖金/下注、违法通缉、白天合法赛
+- [ ] P10.D 射击竞技（类 CS）：D1 地图+第一人称移动射击 / D2 Bot AI / D3 回合经济+C4+段位
+- [ ] P10.E 夜店 + 恋爱关系：酒水、节奏舞蹈、8 位可约会 NPC、好感阶段、手机联系人、约会同伴
+- [ ] P10.V 整合验收 + 看板/README/记忆
+
 ## 后续
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
 - [ ] 后续可选：步行道图/天桥可走、桥梁抬高、五脚基、OneMap 补 HDB 层数

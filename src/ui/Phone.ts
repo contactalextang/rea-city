@@ -29,6 +29,8 @@ export interface PhoneStatus {
   lawText: string
   hunger: number
   energy: number
+  /** P10 心情 0–100 */
+  mood: number
   timeSpeed: number
   shadows: boolean
   music: boolean
@@ -251,13 +253,13 @@ export class Phone {
     $('phone-money').textContent = `$${fmt(st.money)}`
     $('phone-role').textContent = `身份：${st.roleTitle}`
     $('phone-law').textContent = st.lawText || '无违规记录'
-    const bar = (id: string, v: number) => {
+    const bar = (id: string, v: number, low = 20) => {
       const el = $(id)
       el.querySelector('b')!.textContent = `${Math.round(v)}`
       ;(el.querySelector('.fill') as HTMLElement).style.width = `${Math.max(0, Math.min(100, v))}%`
-      el.classList.toggle('low', v < 20)
+      el.classList.toggle('low', v < low)
     }
-    bar('phone-hunger', st.hunger); bar('phone-energy', st.energy)
+    bar('phone-hunger', st.hunger); bar('phone-energy', st.energy); bar('phone-mood', st.mood, 30)
     if (this.sub) this.renderSub(this.sub, false)
   }
 }

@@ -64,6 +64,17 @@ export interface GameEvents {
   achievement: { id: string }
   /** 任务完成（reward = 现金奖励；Game 按它发 XP / 帝国线收尾总结） */
   questDone: { id: string; reward: number }
+  // ---- P10 娱乐（发事件的一方负责记账：钱走 Wallet.spend/earn 的 gamble/race/arena/entertain/date 类别） ----
+  /** 一局赌博结算：game = 'blackjack' | 'roulette' | 'sicbo' | 'baccarat' | 'slots' …；bet = 总下注，net = 净输赢（输为负） */
+  gambled: { game: string; bet: number; net: number }
+  /** 一场比赛结束：route = 路线 id，place = 名次（1 = 冠军；未完赛给 0），prize = 奖金 */
+  raceDone: { route: string; place: number; prize: number }
+  /** 一局竞技场结束：mode = 'defuse' | 'duel' | 'deathmatch' …；headshots 可选 */
+  matchDone: { mode: string; won: boolean; kills: number; headshots?: number }
+  /** 约会 / 关系推进：npc = 角色 id，stage = 'met' | 'contact' | 'dating' | 'lover' …（每次约会也发，stage 为当前阶段） */
+  dated: { npc: string; stage: string }
+  /** 喝了 n 杯 */
+  drank: { n: number }
 }
 export type PurchaseKind = 'vehicle' | 'property' | 'upgrade' | 'biz' | 'bizTier' | 'manager'
 

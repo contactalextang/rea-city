@@ -20,6 +20,24 @@ export interface LifeStats {
   peakNetWorth: number
   /** 各类购买次数（purchased 事件按 kind 计） */
   bought: Partial<Record<PurchaseKind, number>>
+  // ---- P10 娱乐（gambled / raceDone / matchDone / dated / drank 事件累计；旧存档缺省为 0） ----
+  /** 赌博净输赢（累计）、局数、单局最大净赢 */
+  gambleNet: number
+  gambleRounds: number
+  gambleBestWin: number
+  races: number
+  raceWins: number
+  matches: number
+  matchWins: number
+  /** 当前 / 最佳竞技场连胜 */
+  matchStreak: number
+  matchBestStreak: number
+  kills: number
+  headshots: number
+  dates: number
+  /** 发展成恋人的人数（dated 事件 stage === 'lover' 的不同 npc） */
+  lovers: string[]
+  drinks: number
 }
 export interface ProgressSave {
   level: number
@@ -44,7 +62,11 @@ export interface ProgressHost {
 const round2 = (n: number) => Math.round(n * 100) / 100
 /** 单个任务给的 XP 上限（金领末任务奖励 $500k，不封顶会一口气跳十几级） */
 const QUEST_XP_CAP = 2000
-const defaultStats = (): LifeStats => ({ earned: 0, spent: 0, bizIncome: 0, distanceKm: 0, trips: 0, arrests: 0, daysPlayed: 1, peakNetWorth: 0, bought: {} })
+const defaultStats = (): LifeStats => ({
+  earned: 0, spent: 0, bizIncome: 0, distanceKm: 0, trips: 0, arrests: 0, daysPlayed: 1, peakNetWorth: 0, bought: {},
+  gambleNet: 0, gambleRounds: 0, gambleBestWin: 0, races: 0, raceWins: 0, matches: 0, matchWins: 0, matchStreak: 0, matchBestStreak: 0,
+  kills: 0, headshots: 0, dates: 0, lovers: [], drinks: 0,
+})
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`
 
 /**
@@ -93,6 +115,35 @@ export class Progress implements Subsystem<ProgressSave> {
       this.stats.bizIncome = round2(this.stats.bizIncome + amount)
       this.addXp(amount / XP.bizIncomeDiv)
     })
+    // ---- P10 娱乐 ----
+    ev.on('gambled', ({ bet, net }) => {
+      const st = this.stats
+      st.gambleRounds++; st.gambleNet = round2(st.gambleNet + net)
+      if (net > st.gambleBestWin) st.gambleBestWin = round2(net)
+      if (bet >= XP.gambleMinBet) this.addXp(XP.gambleRound)
+      this.check()
+    })
+    ev.on('raceDone', ({ place }) => {
+      const st = this.stats
+      st.races++; if (place === 1) st.raceWins++
+      this.addXp(XP.racePlace[place] ?? XP.raceFinish)
+      this.check()
+    })
+    ev.on('matchDone', ({ won, kills, headshots }) => {
+      const st = this.stats
+      st.matches++; st.kills += Math.max(0, kills | 0); st.headshots += Math.max(0, (headshots ?? 0) | 0)
+      if (won) { st.matchWins++; st.matchStreak++; st.matchBestStreak = Math.max(st.matchBestStreak, st.matchStreak) } else st.matchStreak = 0
+      this.addXp((won ? XP.matchWin : XP.matchLose) + Math.min(XP.killCap, kills * XP.perKill))
+      this.check()
+    })
+    ev.on('dated', ({ npc, stage }) => {
+      const st = this.stats
+      st.dates++
+      if (stage === 'lover' && !st.lovers.includes(npc)) st.lovers.push(npc)
+      this.addXp(XP.dated)
+      this.check()
+    })
+    ev.on('drank', ({ n }) => { this.stats.drinks += Math.max(0, n | 0); this.check() })
     ev.on('bizEvent', ({ kind }) => { if (kind === 'raid') { this.raidSurvived = true; this.check() } })
     // 经 Wallet.earn / spend 的每一笔直接记账，并挪动差分基线（差分只兜底直接改 money 的路径：任务奖励、罚款、房租…）
     onCashFlow((d) => {
@@ -108,10 +159,11 @@ export class Progress implements Subsystem<ProgressSave> {
   /** 当前等级进度 0–1 */
   get pct() { return this.level >= MAX_LEVEL ? 1 : Math.min(1, this.xp / this.need) }
 
-  /** 加 XP（自有房产睡醒当天 ×buffMul）；可连升多级，每级发一次 levelUp */
+  /** 加 XP（自有房产睡醒当天 ×buffMul，心情倍率 ×moodMul）；可连升多级，每级发一次 levelUp */
   addXp(n: number) {
     if (!(n > 0)) return
     if (this.ctx.clock.day === this.buffDay) n *= this.buffMul
+    n *= this.ctx.needs.moodMul
     if (this.level >= MAX_LEVEL) return
     this.xp += n
     while (this.level < MAX_LEVEL && this.xp >= xpFor(this.level)) {
@@ -174,6 +226,14 @@ export class Progress implements Subsystem<ProgressSave> {
       survive_raid: this.raidSurvived,
       buy_car: (s.bought.vehicle ?? 0) >= 1,
       two_homes: (s.bought.property ?? 0) >= 2,
+      first_bet: s.gambleRounds >= 1,
+      high_roller: s.gambleBestWin >= 10_000,
+      race_win: s.raceWins >= 1,
+      race_10: s.raceWins >= 10,
+      arena_win: s.matchWins >= 1,
+      streak_5: s.matchBestStreak >= 5,
+      headshot_king: s.headshots >= 50,
+      lover: s.lovers.length >= 1,
     }
     for (const a of ACHIEVEMENTS) {
       if (!cond[a.id] || this.achievements.has(a.id)) continue
@@ -204,6 +264,12 @@ export class Progress implements Subsystem<ProgressSave> {
           { title: '里程', value: `${s.distanceKm.toFixed(1)} km` }, { title: '的士趟数', value: `${s.trips}` },
           { title: '被捕次数', value: `${s.arrests}` }, { title: '游戏天数', value: `${s.daysPlayed}` },
         ] },
+        { title: '娱乐', items: [
+          { title: '赌博净输赢', value: `${s.gambleNet < 0 ? '-' : ''}${usd(Math.abs(s.gambleNet))}`, desc: `${s.gambleRounds} 局 · 单局最多赢 ${usd(s.gambleBestWin)}` },
+          { title: '赛车', value: `${s.raceWins} 冠 / ${s.races} 场` },
+          { title: '射击比赛', value: `${s.matchWins} 胜 / ${s.matches} 场`, desc: `击杀 ${s.kills} · 爆头 ${s.headshots} · 最佳连胜 ${s.matchBestStreak}` },
+          { title: '约会', value: `${s.dates} 次`, desc: s.lovers.length ? `恋人 ${s.lovers.length} 位` : undefined },
+        ] },
         { title: `成就 ${this.achievements.size}/${ACHIEVEMENTS.length}`, items: ACHIEVEMENTS.map((a) => {
           const got = this.achievements.has(a.id)
           return { title: `${got ? '★' : '☆'} ${a.name}`, desc: a.desc, tone: got ? 'owned' as const : 'locked' as const }
@@ -219,7 +285,7 @@ export class Progress implements Subsystem<ProgressSave> {
     const base = defaultStats()
     this.level = Math.max(1, Math.min(MAX_LEVEL, Math.floor(d?.level ?? 1)))
     this.xp = Math.max(0, d?.xp ?? 0)
-    this.stats = { ...base, ...(d?.stats ?? {}), bought: { ...(d?.stats?.bought ?? {}) } }
+    this.stats = { ...base, ...(d?.stats ?? {}), bought: { ...(d?.stats?.bought ?? {}) }, lovers: [...(d?.stats?.lovers ?? [])] }
     this.achievements = new Set(d?.achievements ?? [])
     this.raidSurvived = this.achievements.has('survive_raid')
     this.buffDay = d?.buffDay ?? -1

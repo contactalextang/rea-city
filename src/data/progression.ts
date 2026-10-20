@@ -20,6 +20,18 @@ export const XP = {
   purchaseDiv: 50,
   purchaseCap: 200,
   bizIncomeDiv: 20,
+  // ---- P10 娱乐（适度：一晚娱乐 ≈ 打一会儿工的 XP，避免刷级） ----
+  /** 每局赌博（下注 ≥ gambleMinBet 才给，防 $1 刷局） */
+  gambleRound: 1,
+  gambleMinBet: 10,
+  /** 赛车名次 XP（1–3 名），其余完赛 raceFinish */
+  racePlace: [0, 60, 40, 25] as readonly number[],
+  raceFinish: 15,
+  matchWin: 80,
+  matchLose: 30,
+  perKill: 3,
+  killCap: 60,
+  dated: 20,
 } as const
 
 /** 每身份 6 个头衔，每 5 级换一个：Lv1–4 / 5–9 / 10–14 / 15–19 / 20–24 / 25–30 */
@@ -42,6 +54,7 @@ export const titleFor = (role: RoleId, level: number) => {
  * 产业 id：biz_protect / biz_chop / biz_gamble、biz_hawker / biz_fleet、biz_startup / biz_cafe、biz_rental / biz_office / biz_landmark。
  */
 export interface Unlock { level: number; roles: RoleId[]; id: string; label: string }
+const ALL_ROLES: RoleId[] = ['gang', 'gold', 'white', 'blue']
 export const UNLOCKS: Unlock[] = [
   // ---- 商店（P8.2） ----
   { level: 5, roles: ['gang'], id: 'upg_pistol', label: '改装手枪（伤害 ×1.5）' },
@@ -58,6 +71,13 @@ export const UNLOCKS: Unlock[] = [
   { level: 1, roles: ['gold'], id: 'biz_rental', label: '商铺出租' },
   { level: 5, roles: ['gold'], id: 'biz_office', label: '写字楼股份' },
   { level: 12, roles: ['gold'], id: 'biz_landmark', label: '地标项目' },
+  // ---- 娱乐（P10，由各娱乐子系统用 isUnlocked(role, level, id) 读取） ----
+  { level: 3, roles: ALL_ROLES, id: 'club_vip', label: '夜店 VIP 卡座' },
+  { level: 4, roles: ALL_ROLES, id: 'arena_ranked', label: '竞技场天梯（排位赛）' },
+  { level: 6, roles: ALL_ROLES, id: 'race_pro', label: '高级赛事（滨海湾全程）' },
+  { level: 6, roles: ALL_ROLES, id: 'casino_high', label: '高额赌桌' },
+  { level: 10, roles: ALL_ROLES, id: 'casino_vip', label: 'VIP 赌厅' },
+  { level: 12, roles: ALL_ROLES, id: 'arena_pro', label: '职业难度 Bot' },
 ]
 
 /** 该身份买 id 需要的等级（无门槛 = 1） */
@@ -71,10 +91,11 @@ export const isUnlocked = (role: RoleId, level: number, id: string) => level >= 
 export const nextUnlocks = (role: RoleId, level: number) =>
   UNLOCKS.filter((u) => u.roles.includes(role) && u.level > level).sort((a, b) => a.level - b.level)
 
-/** 成就（12 个）：条件由 Progress.checkAchievements 判断 */
+/** 成就（12 + 8 个 P10 娱乐）：条件由 Progress.check 判断 */
 export type AchievementId =
   | 'first_buy' | 'first_biz' | 'biz_3' | 'nw_10k' | 'nw_100k' | 'nw_1m'
   | 'lv_10' | 'lv_20' | 'taxi_100' | 'survive_raid' | 'buy_car' | 'two_homes'
+  | 'first_bet' | 'high_roller' | 'race_win' | 'race_10' | 'arena_win' | 'streak_5' | 'headshot_king' | 'lover'
 export const ACHIEVEMENTS: { id: AchievementId; name: string; desc: string }[] = [
   { id: 'first_buy', name: '第一笔消费', desc: '在商店买下第一件东西' },
   { id: 'first_biz', name: '开门营业', desc: '拥有第一个产业' },
@@ -88,4 +109,12 @@ export const ACHIEVEMENTS: { id: AchievementId; name: string; desc: string }[] =
   { id: 'survive_raid', name: '大难不死', desc: '产业挺过一次突袭' },
   { id: 'buy_car', name: '有车一族', desc: '买下自己的车' },
   { id: 'two_homes', name: '两处物业', desc: '名下有两套房产' },
+  { id: 'first_bet', name: '第一次下注', desc: '在赌场玩完第一局' },
+  { id: 'high_roller', name: '赌神', desc: '单局净赢 $10,000' },
+  { id: 'race_win', name: '街头赛冠军', desc: '赢下一场赛车' },
+  { id: 'race_10', name: '滨海湾车神', desc: '累计赢下 10 场赛车' },
+  { id: 'arena_win', name: '初尝胜果', desc: '赢下一局射击比赛' },
+  { id: 'streak_5', name: '五连胜', desc: '射击比赛连胜 5 局' },
+  { id: 'headshot_king', name: '爆头王', desc: '射击比赛累计爆头 50 次' },
+  { id: 'lover', name: '恋人', desc: '和一位约会对象成为恋人' },
 ]

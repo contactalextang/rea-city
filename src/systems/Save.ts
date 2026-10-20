@@ -6,6 +6,9 @@ import type { WeatherSave } from './Weather'
 import type { ProgressSave } from './Progress'
 import type { AssetsSave } from './Assets'
 import type { BizSave } from './Business'
+import type { LedgerSave } from './Wallet'
+
+import { MOOD } from './Needs'
 
 export const SAVE_KEY = 'rea.save'
 
@@ -21,7 +24,8 @@ export interface SaveData {
   z: number
   yaw: number
   inVehicle: false
-  needs: { hunger: number; energy: number }
+  /** mood：P10 心情（旧存档缺省 → 70） */
+  needs: { hunger: number; energy: number; mood?: number }
   law: { demerits: number; fines: number; arrests: number; licenseSuspendedUntilDay: number }
   /** 工作统计（今日收入/的士评分/投资持仓）与任务进度；旧存档可缺省 */
   jobs?: JobsSave
@@ -32,9 +36,11 @@ export interface SaveData {
   progress?: ProgressSave
   assets?: AssetsSave
   biz?: BizSave
+  /** P10：钱包分类账（今日 / 累计各类别收支）；旧存档缺省 → 空账本 */
+  wallet?: LedgerSave
   savedAt: number
 }
-export interface SaveExtra { jobs?: JobsSave; quests?: QuestsSave; weather?: WeatherSave; progress?: ProgressSave; assets?: AssetsSave; biz?: BizSave }
+export interface SaveExtra { jobs?: JobsSave; quests?: QuestsSave; weather?: WeatherSave; progress?: ProgressSave; assets?: AssetsSave; biz?: BizSave; wallet?: LedgerSave }
 
 /** 把当前状态写入 localStorage；返回写入的数据（失败返回 null） */
 export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
@@ -42,10 +48,10 @@ export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
   const data: SaveData = {
     v: 1, role: ctx.role.id, world: ctx.settings.world, money: pl.money, day: ctx.clock.day, hour: ctx.clock.hour,
     x: pl.worldX, z: pl.worldZ, yaw: pl.vehicle ? pl.vehicle.yaw : pl.yaw, inVehicle: false,
-    needs: { hunger: ctx.needs.hunger, energy: ctx.needs.energy },
+    needs: { hunger: ctx.needs.hunger, energy: ctx.needs.energy, mood: Math.round(ctx.needs.mood * 10) / 10 },
     law: { demerits: law.demerits, fines: law.fines, arrests: law.arrests, licenseSuspendedUntilDay: law.licenseSuspendedUntilDay },
     jobs: extra.jobs, quests: extra.quests, weather: extra.weather,
-    progress: extra.progress, assets: extra.assets, biz: extra.biz,
+    progress: extra.progress, assets: extra.assets, biz: extra.biz, wallet: extra.wallet,
     savedAt: Date.now(),
   }
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)) } catch { return null }
@@ -72,6 +78,7 @@ export function apply(ctx: Ctx, d: SaveData) {
   ctx.clock.set(d.hour ?? 7.5, d.day ?? 1)
   pl.place(d.x, d.z, d.yaw ?? 0)
   ctx.needs.set(d.needs?.hunger ?? 80, d.needs?.energy ?? 100)
+  ctx.needs.mood = typeof d.needs?.mood === 'number' ? d.needs.mood : MOOD.start
   ctx.needs.sync()
   const law = ctx.law
   law.demerits = d.law?.demerits ?? 0

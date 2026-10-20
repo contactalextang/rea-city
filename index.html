@@ -28,6 +28,9 @@
     .level .nw { margin-left: 8px; font-weight: 600; color: #ffd98a; }
     .ach { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); font-size: 16px; font-weight: 700; color: #fff; background: rgba(60,30,110,.8); border: 1px solid #b48cff; border-radius: 10px; padding: 8px 18px; opacity: 0; transition: opacity .3s; text-align: center; white-space: nowrap; }
     .ach.show { opacity: 1; }
+    .mood { margin-top: 2px; font-size: 12px; opacity: .85; color: #ffd98a; }
+    .mood.low { color: #ff8a8a; opacity: 1; }
+    .mood.high { color: #7ee787; opacity: 1; }
     .clock { margin-top: 6px; font-size: 13px; opacity: .9; letter-spacing: .5px; }
     .speed { margin-top: 8px; font-size: 13px; opacity: .85; }
     .hud-bc { position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%); text-align: center; font-size: 16px; }
@@ -91,6 +94,7 @@
     .phone .bar .fill { height: 100%; width: 50%; transition: width .3s; }
     .phone .bar.hunger .fill { background: #ff8c2e; }
     .phone .bar.energy .fill { background: #3ea6ff; }
+    .phone .bar.mood .fill { background: #ffcf40; }
     .phone .bar.low .fill { background: #ff4b4b; }
     .phone .apps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
     .phone .apps button, .phone .sub button { padding: 10px 8px; border: 1px solid rgba(255,255,255,.2); border-radius: 8px; background: rgba(255,255,255,.08); color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
@@ -140,6 +144,7 @@
     <div class="hud-tl">
       <div class="health"><div id="health"></div></div>
       <div class="level" id="level"><span id="level-text">Lv1</span><span class="nw" id="networth"></span><div class="xpbar"><div id="xp-fill"></div></div></div>
+      <div class="mood" id="mood"></div>
       <div class="clock" id="clock"></div>
       <div class="speed" id="speed"></div>
     </div>
@@ -173,11 +178,13 @@
     <div class="plaw" id="phone-law"></div>
     <div class="bar hunger" id="phone-hunger"><span>饱食 <b></b></span><div class="track"><div class="fill"></div></div></div>
     <div class="bar energy" id="phone-energy"><span>精力 <b></b></span><div class="track"><div class="fill"></div></div></div>
+    <div class="bar mood" id="phone-mood"><span>心情 <b></b></span><div class="track"><div class="fill"></div></div></div>
     <div class="apps">
       <button data-app="work">工作</button>
       <button data-app="progress">成长</button>
       <button data-app="shop">商店</button>
       <button data-app="biz">生意</button>
+      <button data-app="wallet">钱包</button>
       <button data-app="map">地图</button>
       <button data-app="char">角色</button>
       <button data-app="settings">设置</button>

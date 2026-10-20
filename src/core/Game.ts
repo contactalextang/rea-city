@@ -31,13 +31,15 @@ import { Clock } from '../systems/Clock'
 import { DayNight } from '../systems/DayNight'
 import { Weather, WEATHER_LABEL } from '../systems/Weather'
 import { PoiRegistry, type Poi } from '../systems/Poi'
-import { Needs } from '../systems/Needs'
+import { Needs, wireMood, MOOD } from '../systems/Needs'
 import { Interactions } from '../systems/Interactions'
 import { Panels } from '../ui/Panels'
 import { Phone } from '../ui/Phone'
 import * as Save from '../systems/Save'
 import { Progress } from '../systems/Progress'
-import { Wallet } from '../systems/Wallet'
+import { Wallet, setWageMul, charge, serializeLedger, restoreLedger } from '../systems/Wallet'
+import { Activity, type ActivitySpec } from '../ui/Activity'
+import { VENUES, sgVenuePois, venueOf, venueOpen, hoursText } from '../data/venues'
 import { Assets } from '../systems/Assets'
 import { Business } from '../systems/Business'
 import { ACHIEVEMENTS } from '../data/progression'
@@ -49,7 +51,24 @@ import { identitySpec } from '../characters/presets'
 import { Creator, loadCreatorResult, saveCreatorResult, type CreatorResult } from '../ui/Creator'
 
 /** creator：开局建角色（世界暂停，只渲染建角色界面） */
-type State = 'intro' | 'creator' | 'play' | 'dead' | 'busted' | 'won' | 'panel'
+/** activity：全屏小游戏（Activity 宿主）；arena：射击竞技场（P10.D 切换渲染场景）——两者都暂停城市世界 */
+type State = 'intro' | 'creator' | 'play' | 'dead' | 'busted' | 'won' | 'panel' | 'activity' | 'arena'
+/** 城市世界暂停（不跑物理/AI，骨骼动画冻结，时钟不走） */
+const worldPaused = (s: State) => s === 'panel' || s === 'activity' || s === 'arena'
+
+/**
+ * 竞技场会话（P10.D 实现）：Game.enterArena(mode) 用 arenaFactory 创建，state='arena' 期间每渲染帧
+ * update(dt, input) + render(dt) 代替城市模拟与渲染；会话结束时调用 game.exitArena()。
+ * P10.D 需要给 PostFX 加 setScene()（或自己 renderer.render），这里只约定形状。
+ */
+export interface ArenaSession {
+  readonly mode: string
+  update(dt: number, input: Input): void
+  render(dt: number): void
+  /** exitArena 时调用：释放场景/几何、发 matchDone 等 */
+  dispose(): void
+}
+export type ArenaFactory = (mode: string, game: Game) => ArenaSession
 const playingNow = (s: State) => s === 'play' || s === 'won'
 const tmpBoxes: AABB[] = []
 const c0 = { x: 0, z: 0 }, c1 = { x: 0, z: 0 }
@@ -99,6 +118,14 @@ export class Game {
   interactions!: Interactions
   panels = new Panels()
   phone: Phone
+  /** P10 活动宿主（全屏小游戏）；openActivity 打开 */
+  activity!: Activity
+  /** P10.D 注入：竞技场会话工厂（null = 竞技场未实现，enterArena 返回 false） */
+  arenaFactory: ArenaFactory | null = null
+  /** 当前竞技场会话（state='arena' 时非空） */
+  arena: ArenaSession | null = null
+  /** 打开活动时来源的 POI（returnToPanel 用） */
+  private activityPoi: Poi | null = null
   ctx!: Ctx
   /** init() 完成（世界数据就绪、系统已构建） */
   ready = false
@@ -222,7 +249,8 @@ export class Game {
     this.graph = src.graph
     this.world = src.world
     this.signals = new Signals(this.graph)
-    this.pois.load(src.pois)
+    // P10 娱乐场馆：sg 世界运行时吸附门口追加（方格城已在 gridPois 里合成）
+    this.pois.load(sg ? [...src.pois, ...sgVenuePois(this.graph, src.pois, (x, z) => this.world.contains(x, z))] : src.pois)
     // 静态网格挂进 scene（方格城此时才生成城市；真实城市挂地面/天际线/道具池，区块随 update 流式加载）
     src.attach(this.scene)
     this.poiMarkers = new PoiMarkers(this.pois.all, sg
@@ -266,6 +294,11 @@ export class Game {
     this.assets = new Assets(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), spawner: this.spawner, level: () => this.progress.level, closePanel: () => this.closePanel(), refresh: () => { const c = this.interactions.current; if (c && this.panels.open) this.interactions.open(c) } })
     this.business = new Business(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), level: () => this.progress.level, hasBloomberg: () => this.assets.owns('upg_bloomberg'), refresh: () => { const c = this.interactions.current; if (c && this.panels.open) this.interactions.open(c) } })
     this.wallet = new Wallet(this.ctx, () => { const v = this.jobs.stats.invest; return v.fixed + v.index + v.crypto }, this.assets, this.business)
+    // 心情：工资倍率（job 类收入）+ 事件规则；XP 倍率在 Progress.addXp 里读 needs.moodMul
+    setWageMul(() => this.needs.moodMul)
+    wireMood(this.events, this.needs)
+    this.activity = new Activity(() => this.ctx)
+    this.activity.onClosed = (spec) => this.afterActivity(spec)
     this.progress = new Progress(this.ctx, { netWorth: () => this.wallet.netWorth(), bizCount: () => this.business.list().length })
     // 投资买卖只是现金 ↔ 持仓互换，不计入终身收支
     this.jobs.onInvestCash = (d) => this.progress.excludeCash(d)
@@ -277,6 +310,7 @@ export class Game {
     this.phone.registerView('progress', '成长', () => this.progress.view())
     this.phone.registerView('shop', '商店', () => this.assets.view())
     this.phone.registerView('biz', '生意', () => this.business.view())
+    this.phone.registerView('wallet', '钱包', () => this.wallet.view())
     // 升级装备：防弹衣减伤（所有玩家受伤都经 Player.damage）
     const rawDamage = this.player.damage.bind(this.player)
     this.player.damage = (n: number) => rawDamage(n * (1 - this.assets.effects().armor))
@@ -405,7 +439,7 @@ export class Game {
       this.last = now
       if (!this.ready) { this.fitViewport(); return }   // 世界加载中：只显示覆盖层
       const hudEl = document.getElementById('hud')
-      const uiOpen = !!this.creatorUi?.isOpen
+      const uiOpen = !!this.creatorUi?.isOpen || this.state === 'activity' || this.state === 'arena'
       if (hudEl && (hudEl.style.visibility === 'hidden') !== uiOpen) hudEl.style.visibility = uiOpen ? 'hidden' : ''
       if (uiOpen && this.creatorUi) {
         // 建角色 / 衣柜：世界模拟暂停，HUD 隐藏，只更新并渲染界面（界面自己铺满底色）
@@ -416,6 +450,7 @@ export class Game {
         this.input.endFrame()
         return
       }
+      if (this.state === 'activity' || this.state === 'arena') { this.pausedFrame(dt); return }
       this.acc += dt
       let steps = 0
       while (this.acc >= FIXED_DT && steps < 5) {
@@ -429,6 +464,24 @@ export class Game {
       this.render(dt)
     }
     requestAnimationFrame(loop)
+  }
+
+  /** 活动 / 竞技场帧：城市不模拟；活动按需推进时钟，背后渲染冻结的城市（opaque 活动不渲染） */
+  private pausedFrame(dt: number) {
+    this.fitViewport()
+    if (this.state === 'arena') {
+      const a = this.arena
+      if (a) { a.update(dt, this.input); if (this.arena === a) a.render(dt) }
+      else this.state = 'play'
+      this.input.takeMouse(); this.input.endFrame()
+      return
+    }
+    if (!this.activity.isOpen) { this.state = 'play'; return }
+    if (this.activity.clockRuns) this.clock.advance(dt)
+    const opaque = this.activity.opaque
+    this.activity.update(dt, this.input)
+    this.input.takeMouse(); this.input.endFrame()
+    if (!opaque || !this.activity.isOpen) this.render(dt)
   }
 
   private beginPlay() {
@@ -540,10 +593,58 @@ export class Game {
   /** 恢复成长 / 资产 / 产业（旧存档或新开局缺字段 → 默认值），并以当前已完成任务为基线 */
   private restorePhase8(d: Save.SaveData | null) {
     this.progress.restore(d?.progress); this.assets.restore(d?.assets); this.business.restore(d?.biz)
+    restoreLedger(d?.wallet)
+  }
+
+  // ---------- P10 活动 / 竞技场 ----------
+  /**
+   * 打开全屏活动（小游戏）：只能在 play / panel 状态打开（从场馆面板按钮里调用最常见）。
+   * 世界暂停、HUD 隐藏、手机收起、解除指针锁定；关闭后回到 play（spec.returnToPanel → 重开来源面板）。
+   */
+  openActivity(spec: ActivitySpec): boolean {
+    if (!this.ready || (this.state !== 'play' && this.state !== 'panel') || this.creatorUi) return false
+    this.activityPoi = this.state === 'panel' ? this.interactions.current : null
+    if (this.state === 'panel') { this.panels.hide(); this.interactions.current = null }
+    this.phone.set(false)
+    if (document.pointerLockElement) document.exitPointerLock()
+    this.state = 'activity'
+    this.activity.open(spec)
+    return this.state === 'activity' && this.activity.isOpen
+  }
+  closeActivity() { this.activity.close() }
+  private afterActivity(spec: ActivitySpec) {
+    if (this.state !== 'activity') return
+    this.state = 'play'
+    this.unlockHintAt = this.time
+    // 不 needs.sync()：活动里 api.skipTime 跳过的小时要照常扣需求（下一步 Needs.update 结算）
+    const poi = this.activityPoi
+    this.activityPoi = null
+    this.input.endFrame()   // 关闭用的 Esc / 点击不再传给世界
+    if (spec.returnToPanel && poi) this.openPanel(poi)
+  }
+  /**
+   * 进入竞技场（P10.D）：需要 arenaFactory；城市暂停，state='arena'，主循环改为跑 arena.update/render。
+   * 返回 false = 未实现或当前不能进入。
+   */
+  enterArena(mode: string): boolean {
+    if (!this.arenaFactory || this.arena || (this.state !== 'play' && this.state !== 'panel')) return false
+    if (this.state === 'panel') { this.panels.hide(); this.interactions.current = null }
+    this.phone.set(false)
+    this.arena = this.arenaFactory(mode, this)
+    this.state = 'arena'
+    return true
+  }
+  /** 退出竞技场：释放会话、回到城市 play（P10.D 在这里恢复 PostFX 场景/相机） */
+  exitArena() {
+    const a = this.arena; if (!a) return
+    this.arena = null
+    try { a.dispose() } catch (e) { console.error('[REA] 竞技场释放出错：', e) }
+    if (this.state === 'arena') { this.state = 'play'; this.unlockHintAt = this.time }
+    this.input.endFrame()
   }
 
   saveGame(announce: boolean) {
-    const ok = Save.save(this.ctx, { jobs: this.jobs.serialize(), quests: this.quests.serialize(), weather: this.weather.serialize(), progress: this.progress.serialize(), assets: this.assets.serialize(), biz: this.business.serialize() })
+    const ok = Save.save(this.ctx, { jobs: this.jobs.serialize(), quests: this.quests.serialize(), weather: this.weather.serialize(), progress: this.progress.serialize(), assets: this.assets.serialize(), biz: this.business.serialize(), wallet: serializeLedger() })
     if (announce) this.hud.toast(ok ? '已存档' : '存档失败（浏览器禁止本地存储）')
     return ok !== null
   }
@@ -593,7 +694,7 @@ export class Game {
     this.ctx.pursuitLevel = this.law.chase ? this.law.pursuitLevel : 0
     this.signals.update(dt)
     // 时钟/天气/昼夜在任何状态下都推进（含开场与死亡）；面板暂停时不走时钟
-    if (this.state !== 'panel') this.clock.advance(dt)
+    if (!worldPaused(this.state)) this.clock.advance(dt)
     this.weather.update(dt, this.ctx)
     this.dayNight.update(dt, this.ctx)
     this.clockHudTimer += dt
@@ -719,7 +820,8 @@ export class Game {
     const fine = Math.ceil(Math.max(0, this.player.money) * 0.1)
     const busted = this.state === 'busted'
     if (busted) { this.law.fines += fine; this.law.arrests++ }
-    this.player.money -= fine
+    charge(this.ctx, fine, busted ? 'fine:bust' : 'medical')
+    this.needs.addMood(busted ? MOOD.busted : MOOD.dead)
     // 黑帮产业：被捕 / 倒下时各处钱柜被卷走
     this.business.onBustOrDeath()
     // 主住所是买下的房产 → 在那里醒来；否则倒下 → 医院门口，被捕 → 警署门口
@@ -907,13 +1009,14 @@ export class Game {
     if (this.phone.open && this.phoneTimer >= 0.25) {
       this.phoneTimer = 0
       const q = this.quests.active ? { title: this.quests.active.title, step: this.quests.stepLabel() } : null
-      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, music: this.settings.music, fx: this.settings.fx, work: this.jobs.view(), quest: q })
+      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, mood: this.needs.mood, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, music: this.settings.music, fx: this.settings.fx, work: this.jobs.view(), quest: q })
     }
     const speedKmh = pl.vehicle ? pl.vehicle.speed * 3.6 : null
     const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
     this.hud.update(dt, pl.health, pl.money, this.law.stars, this.law.flash, speedKmh, this.missionCard(), dbg)
     this.hud.level(`Lv${this.progress.level} ${this.progress.title}`, this.progress.pct)
     this.hud.netWorth(this.wallet.netWorth())
+    this.hud.mood(this.needs.mood, this.needs.moodMul)
     this.audio.update(this.time, pl.inVehicle, pl.vehicle?.speed ?? 0, pl.vehicle?.controls.throttle ?? 0, this.law.policeStars, policeDist)
     this.audio.ambient(this.ctx, dt)
   }
@@ -943,7 +1046,7 @@ export class Game {
     if (this.fpsTimer >= 0.5) { this.fps = this.frames / this.fpsTimer; this.frames = 0; this.fpsTimer = 0 }
     if (this.signalLights) this.signals.applyToMesh(this.signalLights.mesh, this.signalLights.edgeIds)
     // 骨骼动画按渲染帧推进（面板暂停时冻结）；行人 LOD 用相机位置与视锥
-    if (this.state !== 'panel') {
+    if (!worldPaused(this.state)) {
       this.player.animate(dt)
       this.cam.camera.updateMatrixWorld()
       this.peds.animate(dt, this.cam.camera)
@@ -1123,7 +1226,42 @@ export class Game {
       needs: {
         get hunger() { return self.needs.hunger }, get energy() { return self.needs.energy },
         set(h: number, e: number) { self.needs.set(h, e) },
+        /** 心情 0–100（可写）；moodMul = XP / 工资倍率 */
+        get mood() { return self.needs.mood }, set mood(v: number) { self.needs.mood = v },
+        get moodMul() { return self.needs.moodMul },
       },
+      /** P10 娱乐场馆：list（含门口 / 是否营业）、tp(id) 传送到门口、open(id) 直接打开面板 */
+      venues: {
+        list() {
+          return VENUES.map((v) => { const p = self.pois.byId(v.id); return { id: v.id, type: v.type, name: v.name, hours: hoursText(v), open: venueOpen(v, self.clock.hour), door: p ? { ...p.door } : null } })
+        },
+        tp(id: string) {
+          const p = self.pois.byId(id); if (!p || !venueOf(p)) return false
+          if (self.state === 'panel') self.closePanel()
+          if (self.player.vehicle) self.player.exit(self.world)
+          self.player.place(p.door.x, p.door.z, p.door.yaw); self.cam.snap(p.door.yaw)
+          return true
+        },
+      },
+      /** P10 活动宿主：open(spec) / close() / state */
+      activity: {
+        open(spec: ActivitySpec) { if (self.state === 'intro') self['beginPlay'](); return self.openActivity(spec) },
+        close() { self.closeActivity() },
+        get isOpen() { return self.activity.isOpen },
+        get id() { return self.activity.current?.id ?? null },
+      },
+      arena: { enter(mode: string) { return self.enterArena(mode) }, exit() { self.exitArena() }, get active() { return self.arena?.mode ?? null } },
+      /** P10 钱包分类账：flow(cat, 'today'|'total')、ledger() 原始数据 */
+      wallet: {
+        flow(cat: Parameters<Wallet['flow']>[0], scope: 'today' | 'total' = 'today') { return self.wallet.flow(cat, scope) },
+        ledger() { return serializeLedger() },
+        spend(amt: number, why: string) { return self.wallet.spend(amt, why) },
+        earn(amt: number, src: string) { return self.wallet.earn(amt, src) },
+      },
+      /** 测试：交互系统（addProvider 联调用） */
+      get interactions() { return self.interactions },
+      /** 测试：发一个游戏事件（P10 事件联调用） */
+      emit(k: string, e: unknown) { self.events.emit(k as never, e as never) },
       pois: {
         list() { return self.pois.all.map((p) => ({ id: p.id, type: p.type, name: p.name, x: p.x, z: p.z, door: p.door })) },
         get near() { return self.interactions.near?.id ?? null },
@@ -1135,7 +1273,7 @@ export class Game {
         choose(index: number) { return self.panels.choose(index) },
         close() { self.closePanel() },
       },
-      phone: { get open() { return self.phone.open }, get sub() { return self.phone.subPage }, toggle() { self.phone.toggle() }, show(sub: 'work' | 'map' | 'settings' | 'progress' | 'shop' | 'biz' | null) { self.phone.set(true); self.phone.showSub(sub) } },
+      phone: { get open() { return self.phone.open }, get sub() { return self.phone.subPage }, toggle() { self.phone.toggle() }, show(sub: 'work' | 'map' | 'settings' | 'progress' | 'shop' | 'biz' | 'wallet' | null) { self.phone.set(true); self.phone.showSub(sub) } },
       /** 成长：等级 / XP / 头衔 / 终身统计 / 成就；addXp 测试加经验 */
       progress: {
         get level() { return self.progress.level }, get xp() { return self.progress.xp }, get need() { return self.progress.need },
