@@ -64,6 +64,8 @@ export class Law {
   fines = 0
   arrests = 0
   licenseSuspendedUntilDay = -1
+  /** 比赛豁免（P10.C 赛车期间由比赛插件打开）：暂停对玩家的超速 / 闯红灯 / 碰撞罚单；默认关闭 */
+  trafficExempt = false
   private speedTimer = 0
   private lastSpeedTicket = -100
   private lastCollisionTicket = -100
@@ -107,6 +109,7 @@ export class Law {
 
   /** 撞 NPC 车：80 m 内有警车才开罚单，5 s 内不重复 */
   collision(ctx: Ctx, force = false, label?: string) {
+    if (this.trafficExempt) return                  // 比赛中：碰撞罚单也豁免（撞警车的通缉热度照常在 crime() 里抬）
     if (ctx.time - this.lastCollisionTicket < 5) return
     if (!force && this.policeDist(ctx) >= 80) return
     this.lastCollisionTicket = ctx.time
@@ -172,7 +175,7 @@ export class Law {
    */
   private detectTraffic(dt: number, ctx: Ctx) {
     const v = ctx.player.vehicle
-    if (!v || v.wrecked) { this.prevEdge = null; this.speedTimer = 0; return }
+    if (!v || v.wrecked || this.trafficExempt) { this.prevEdge = null; this.speedTimer = 0; return }
     const lane = ctx.graph.nearestLane(v.x, v.z, Math.sin(v.yaw), Math.cos(v.yaw))
     if (lane.dist > 8) { this.prevEdge = null; this.speedTimer = 0; return }
     const e = lane.edge
