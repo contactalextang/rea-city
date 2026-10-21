@@ -8,12 +8,13 @@ import { circleBody } from '../../physics/Collision'
 import type { AABB } from '../../world/Colliders'
 import { venueOf, venueById } from '../../data/venues'
 import { isUnlocked, unlockLevel } from '../../data/progression'
-import { routesFor, routeById, RACE_RENT, RACE_BETS, RIVALS, PRIZE_POOL_SHARE, PRIZE_FIXED_SHARE, betOdds, type RaceRouteDef } from '../../data/races'
+import { routesFor, routeById, RACE_RENT, RACE_BETS, RIVALS, PRIZE_POOL_SHARE, PRIZE_FIXED_SHARE, betOdds, effectiveAi, type RaceRouteDef } from '../../data/races'
+import { TIER_COUNT, clampTier, tierLabel, tierReward, unlockAfterWin } from '../../data/tiers'
 import { buildRoute, type BuiltRoute } from './Route'
 import { RaceSession, fmtTime, RACE_DAMAGE_MUL, type RaceMode, type RaceResult } from './Race'
 
-interface RaceSave { best: Record<string, number>; wins: number; races: number; podiums: number; log: string[] }
-const emptySave = (): RaceSave => ({ best: {}, wins: 0, races: 0, podiums: 0, log: [] })
+interface RaceSave { best: Record<string, number>; wins: number; races: number; podiums: number; log: string[]; /** 当前选的 / 已解锁的最高对手级别 */ tier: number; tierMax: number }
+const emptySave = (): RaceSave => ({ best: {}, wins: 0, races: 0, podiums: 0, log: [], tier: 1, tierMax: 1 })
 const VENUE = 'race_marina_bay'
 /** 白天合法赛道日开放时间 */
 const LEGAL_HOURS: [number, number] = [8, 18]
@@ -59,7 +60,7 @@ export function installRace(game: Game) {
   const legalOpen = () => { const h = game.ctx.clock.hour; return h >= LEGAL_HOURS[0] && h < LEGAL_HOURS[1] }
   const prizeFor = (def: RaceRouteDef, mode: RaceMode, place: number) => {
     const entry = mode === 'legal' ? def.legal!.entry : def.entry, base = mode === 'legal' ? def.legal!.prize : def.prize
-    return Math.round(entry * 4 * PRIZE_POOL_SHARE[place - 1] + base * PRIZE_FIXED_SHARE[place - 1])
+    return Math.round(entry * 4 * PRIZE_POOL_SHARE[place - 1] + base * tierReward(save.tier) * PRIZE_FIXED_SHARE[place - 1])
   }
 
   /** 可以拿来比赛的自有车：正坐着的车，或刚开过来停在 80 m 内的那辆（不能是巴士 / 报废车 / 比赛 AI 车） */
@@ -84,7 +85,7 @@ export function installRace(game: Game) {
   }
 
   /** 开赛；返回 true 或失败原因 */
-  const start = (id: string, o: { rent?: boolean; mode?: RaceMode; bet?: number } = {}): true | string => {
+  const start = (id: string, o: { rent?: boolean; mode?: RaceMode; bet?: number; tier?: number } = {}): true | string => {
     const ctx = game.ctx
     if (session) return '已经在比赛中'
     const def = routeById(id)
@@ -119,7 +120,7 @@ export function installRace(game: Game) {
     for (const v of ais) { v.driver = 'none'; v.health = 100; v.wrecked = false }
     if (pl.vehicle !== car) { if (pl.vehicle) pl.exit(ctx.world); pl.enter(car!) }
     car!.controls.handbrake = true
-    session = new RaceSession(game, route, { mode, rent, bet }, car!, ais, rental)
+    session = new RaceSession(game, route, { mode, rent, bet, tier: o.tier !== undefined ? clampTier(o.tier) : save.tier }, car!, ais, rental)
     session.onEnd = (r) => onEnd(def, r)
     session.onDispose = () => { lastFinal = session?.debugState() ?? null; session = null }
     game.cam.snap(car!.yaw)
@@ -129,7 +130,11 @@ export function installRace(game: Game) {
   const onEnd = (def: RaceRouteDef, r: RaceResult) => {
     save.races++
     if (!r.aborted) {
-      if (r.place === 1) save.wins++
+      if (r.place === 1) {
+        save.wins++
+        const max = unlockAfterWin(save.tierMax, r.tier)
+        if (max > save.tierMax) { save.tierMax = max; save.tier = max; r.unlocked = max; game.hud.toast(`赛车对手解锁：${tierLabel(max)}`, 4) }
+      }
       if (r.place <= 3) save.podiums++
       const prev = save.best[def.id]
       if (prev === undefined || r.time < prev) save.best[def.id] = +r.time.toFixed(2)
@@ -144,7 +149,8 @@ export function installRace(game: Game) {
     const title = r.place === 1 ? '冠军！' : `第 ${r.place} 名`
     const lines = [
       `${def.name} · ${r.mode === 'legal' ? '合法赛道日' : '街头赛'} · 用时 ${fmtTime(r.time)}${save.best[def.id] === +r.time.toFixed(2) ? '（新纪录）' : ''}`,
-      `奖金 ${usd(r.prize)}${r.betWon ? ` · 押冠军赢得 ${usd(r.betWon)}` : ''}`,
+      `奖金 ${usd(r.prize)}${r.betWon ? ` · 押冠军赢得 ${usd(r.betWon)}` : ''} · 对手 ${tierLabel(r.tier)}`,
+      ...(r.unlocked ? [`解锁新级别：${tierLabel(r.unlocked)}（奖金 ×${tierReward(r.unlocked)}）`] : []),
       ...r.standings.map((s) => `${s.place}. ${s.name}  ${s.time !== null ? fmtTime(s.time) : `跑到 ${(s.progress / 1000).toFixed(2)} km`}`),
     ]
     showPanel({ title, subtitle: '比赛结算', lines, buttons: [{ label: '好的', onClick: () => game.closePanel() }] })
@@ -159,12 +165,13 @@ export function installRace(game: Game) {
     const len = typeof route === 'string' ? '—' : `${((route.length * (route.loop ? def.laps : 1)) / 1000).toFixed(1)} km`
     const entry = mode === 'legal' ? def.legal!.entry : def.entry
     const bet = mode === 'legal' ? 0 : RACE_BETS[betIdx]
-    const odds = betOdds(def)
+    const odds = betOdds(def, save.tier)
+    const ai = effectiveAi(def, save.tier)
     const car = ownCar()
     const best = save.best[def.id]
     const lines = [
       def.desc,
-      `${def.loop ? `环形 ${def.laps} 圈` : '点到点'} · 全程 ${len} · 难度 ${'★'.repeat(def.stars)}${'☆'.repeat(3 - def.stars)} · 对手：${RIVALS.map((rv, i) => `${rv.name}（${rv.tag} ${Math.round(def.ai[i] * 100)}）`).join(' / ')}`,
+      `${def.loop ? `环形 ${def.laps} 圈` : '点到点'} · 全程 ${len} · 赛道难度 ${'★'.repeat(def.stars)}${'☆'.repeat(3 - def.stars)} · 对手 ${tierLabel(save.tier)}：${RIVALS.map((rv, i) => `${rv.name}（${rv.tag} ${Math.round(ai[i] * 100)}）`).join(' / ')}`,
       `报名费 ${usd(entry)} · 奖金 冠军 ${usd(prizeFor(def, mode, 1))} / 亚军 ${usd(prizeFor(def, mode, 2))} / 季军 ${usd(prizeFor(def, mode, 3))}${best !== undefined ? ` · 你的纪录 ${fmtTime(best)}` : ''}`,
       mode === 'legal' ? '合法赛道日：封路清空交通，没有警察。' : `街头赛违法：${game.ctx.role.id === 'gang' ? '黑帮照常会被追' : '被巡警看到会通缉 1 星'}。比赛期间不开超速 / 闯灯罚单。`,
       car ? `参赛车辆：你的车（${car.model === 'sports' ? '跑车' : car.kind === 'taxi' ? '的士' : '轿车'} · 车况 ${Math.round(car.health)}%）` : '附近没有你的车：可以租一辆跑车。',
@@ -178,6 +185,11 @@ export function installRace(game: Game) {
       { label: '用自己的车参赛', note: usd(entry + bet), disabled: !car, onClick: () => go(false) },
       { label: '租跑车参赛', note: `${usd(entry + bet)} + 租车 ${usd(RACE_RENT)}`, onClick: () => go(true) },
     ]
+    buttons.push({
+      label: `对手水平：${tierLabel(save.tier)}`,
+      note: `奖金 / XP ×${tierReward(save.tier)} · ${save.tierMax < TIER_COUNT ? `在 ${tierLabel(save.tierMax)} 夺冠解锁下一级` : '已全部解锁'}（点按切换）`,
+      onClick: () => { save.tier = save.tier >= save.tierMax ? 1 : save.tier + 1; setupPanel(poi, def, mode) },
+    })
     if (mode === 'street') buttons.push({ label: `押自己夺冠：${bet ? usd(bet) : '不下注'}`, note: `赔率 ${odds}×（点按切换）`, onClick: () => { betIdx = (betIdx + 1) % RACE_BETS.length; setupPanel(poi, def, mode) } })
     buttons.push({ label: '返回', onClick: () => game.interactions.open(poi) })
     game.panels.show({ title: def.name, subtitle: mode === 'legal' ? '合法赛道日 · 报名' : '街头赛 · 报名', lines, buttons })
@@ -221,6 +233,7 @@ export function installRace(game: Game) {
     const lines = [
       `${venueById(VENUE)?.name ?? '滨海湾赛道'} 报名`,
       `出赛 ${save.races} · 冠军 ${save.wins} · 领奖台 ${save.podiums}`,
+      `对手水平：${tierLabel(save.tier)}（已解锁到 ${tierLabel(save.tierMax)}${save.tierMax < TIER_COUNT ? '，在最高级别夺冠解锁下一级' : '，全部解锁'}）`,
     ]
     if (session) lines.unshift(`比赛中：${session.def.name} · ${session.hudCard().desc}`)
     return { lines, sections: [...game.venueSections(VENUE), { title: '路线与纪录（右侧为最快用时）', items }], log: save.log }
@@ -236,7 +249,8 @@ export function installRace(game: Game) {
     serialize: () => ({ ...save, best: { ...save.best }, log: [...save.log] }),
     restore(s) {
       const d = (s ?? {}) as Partial<RaceSave>
-      save = { best: { ...(d.best ?? {}) }, wins: d.wins ?? 0, races: d.races ?? 0, podiums: d.podiums ?? 0, log: [...(d.log ?? [])] }
+      const tierMax = clampTier(d.tierMax ?? 1)
+      save = { best: { ...(d.best ?? {}) }, wins: d.wins ?? 0, races: d.races ?? 0, podiums: d.podiums ?? 0, log: [...(d.log ?? [])], tierMax, tier: Math.min(clampTier(d.tier ?? 1), tierMax) }
       if (session) session.abort('读档')
     },
     poiButtons,
@@ -266,7 +280,11 @@ export function installRace(game: Game) {
         return out
       },
       bodies: (x: number, z: number, r = 6) => game.world.query(x, z, r, []).map((b) => ({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ, h: (b as { h?: number }).h, kind: Object.keys(b).join(',') })),
-      start: (id: string, o?: { rent?: boolean; mode?: RaceMode; bet?: number }) => start(id, o),
+      start: (id: string, o?: { rent?: boolean; mode?: RaceMode; bet?: number; tier?: number }) => start(id, o),
+      get tier() { return save.tier },
+      set tier(t: number) { save.tier = Math.min(clampTier(t), save.tierMax) },
+      get tierMax() { return save.tierMax },
+      set tierMax(t: number) { save.tierMax = clampTier(t); save.tier = Math.min(save.tier, save.tierMax) },
       state: () => session?.debugState() ?? null,
       warp: (n: number) => session?.warp(n) ?? false,
       spectate: (i: number, back?: number) => session?.spectate(i, back) ?? false,

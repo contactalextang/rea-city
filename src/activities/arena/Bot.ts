@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { DIFFICULTY, WEAPONS, EQUIP, type DiffParams, type Difficulty, type ArenaModeId } from '../../data/arena'
+import { botParams, PRO_TIER, WEAPONS, EQUIP, type DiffParams, type Difficulty, type ArenaModeId } from '../../data/arena'
 import type { ArenaMap } from './ArenaMap'
 import { Actor } from './Actor'
 import { headCenter, chestPoint, inaccuracy } from './ArenaWeapons'
@@ -97,11 +97,11 @@ export class Bot {
   private usedHe = false
 
   constructor(readonly a: Actor, diff: Difficulty, idx: number) {
-    this.d = DIFFICULTY[diff]
+    this.d = botParams(diff)
     this.thinkT = (idx % 5) * 0.02
     this.aimYaw = a.yaw
   }
-  setDifficulty(diff: Difficulty) { this.d = DIFFICULTY[diff]; this.a.diff = diff }
+  setDifficulty(diff: Difficulty) { this.d = botParams(diff); this.a.diff = diff }
 
   resetRound() {
     this.goal = { k: 'idle' }; this.path = []; this.pathI = 0; this.target = null; this.visible.clear()
@@ -236,7 +236,7 @@ export class Bot {
         this.target = null
       }
       // 敌人刚躲进掩体：扔高爆手雷（每回合一次）
-      if (!this.usedHe && a.grenades.includes('he') && w.time - this.lastSeenT > 0.8 && w.time - this.lastSeenT < 4) {
+      if (this.d.utility && !this.usedHe && a.grenades.includes('he') && w.time - this.lastSeenT > 0.8 && w.time - this.lastSeenT < 4) {
         const dx = this.lastSeenPos.x - a.body.x, dz = this.lastSeenPos.z - a.body.z, d = Math.hypot(dx, dz)
         if (d > 7 && d < 16 && !w.map.blocked(a.body.x, a.eyeY, a.body.z, this.lastSeenPos.x, this.lastSeenPos.y + 1, this.lastSeenPos.z)) {
           this.usedHe = true
@@ -277,7 +277,7 @@ export class Bot {
     if (this.strafeT <= 0) { this.strafe = Math.random() < 0.5 ? -1 : 1; this.strafeT = 0.25 + Math.random() * 0.5 }
     const rx = Math.cos(this.aimYaw), rz = -Math.sin(this.aimYaw)
     out.mx = rx * this.strafe; out.mz = rz * this.strafe
-    out.walk = a.diff !== 'pro'
+    out.walk = a.diff < PRO_TIER
   }
 
   private perceive(w: BotWorld) {
@@ -368,7 +368,7 @@ export class Bot {
     const g = this.goal
     let faceYaw: number | null = null
     // 投掷物：进点前在路线上丢烟
-    if (g.k === 'route' && g.i >= g.pts.length - 2 && !this.usedUtility && a.grenades.includes('smoke') && w.time > g.waitUntil) {
+    if (g.k === 'route' && g.i >= g.pts.length - 2 && this.d.utility && !this.usedUtility && a.grenades.includes('smoke') && w.time > g.waitUntil) {
       this.usedUtility = true
       const site = SITES[g.site].center
       this.faceSmooth(Math.atan2(-(site.x - a.body.x), -(site.z - a.body.z)), 0.35, 1)
@@ -393,7 +393,7 @@ export class Bot {
           if (this.steerTo(w, p.x, p.z, out)) G.i++
           this.state = `T:推进${G.site}`
           // 静步接近包点
-          out.walk = a.diff === 'pro' && G.i >= G.pts.length - 2 && w.roundT < 60
+          out.walk = a.diff >= PRO_TIER && G.i >= G.pts.length - 2 && w.roundT < 60
         } else {
           const spot = a.hasC4 ? PLANT_SPOTS[G.site][a.id % PLANT_SPOTS[G.site].length] : POSTPLANT[G.site][a.id % POSTPLANT[G.site].length].at
           this.goal = { k: 'site', site: G.site, to: spot, plant: a.hasC4 }

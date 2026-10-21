@@ -95,7 +95,7 @@ export const nextUnlocks = (role: RoleId, level: number) =>
 export type AchievementId =
   | 'first_buy' | 'first_biz' | 'biz_3' | 'nw_10k' | 'nw_100k' | 'nw_1m'
   | 'lv_10' | 'lv_20' | 'taxi_100' | 'survive_raid' | 'buy_car' | 'two_homes'
-  | 'first_bet' | 'high_roller' | 'race_win' | 'race_10' | 'arena_win' | 'streak_5' | 'headshot_king' | 'lover' | 'no_drive'
+  | 'first_bet' | 'high_roller' | 'race_win' | 'race_10' | 'arena_win' | 'streak_5' | 'headshot_king' | 'lover' | 'no_drive' | 'race_legend' | 'arena_legend'
 export const ACHIEVEMENTS: { id: AchievementId; name: string; desc: string }[] = [
   { id: 'first_buy', name: '第一笔消费', desc: '在商店买下第一件东西' },
   { id: 'first_biz', name: '开门营业', desc: '拥有第一个产业' },
@@ -117,5 +117,7 @@ export const ACHIEVEMENTS: { id: AchievementId; name: string; desc: string }[] =
   { id: 'streak_5', name: '五连胜', desc: '射击比赛连胜 5 局' },
   { id: 'headshot_king', name: '爆头王', desc: '射击比赛累计爆头 50 次' },
   { id: 'lover', name: '恋人', desc: '和一位约会对象成为恋人' },
+  { id: 'race_legend', name: '传奇车手', desc: '在 T10 传奇难度赢下一场赛车' },
+  { id: 'arena_legend', name: '传奇枪手', desc: '在 T10 传奇难度赢下一局射击比赛' },
   { id: 'no_drive', name: '不想开车', desc: '用手机叫车（Taxi / Grab）出行 10 次' },
 ]

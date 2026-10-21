@@ -5,6 +5,7 @@ import { steerTowards } from '../../entities/TrafficAI'
 import { pointAt, vmaxAt, type BuiltRoute } from './Route'
 import { circleBody } from '../../physics/Collision'
 import type { AABB } from '../../world/Colliders'
+import { RACE_TIERS, type RaceTier } from '../../data/races'
 
 /** 调试：AI 每帧写 r.dbg（__game.plug.race.state().ai[i].dbg）；?racedbg=1 打开 */
 const DEBUG_AI = typeof location !== 'undefined' && new URLSearchParams(location.search).has('racedbg')
@@ -61,15 +62,17 @@ export interface Racer {
   offRouteResets: number
   /** 当前橡皮筋系数 */
   rubber: number
+  /** 对手级别的橡皮筋参数 */
+  rb: RaceTier
   dbg: string
   /** 每 5 s 一个 [用时, 进度] 采样 */
   trace: [number, number][]
 }
 
-export function makeRacer(name: string, tag: string, isPlayer: boolean, skill: number): Racer {
+export function makeRacer(name: string, tag: string, isPlayer: boolean, skill: number, rb: RaceTier = RACE_TIERS[4]): Racer {
   return {
     name, tag, isPlayer, skill, v: null, idx: 0, s: 0, lap: 0, progress: 0, nextCp: 0, cpTimes: [], finished: false, finishTime: 0, dnf: false,
-    offset: 0, prefOffset: 0, reverseT: 0, slowT: 0, offT: 0, winT: 0, winP: 0, stuckEvents: 0, offRouteResets: 0, rubber: 1, trace: [], dbg: '',
+    offset: 0, prefOffset: 0, reverseT: 0, slowT: 0, offT: 0, winT: 0, winP: 0, stuckEvents: 0, offRouteResets: 0, rubber: 1, rb, trace: [], dbg: '',
   }
 }
 
@@ -86,9 +89,9 @@ const Q = { x: 0, z: 0, dx: 0, dz: 0, hw: 0 }
 export function driveAI(r: Racer, route: BuiltRoute, ctx: Ctx, dt: number, raceT: number, playerProgress: number, racers: Racer[]) {
   const v = r.v!
   const speed = v.speed
-  // 橡皮筋：落后玩家 > 60 m 逐步加速（≤ +10%），领先 > 100 m 逐步收油（≥ −12%）
-  const delta = r.progress - playerProgress
-  const rb = delta < -60 ? 1 + Math.min(0.1, (-delta - 60) / 1500) : delta > 100 ? Math.max(0.88, 1 - (delta - 100) / 2000) : 1
+  // 橡皮筋（按对手级别 r.rb）：落后玩家 > 60 m 逐步加速（≤ +rbUp），领先 > leadStart 逐步收油（≥ rbDown）
+  const delta = r.progress - playerProgress, k = r.rb
+  const rb = delta < -60 ? 1 + Math.min(k.rbUp, (-delta - 60) / 1500) : delta > k.leadStart ? Math.max(k.rbDown, 1 - (delta - k.leadStart) / k.downRate) : 1
   r.rubber = rb
   v.tune = { accel: rb > 1 ? 1.15 : 1, maxFwd: r.skill * rb }
 

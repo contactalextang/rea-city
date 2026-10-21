@@ -5,8 +5,9 @@ import type { Input } from '../../core/Input'
 import { LOOK } from '../../core/LookUniforms'
 import { defaultGrade } from '../../core/PostFX'
 import { earn } from '../../systems/Wallet'
+import { tierReward } from '../../data/tiers'
 import {
-  WEAPONS, EQUIP, BUY_MENU, ECON, TIMES, MATCH, MODES, BOT_NAMES_T, BOT_NAMES_CT, GRENADE_NAMES, recoilAt,
+  WEAPONS, EQUIP, BUY_MENU, ECON, TIMES, MATCH, MODES, BOT_NAMES_T, BOT_NAMES_CT, GRENADE_NAMES, recoilAt, botParams, PRO_TIER,
   type ArenaModeId, type Difficulty, type Side,
 } from '../../data/arena'
 import { ArenaMap } from './ArenaMap'
@@ -28,6 +29,8 @@ export interface ArenaOptions {
   /** 敌方 5 个 bot 难度（1v1 取第一个） */
   enemyDiff: Difficulty[]
   mateDiff: Difficulty
+  /** 手动选的难度级别（休闲 / 单挑 / 死斗）：奖金 / XP 按 tierReward 乘；天梯 / 联赛不传 */
+  tier?: number
   /** 结算回调：返回附加显示行（段位变化等） */
   onResult: (r: MatchResult) => string[]
 }
@@ -440,6 +443,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
     if (won) prize += m.prize
     if (!surrender && this.mode !== 'dm') prize += p.stats.kills * m.perKill + p.stats.mvps * m.perMvp
     if (draw) prize = Math.round(prize * 0.5)
+    if (this.opts.tier) prize *= tierReward(this.opts.tier)
     prize = Math.round(prize)
     if (prize > 0) earn(this.game.ctx, prize, 'arena:prize')
     const res: MatchResult = { mode: this.mode, won, draw, surrender, kills: p.stats.kills, deaths: p.stats.deaths, assists: p.stats.assists, headshots: p.stats.hs, mvps: p.stats.mvps, scoreUs: us, scoreThem: them, prize }
@@ -462,7 +466,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
     this.reported = true
     const p = this.player
     const won = this.result?.won ?? false
-    this.game.ctx.events.emit('matchDone', { mode: this.mode, won, kills: p.stats.kills, headshots: p.stats.hs })
+    this.game.ctx.events.emit('matchDone', { mode: this.mode, won, kills: p.stats.kills, headshots: p.stats.hs, tier: this.opts.tier })
   }
   surrender() {
     if (this.phase !== 'over') this.matchOver(true)
@@ -689,6 +693,8 @@ export class ArenaMode implements ArenaSession, BotWorld {
     if (!v.alive || this.phase === 'over') return
     // 休闲规则：无友军伤害（自己的手雷仍会伤到自己）
     if (by && by !== v && !this.isEnemy(by, v)) return
+    // 低级别 bot 对玩家手下留情
+    if (by && !by.isPlayer && v === this.player) { const k = botParams(by.diff).dmgMul; hp *= k; armor *= k }
     hp = Math.max(0, hp)
     const real = Math.min(v.hp, hp)
     v.hp -= hp; v.armor = Math.max(0, v.armor - armor)
@@ -1083,7 +1089,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
   }
 
   private scoreRows(): ScoreRow[] {
-    const rows = this.actors.map((a) => ({ name: a.name + (a.isPlayer ? '（你）' : a.diff === 'pro' ? ' ★' : ''), side: this.mode === 'dm' ? (a.isPlayer ? 'T' : 'CT') : a.side, k: a.stats.kills, d: a.stats.deaths, a: a.stats.assists, hs: a.stats.hs, mvp: a.stats.mvps, money: a.money, alive: a.alive, me: a.isPlayer, score: a.stats.score + a.stats.kills * 0 }))
+    const rows = this.actors.map((a) => ({ name: a.name + (a.isPlayer ? '（你）' : a.diff >= PRO_TIER ? ' ★' : ''), side: this.mode === 'dm' ? (a.isPlayer ? 'T' : 'CT') : a.side, k: a.stats.kills, d: a.stats.deaths, a: a.stats.assists, hs: a.stats.hs, mvp: a.stats.mvps, money: a.money, alive: a.alive, me: a.isPlayer, score: a.stats.score + a.stats.kills * 0 }))
     rows.sort((x, y) => (x.side === y.side ? y.score - x.score || y.k - x.k : x.side < y.side ? 1 : -1))
     return rows
   }
@@ -1240,7 +1246,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
     this.matchOver(false)
   }
   setDifficulty(d: Difficulty) { for (const b of this.bots) if (b.a.team !== this.player.team) b.setDifficulty(d) }
-  setAutopilot(on: boolean, diff: Difficulty = 'pro') {
+  setAutopilot(on: boolean, diff: Difficulty = PRO_TIER) {
     if (on && this.autopilot) this.autopilot.setDifficulty(diff)
     if (on && !this.autopilot) { this.autopilot = new Bot(this.player, diff, 0); this.autopilot.resetRound(); if (this.phase === 'live') this.autopilot.assignHunt(this) }
     else if (!on) this.autopilot = null

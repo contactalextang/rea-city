@@ -1,4 +1,5 @@
 import { PITCH, HALF } from '../config'
+import { clampTier } from './tiers'
 
 /**
  * P10.C 街头赛车路线。
@@ -131,5 +132,39 @@ export const RIVALS = [
 ]
 export const routesFor = (world: 'sg' | 'grid') => RACE_ROUTES.filter((r) => r.world === world)
 export const routeById = (id: string) => RACE_ROUTES.find((r) => r.id === id) ?? null
-/** 押冠军赔率（含本金）：按对手平均水平 */
-export const betOdds = (r: RaceRouteDef) => Math.round((1 + 10 * (r.ai.reduce((a, b) => a + b, 0) / 3 - 0.7)) * 10) / 10
+/**
+ * 对手级别（src/data/tiers.ts，T1–T10）：叠加在路线 ai 上的车手水平 + 橡皮筋。T5 = 原来的手感。
+ * 高级别不把水平推过 skillCap（再快会冲出弯道限速线撞墙），而是“只追不让”：落后追得更猛、领先不收油。
+ */
+export interface RaceTier {
+  /** 车手水平加成（叠到路线 ai 上） */
+  skillAdd: number
+  skillCap: number
+  /** 落后玩家 > 60 m 时最多提速 */
+  rbUp: number
+  /** 领先玩家 > leadStart 后最低收油到（1 = 不收油），每 downRate 米降 1 */
+  rbDown: number
+  leadStart: number
+  downRate: number
+}
+const rt = (skillAdd: number, rbUp: number, rbDown: number, leadStart: number, downRate: number): RaceTier => ({ skillAdd, skillCap: 1.08, rbUp, rbDown, leadStart, downRate })
+export const RACE_TIERS: RaceTier[] = [
+  rt(-0.16, 0, 0.75, 40, 1000),
+  rt(-0.12, 0.03, 0.78, 50, 1100),
+  rt(-0.08, 0.06, 0.82, 60, 1300),
+  rt(-0.04, 0.08, 0.85, 80, 1600),
+  rt(0, 0.1, 0.88, 100, 2000),
+  rt(0.02, 0.12, 0.9, 120, 2000),
+  rt(0.03, 0.13, 0.93, 150, 2500),
+  rt(0.04, 0.15, 0.96, 200, 3000),
+  rt(0.05, 0.16, 0.98, 300, 4000),
+  rt(0.06, 0.18, 1, 300, 4000),
+]
+export const raceTier = (t: number) => RACE_TIERS[clampTier(t) - 1]
+/** 某级别下三名对手的实际车手水平 */
+export const effectiveAi = (r: RaceRouteDef, t: number): [number, number, number] => {
+  const k = raceTier(t)
+  return r.ai.map((a) => Math.round(Math.min(k.skillCap, a + k.skillAdd) * 1000) / 1000) as [number, number, number]
+}
+/** 押冠军赔率（含本金）：按对手平均水平（下限 1.2×） */
+export const betOdds = (r: RaceRouteDef, t = 5) => Math.max(1.2, Math.round((1 + 10 * (effectiveAi(r, t).reduce((a, b) => a + b, 0) / 3 - 0.7)) * 10) / 10)

@@ -2,6 +2,7 @@ import type { Ctx, Subsystem, AppView, PurchaseKind } from '../core/Context'
 import type { PanelButton } from '../ui/Panels'
 import type { Poi } from './Poi'
 import { onCashFlow } from './Wallet'
+import { tierReward } from '../data/tiers'
 import { MAX_LEVEL, XP, xpFor, titleFor, nextUnlocks, ACHIEVEMENTS, type AchievementId } from '../data/progression'
 
 /** 终身统计 */
@@ -32,6 +33,9 @@ export interface LifeStats {
   /** 当前 / 最佳竞技场连胜 */
   matchStreak: number
   matchBestStreak: number
+  /** 赢过的最高难度级别（赛车 / 射击，src/data/tiers.ts；0 = 没赢过） */
+  raceTierBest: number
+  matchTierBest: number
   kills: number
   headshots: number
   dates: number
@@ -67,7 +71,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 const QUEST_XP_CAP = 2000
 const defaultStats = (): LifeStats => ({
   earned: 0, spent: 0, bizIncome: 0, distanceKm: 0, trips: 0, arrests: 0, daysPlayed: 1, peakNetWorth: 0, bought: {},
-  gambleNet: 0, gambleRounds: 0, gambleBestWin: 0, races: 0, raceWins: 0, matches: 0, matchWins: 0, matchStreak: 0, matchBestStreak: 0,
+  gambleNet: 0, gambleRounds: 0, gambleBestWin: 0, races: 0, raceWins: 0, matches: 0, matchWins: 0, matchStreak: 0, matchBestStreak: 0, raceTierBest: 0, matchTierBest: 0,
   kills: 0, headshots: 0, dates: 0, lovers: [], drinks: 0, rides: 0, rideFares: 0,
 })
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`
@@ -127,17 +131,19 @@ export class Progress implements Subsystem<ProgressSave> {
       if (bet >= XP.gambleMinBet) this.addXp(XP.gambleRound)
       this.check()
     })
-    ev.on('raceDone', ({ place }) => {
+    ev.on('raceDone', ({ place, tier }) => {
       const st = this.stats
       st.races++; if (place === 1) st.raceWins++
-      this.addXp(XP.racePlace[place] ?? XP.raceFinish)
+      if (place === 1 && tier) st.raceTierBest = Math.max(st.raceTierBest, tier)
+      this.addXp(Math.round((XP.racePlace[place] ?? XP.raceFinish) * (tier ? tierReward(tier) : 1)))
       this.check()
     })
-    ev.on('matchDone', ({ won, kills, headshots }) => {
+    ev.on('matchDone', ({ won, kills, headshots, tier }) => {
       const st = this.stats
       st.matches++; st.kills += Math.max(0, kills | 0); st.headshots += Math.max(0, (headshots ?? 0) | 0)
       if (won) { st.matchWins++; st.matchStreak++; st.matchBestStreak = Math.max(st.matchBestStreak, st.matchStreak) } else st.matchStreak = 0
-      this.addXp((won ? XP.matchWin : XP.matchLose) + Math.min(XP.killCap, kills * XP.perKill))
+      if (won && tier) st.matchTierBest = Math.max(st.matchTierBest, tier)
+      this.addXp(Math.round(((won ? XP.matchWin : XP.matchLose) + Math.min(XP.killCap, kills * XP.perKill)) * (tier ? tierReward(tier) : 1)))
       this.check()
     })
     ev.on('dated', ({ npc, stage }) => {
@@ -237,6 +243,8 @@ export class Progress implements Subsystem<ProgressSave> {
       arena_win: s.matchWins >= 1,
       streak_5: s.matchBestStreak >= 5,
       headshot_king: s.headshots >= 50,
+      race_legend: s.raceTierBest >= 10,
+      arena_legend: s.matchTierBest >= 10,
       lover: s.lovers.length >= 1,
       no_drive: s.rides >= 10,
     }

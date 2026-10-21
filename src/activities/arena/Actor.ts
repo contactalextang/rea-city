@@ -69,7 +69,7 @@ export class Actor {
   variant = 0
   /** 最近一次被敌人看到（雷达显示） */
   spottedT = -9
-  constructor(readonly id: number, public name: string, public team: string, public side: Side, readonly isPlayer: boolean, public diff: Difficulty = 'normal') {}
+  constructor(readonly id: number, public name: string, public team: string, public side: Side, readonly isPlayer: boolean, public diff: Difficulty = 6) {}
 
   get eyeY() { return this.body.y + EYE_STAND + (EYE_CROUCH - EYE_STAND) * this.crouch }
   get pos() { return this.body }

@@ -1,3 +1,5 @@
+import { clampTier, tierLabel } from './tiers'
+
 /**
  * P10.D 射击竞技（类 CS2 5v5 爆破）数据：武器 / 装备 / 经济 / 模式 / 难度 / 段位。
  * 单位：米、秒。CS 的 1 unit ≈ 0.026 m（跑速 250 u/s ≈ 6.5 m/s）。
@@ -154,7 +156,8 @@ export const TIMES = {
 /** 胜利回合数 / 半场 */
 export const MATCH = { winRounds: 7, half: 6, duelWin: 5, dmTime: 300 }
 
-export type Difficulty = 'novice' | 'normal' | 'pro'
+/** Bot 难度 = 级别 1–10（src/data/tiers.ts）；T4 ≈ 旧“新手”、T6 ≈ 旧“普通”、T8 ≈ 旧“职业” */
+export type Difficulty = number
 export interface DiffParams {
   label: string
   /** 反应时间（秒） */
@@ -173,12 +176,45 @@ export interface DiffParams {
   fov: number
   /** 点射长度（远距离） */
   burst: number
+  /** 对玩家造成伤害的倍率（低级别手下留情） */
+  dmgMul: number
+  /** 会不会用烟雾弹 / 手雷 */
+  utility: boolean
 }
-export const DIFFICULTY: Record<Difficulty, DiffParams> = {
-  novice: { label: '新手', reaction: 0.6, aimError: 3.2, turnSpeed: 160, headPref: 0.08, recoilComp: 0, counterStrafe: 0, fov: 100, burst: 12 },
-  normal: { label: '普通', reaction: 0.35, aimError: 1.6, turnSpeed: 280, headPref: 0.3, recoilComp: 0.5, counterStrafe: 0.5, fov: 115, burst: 6 },
-  pro: { label: '职业', reaction: 0.2, aimError: 0.7, turnSpeed: 480, headPref: 0.6, recoilComp: 0.9, counterStrafe: 1, fov: 125, burst: 4 },
+type Anchor = Omit<DiffParams, 'label' | 'utility'>
+/** 插值锚点：级别 → 参数 */
+const DIFF_ANCHORS: [number, Anchor][] = [
+  [1, { reaction: 1.1, aimError: 6, turnSpeed: 110, headPref: 0, recoilComp: 0, counterStrafe: 0, fov: 80, burst: 14, dmgMul: 0.5 }],
+  [4, { reaction: 0.6, aimError: 3.2, turnSpeed: 160, headPref: 0.08, recoilComp: 0, counterStrafe: 0, fov: 100, burst: 12, dmgMul: 0.9 }],
+  [5, { reaction: 0.47, aimError: 2.3, turnSpeed: 220, headPref: 0.2, recoilComp: 0.25, counterStrafe: 0.25, fov: 108, burst: 9, dmgMul: 1 }],
+  [6, { reaction: 0.35, aimError: 1.6, turnSpeed: 280, headPref: 0.3, recoilComp: 0.5, counterStrafe: 0.5, fov: 115, burst: 6, dmgMul: 1 }],
+  [8, { reaction: 0.2, aimError: 0.7, turnSpeed: 480, headPref: 0.6, recoilComp: 0.9, counterStrafe: 1, fov: 125, burst: 4, dmgMul: 1 }],
+  [10, { reaction: 0.14, aimError: 0.4, turnSpeed: 620, headPref: 0.75, recoilComp: 1, counterStrafe: 1, fov: 135, burst: 3, dmgMul: 1 }],
+]
+/** T2/T3 的伤害倍率按计划单独定（插值会偏高） */
+const DMG_MUL: Record<number, number> = { 2: 0.6, 3: 0.75 }
+const diffCache = new Map<number, DiffParams>()
+export function botParams(t: Difficulty): DiffParams {
+  const k = clampTier(t)
+  let p = diffCache.get(k)
+  if (p) return p
+  let i = 0
+  while (i < DIFF_ANCHORS.length - 2 && DIFF_ANCHORS[i + 1][0] < k) i++
+  const [ta, a] = DIFF_ANCHORS[i], [tb, b] = DIFF_ANCHORS[i + 1]
+  const u = Math.max(0, Math.min(1, (k - ta) / (tb - ta)))
+  const o = {} as Anchor
+  for (const key of Object.keys(a) as (keyof Anchor)[]) o[key] = a[key] + (b[key] - a[key]) * u
+  o.burst = Math.round(o.burst)
+  o.dmgMul = DMG_MUL[k] ?? o.dmgMul
+  p = { ...o, label: tierLabel(k), utility: k >= 4 }
+  diffCache.set(k, p)
+  return p
 }
+/** 旧字符串难度 → 级别（调试 API 兼容） */
+export const DIFF_ALIAS: Record<string, number> = { novice: 4, normal: 6, pro: 8 }
+export const toTier = (d: Difficulty | string): number => clampTier(typeof d === 'string' ? DIFF_ALIAS[d] ?? Number(d) : d)
+/** 记分板 ★ / 职业式走位门槛 */
+export const PRO_TIER = 8
 
 export type ArenaModeId = 'casual' | 'ranked' | 'pro' | 'duel' | 'dm'
 export interface ModeDef {
@@ -191,16 +227,14 @@ export interface ModeDef {
   perKill: number
   perMvp: number
   unlock?: string
-  /** 默认 bot 难度（ranked 按段位） */
-  diff: Difficulty
   desc: string
 }
 export const MODES: Record<ArenaModeId, ModeDef> = {
-  casual: { id: 'casual', name: '5v5 爆破（休闲）', fee: 50, prize: 150, perKill: 10, perMvp: 20, diff: 'normal', desc: '先赢 7 回合 · 普通 Bot' },
-  ranked: { id: 'ranked', name: '5v5 天梯', fee: 200, prize: 600, perKill: 30, perMvp: 60, unlock: 'arena_ranked', diff: 'normal', desc: '影响段位 · Bot 随段位变强' },
-  pro: { id: 'pro', name: '职业联赛', fee: 1000, prize: 3000, perKill: 120, perMvp: 250, unlock: 'arena_pro', diff: 'pro', desc: '职业 Bot · 高额奖金' },
-  duel: { id: 'duel', name: '1v1 单挑', fee: 100, prize: 250, perKill: 0, perMvp: 0, diff: 'normal', desc: '先赢 5 回合 · 无炸弹' },
-  dm: { id: 'dm', name: '死斗热身', fee: 0, prize: 0, perKill: 0, perMvp: 0, diff: 'normal', desc: '免费 · 5 分钟 · 随买随用' },
+  casual: { id: 'casual', name: '5v5 爆破（休闲）', fee: 50, prize: 150, perKill: 10, perMvp: 20, desc: '先赢 7 回合 · 难度可选（赢一局解锁下一级）' },
+  ranked: { id: 'ranked', name: '5v5 天梯', fee: 200, prize: 600, perKill: 30, perMvp: 60, unlock: 'arena_ranked', desc: '影响段位 · Bot 随段位变强' },
+  pro: { id: 'pro', name: '职业联赛', fee: 1000, prize: 3000, perKill: 120, perMvp: 250, unlock: 'arena_pro', desc: 'T8–T10 Bot · 高额奖金' },
+  duel: { id: 'duel', name: '1v1 单挑', fee: 100, prize: 250, perKill: 0, perMvp: 0, desc: '先赢 5 回合 · 无炸弹 · 难度可选' },
+  dm: { id: 'dm', name: '死斗热身', fee: 0, prize: 0, perKill: 0, perMvp: 0, desc: '免费 · 5 分钟 · 随买随用' },
 }
 
 /** 段位：ELO → 名称 */
@@ -218,16 +252,13 @@ export function rankOf(elo: number): string {
   for (const k of RANKS) if (elo >= k.min) r = k.name
   return r
 }
-/** 天梯 bot 难度：按 ELO 混合（返回 5 个敌方 bot 的难度） */
+/** bot 级别等效 ELO */
+export const DIFF_ELO = (t: Difficulty) => 700 + 170 * (clampTier(t) - 1)
+/** 天梯 bot 难度：按 ELO 定中心级别，5 个敌方 bot 在中心 ±1 混合 */
 export function rankedDifficulty(elo: number): Difficulty[] {
-  if (elo < 950) return ['novice', 'novice', 'novice', 'normal', 'normal']
-  if (elo < 1250) return ['novice', 'normal', 'normal', 'normal', 'normal']
-  if (elo < 1700) return ['normal', 'normal', 'normal', 'normal', 'pro']
-  if (elo < 2100) return ['normal', 'normal', 'pro', 'pro', 'pro']
-  return ['pro', 'pro', 'pro', 'pro', 'pro']
+  const c = clampTier(Math.round((elo - 700) / 170) + 1)
+  return [c - 1, c, c, c, c + 1].map(clampTier)
 }
-/** bot 队伍等效 ELO（期望胜率） */
-export const DIFF_ELO: Record<Difficulty, number> = { novice: 850, normal: 1300, pro: 2000 }
 
 /** 伤害部位倍率（头部用武器 hsMul） */
 export const HIT_MUL = { head: 0, chest: 1, stomach: 1.25, legs: 0.75 }

@@ -6,17 +6,21 @@ import { lineClear } from '../../entities/PoliceAI'
 import { lawTuning } from '../../systems/Law'
 import { Marker, TARGET_COLOR } from '../../world/Marker'
 import { earn } from '../../systems/Wallet'
-import { RIVALS, PRIZE_POOL_SHARE, PRIZE_FIXED_SHARE, betOdds, type RaceRouteDef } from '../../data/races'
+import { RIVALS, PRIZE_POOL_SHARE, PRIZE_FIXED_SHARE, betOdds, effectiveAi, raceTier, type RaceRouteDef } from '../../data/races'
+import { tierReward } from '../../data/tiers'
 import { pointAt, project, vmaxAt, type BuiltRoute } from './Route'
 import { makeRacer, driveAI, resetOnRoute, type Racer } from './RaceAI'
 
 export type RaceMode = 'street' | 'legal'
-export interface RaceOptions { mode: RaceMode; rent: boolean; bet: number }
+export interface RaceOptions { mode: RaceMode; rent: boolean; bet: number; /** 对手级别 T1–T10 */ tier: number }
 export type Phase = 'grid' | 'countdown' | 'race' | 'done'
 
 /** 比赛结果（结算面板 / 存档 / 调试） */
 export interface RaceResult {
   route: string; mode: RaceMode; place: number; prize: number; betWon: number
+  tier: number
+  /** 这场解锁的新级别（index.ts onEnd 填） */
+  unlocked?: number
   time: number; aborted: boolean; reason?: string
   standings: { name: string; place: number; time: number | null; progress: number }[]
 }
@@ -84,8 +88,8 @@ export class RaceSession {
   constructor(private game: Game, readonly route: BuiltRoute, readonly opts: RaceOptions, readonly car: Vehicle, aiCars: Vehicle[], rental: Vehicle | null) {
     const def = route.def
     this.entry = opts.mode === 'legal' ? def.legal?.entry ?? def.entry : def.entry
-    this.prizeBase = opts.mode === 'legal' ? def.legal?.prize ?? def.prize : def.prize
-    this.odds = betOdds(def)
+    this.prizeBase = (opts.mode === 'legal' ? def.legal?.prize ?? def.prize : def.prize) * tierReward(opts.tier)
+    this.odds = betOdds(def, opts.tier)
     this.rental = rental
     this.aiCars = aiCars
     this.inCorridor = corridor(route)
@@ -103,9 +107,10 @@ export class RaceSession {
     this.player.v = car
     const order = [2, 1, 0]   // AI 难度索引 → 槽位 0 / 2 / 3
     const aiSlots = [0, 2, 3]
+    const skills = effectiveAi(def, opts.tier), rb = raceTier(opts.tier)
     const racersAI = order.map((ri, k) => {
       const rv = RIVALS[ri]
-      const r = makeRacer(rv.name, rv.tag, false, def.ai[ri])
+      const r = makeRacer(rv.name, rv.tag, false, skills[ri], rb)
       r.v = aiCars[ri]
       r.prefOffset = this.slots[aiSlots[k]].lat * 0.4
       return { r, slot: aiSlots[k] }
@@ -305,7 +310,7 @@ export class RaceSession {
     this.result = this.makeResult(place, prize, betWon, false)
     this.phase = 'done'; this.phaseT = 0
     this.marker.set(null); this.preview.set(null)
-    ctx.events.emit('raceDone', { route: this.def.id, place, prize })
+    ctx.events.emit('raceDone', { route: this.def.id, place, prize, tier: this.opts.tier })
     this.game.law.trafficExempt = false
     this.onEnd?.(this.result)
   }
@@ -313,7 +318,7 @@ export class RaceSession {
   private makeResult(place: number, prize: number, betWon: number, aborted: boolean, reason?: string): RaceResult {
     const st = this.standings()
     return {
-      route: this.def.id, mode: this.opts.mode, place, prize, betWon, time: this.raceT, aborted, reason,
+      route: this.def.id, mode: this.opts.mode, tier: this.opts.tier, place, prize, betWon, time: this.raceT, aborted, reason,
       standings: st.map((r, i) => ({ name: r.isPlayer ? '你' : `${r.name}（${r.tag}）`, place: r.isPlayer && aborted ? 0 : i + 1, time: r.finished ? +r.finishTime.toFixed(2) : null, progress: Math.round(r.progress) })),
     }
   }
@@ -478,7 +483,7 @@ export class RaceSession {
   debugState() {
     const st = this.standings()
     return {
-      route: this.def.id, mode: this.opts.mode, phase: this.phase, raceT: +this.raceT.toFixed(2), laps: this.def.laps,
+      route: this.def.id, mode: this.opts.mode, tier: this.opts.tier, phase: this.phase, raceT: +this.raceT.toFixed(2), laps: this.def.laps,
       length: Math.round(this.route.length), cps: this.totalCps, place: this.place, nextCp: this.player.nextCp,
       gap: this.gapAhead(), missed: this.missed, outT: +this.outT.toFixed(1), spotted: this.spotted, trafficCulled: this.trafficCulled,
       exempt: this.game.law.trafficExempt, finesSinceStart: this.game.law.fines - this.ticketsAtStart,
