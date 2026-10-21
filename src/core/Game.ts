@@ -1382,7 +1382,7 @@ export class Game {
     ;(window as unknown as { __game: unknown }).__game = {
       get ready() { return self.ready },
       get state() { return self.state },
-      get stats() { return { fps: self.fps, peds: self.peds.activeCount, cars: self.vehicles.filter((v) => v.active).length, drawCalls: self.renderer.info.render.calls, triangles: self.renderer.info.render.triangles, time: self.time } },
+      get stats() { return { fps: self.fps, peds: self.peds.activeCount, cars: self.vehicles.filter((v) => v.active).length, drawCalls: self.renderer.info.render.calls, triangles: self.renderer.info.render.triangles, programs: self.renderer.info.programs?.length ?? 0, time: self.time } },
       /** 骨骼角色：玩家当前动画 / 外观 / 行人 LOD 与动画分布 */
       get chars() {
         const pc = self.player.char

@@ -7,6 +7,7 @@ import { defaultGrade, type GradeParams } from '../core/PostFX'
 import { LOOK } from '../core/LookUniforms'
 import { agx, agxInverse } from '../core/AgX'
 import { NightLights } from './NightLights'
+import { ATMO, ATMO_DEBUG, ATMO_OPTS, CsmShadows, SkyDome, installAtmosphereChunks } from './Atmosphere'
 
 /**
  * 昼夜系统：太阳/月光方向光（阴影跟随玩家）、半球光、天空/雾/曝光色表、
@@ -64,6 +65,18 @@ const SHADOW_HALF = 60
 const STORM_GREY = new THREE.Color(0x3c424c)
 /** 夜间角色边缘光：霓虹青偏品红 */
 const NEON_RIM = new THREE.Color(0x8aa6f2)
+/** 天空 PMREM 环境图亮度增益（使其漫反射补光与原 RoomEnvironment 在同一 envI 下大致等亮） */
+const SKY_ENV_GAIN = 1.5
+
+/** 显示帧序号（rAF 驱动）：同一帧内多次渲染城市场景（AO 等 pass）时阴影图只更新一次 */
+let frameToken = 0
+let frameTicking = false
+function startFrameToken() {
+  if (frameTicking || typeof requestAnimationFrame === 'undefined') return
+  frameTicking = true
+  const tick = () => { frameToken++; requestAnimationFrame(tick) }
+  requestAnimationFrame(tick)
+}
 
 export class DayNight {
   sun: THREE.DirectionalLight
@@ -102,8 +115,20 @@ export class DayNight {
   /** 路灯点光池 + 车前灯（构造时固定数量加进场景） */
   readonly nightLights: NightLights
   private lampHeads: Float32Array = new Float32Array(0)
+  /** fx=high：物理天空 + 天空环境图 */
+  private sky: SkyDome | null = null
+  /** fx=high 且开阴影：级联阴影 */
+  private csm: CsmShadows | null = null
+  private cityCam: THREE.PerspectiveCamera | null = null
+  private roomEnv: THREE.Texture | null = null
+  /** 真实太阳方向（夜里在地平线下；sunDir 夜里换成月光） */
+  private realSun = new THREE.Vector3(0, 1, 0)
+  private shadowToken = -1
 
   constructor(private scene: THREE.Scene, private renderer: THREE.WebGLRenderer, private settings: Settings) {
+    installAtmosphereChunks()
+    ATMO_DEBUG.renderer = renderer
+    startFrameToken()
     this.shadowsOn = settings.shadows
     renderer.shadowMap.enabled = this.shadowsOn
     renderer.shadowMap.type = THREE.PCFShadowMap   // r186 已移除 PCFSoft，PCF 即为软阴影
@@ -113,6 +138,7 @@ export class DayNight {
     const pmrem = new THREE.PMREMGenerator(renderer)
     const room = new RoomEnvironment()
     scene.environment = pmrem.fromScene(room, 0.04).texture
+    this.roomEnv = scene.environment
     scene.environmentIntensity = DAY.envI
     room.dispose()
     // 湿路面专用反射环境：无热点的天空渐变（天顶灰蓝 → 地平线暖白 → 地下近黑）。RoomEnvironment 里有强发光灯箱，
@@ -139,6 +165,59 @@ export class DayNight {
 
     if (!scene.background) scene.background = new THREE.Color(0xa9c9e8)
     if (!scene.fog) scene.fog = new THREE.Fog(0xa9c9e8, 150, 380)
+    this.installSceneHooks()
+  }
+
+  /**
+   * 城市场景渲染钩子（只作用于本场景：竞技场等其它场景渲染时不受影响）：
+   * 渲染前打开高度雾、天空跟随相机、CSM 拟合当前相机；同一显示帧里只让阴影图更新一次。渲染后复原。
+   */
+  private installSceneHooks() {
+    const scene = this.scene
+    scene.onBeforeRender = (renderer, _sc, camera) => {
+      if (!this.sky) return
+      ATMO.params.w = ATMO_OPTS.fog ? 1 : 0
+      this.sky.mesh.visible = ATMO_OPTS.skyMesh && !scene.overrideMaterial
+      this.sky.mesh.position.copy(camera.position)
+      if (this.csm && camera === this.cityCam) {
+        this.csm.update(this.sunDir, this.cSun, this.sunI)
+        renderer.shadowMap.autoUpdate = false
+        if (frameToken !== this.shadowToken) { this.shadowToken = frameToken; renderer.shadowMap.needsUpdate = true; this.csm.schedule(frameToken) }
+      }
+    }
+    scene.onAfterRender = (renderer) => {
+      ATMO.params.w = 0
+      renderer.shadowMap.autoUpdate = true
+    }
+  }
+
+  /** 按 fx 档与阴影开关创建/销毁物理天空与 CSM（运行时切档、切阴影都走这里） */
+  private syncHigh(camera: THREE.PerspectiveCamera) {
+    const high = this.settings.fx === 'high' && ATMO_OPTS.sky
+    if (high && !this.sky) {
+      this.sky = new SkyDome((this.scene.fog as THREE.Fog).color)
+      this.scene.add(this.sky.mesh)
+    } else if (!high && this.sky) {
+      this.sky.dispose(); this.sky = null
+      this.scene.environment = this.roomEnv
+      ATMO.params.w = 0
+    }
+    const wantCsm = high && this.shadowsOn && ATMO_OPTS.csm
+    if (wantCsm && (!this.csm || this.cityCam !== camera)) {
+      this.csm?.dispose()
+      this.cityCam = camera
+      this.csm = new CsmShadows(this.scene, camera)
+      this.shadowToken = -1
+      // 原太阳的 2048² 阴影图在 CSM 期间用不到：释放，切回时 three 会重建
+      this.sun.shadow.map?.dispose(); this.sun.shadow.map = null
+    } else if (!wantCsm && this.csm) {
+      this.csm.dispose(); this.csm = null
+      this.renderer.shadowMap.autoUpdate = true
+    }
+    // CSM 期间原太阳隐藏（否则方向光数量不是 3，且会多照一次）；灯光数量变化由 three 自动触发材质重编译
+    this.sun.visible = !this.csm
+    ATMO_DEBUG.csm = this.csm; ATMO_DEBUG.sky = this.sky
+    this.sun.castShadow = this.shadowsOn
   }
 
   /** 世界网格就绪后调用：读取 userData 约定、设置投影/接收阴影、生成路灯光晕 */
@@ -159,6 +238,7 @@ export class DayNight {
     this.shadowsOn = on
     this.renderer.shadowMap.enabled = on
     this.sun.castShadow = on
+    if (!on && this.csm) { this.csm.dispose(); this.csm = null; this.sun.visible = true; this.renderer.shadowMap.autoUpdate = true }
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh
       if (!m.isMesh) return
@@ -241,6 +321,9 @@ export class DayNight {
     const elev = f > 0 && f < 1 ? Math.sin(theta) : -1
     if (elev > 0.03) this.sunDir.set(Math.cos(theta), elev * 0.985, 0.3).normalize()
     else this.sunDir.copy(MOON_DIR)
+    this.realSun.set(Math.cos(theta), Math.sin(theta) * 0.985, 0.3).normalize()
+    this.syncHigh(ctx.cam.camera)
+    if (this.sky) this.updateAtmosphere(dt, gloom, flash)
     this.sun.color.copy(this.cSun); this.sun.intensity = this.sunI
     const pl = ctx.player
     const px = pl.worldX, pz = pl.worldZ
@@ -273,6 +356,51 @@ export class DayNight {
     if (this.shadowsOn) for (const v of ctx.vehicles) if (!v.group.userData.shadowDone) this.applyShadowFlags(v.group)
   }
 
+  /**
+   * fx=high：天空混合参数、雾内散射、环境图节流重烘。色表仍主导：夜晚/暴雨/闪电时物理天空权重 → 0，
+   * 天空色表色本身已按 AgX 反解成 HDR（scene.background），物理天空按它的亮度归一，不再反解。
+   */
+  private updateAtmosphere(dt: number, gloom: number, flash: number) {
+    const sky = this.sky!
+    const u = sky.uniforms
+    const e = this.realSun.y
+    const day = smoothstep(-0.05, 0.25, e)
+    const clear = (1 - gloom) * (1 - gloom)
+    u.sunPosition.value.copy(this.realSun)
+    u.time.value += dt
+    u.uSkyColor.value.copy(this.scene.background as THREE.Color)
+    u.uMix.value.set(
+      0.55 * day * clear * (1 - flash),                       // 物理天空权重
+      0.85 * smoothstep(-0.12, 0.1, e) * (1 - 0.7 * gloom),   // 渐变/日晕强度
+      lerp(0.14, 0.3, gloom),                                 // 地平线混雾高度
+      day * clear * (1 - flash),                              // 太阳盘
+    )
+    u.uSunCol.value.copy(this.cSun)
+    u.cloudCoverage.value = lerp(0.35, 0.9, gloom)
+    u.turbidity.value = lerp(3.2, 10, gloom)
+    // 雾：高度衰减（暴雨时雨幕填满，不随高度变薄）、朝太阳偏暖偏亮（低太阳最明显）、背光偏冷
+    const low = 1 - smoothstep(0.1, 0.7, e)
+    const sc = smoothstep(-0.04, 0.08, e) * (0.35 + 0.95 * low) * (1 - gloom)
+    const warm = this.cSun
+    ATMO.sun.x = this.realSun.x; ATMO.sun.y = this.realSun.y; ATMO.sun.z = this.realSun.z
+    ATMO.scatter.x = warm.r * sc; ATMO.scatter.y = warm.g * sc * 0.85; ATMO.scatter.z = warm.b * sc * 0.6
+    ATMO.params.x = (1 / 110) * (1 - 0.85 * gloom)
+    ATMO.params.z = 0.35 * day * (1 - gloom)
+    // 环境图：每 15 游戏分钟 / 阴沉度每 1/8 档重烘一次（夜里不随时间变），闪电期间不烘
+    // 夜里（太阳在地平线下）仍用 RoomEnvironment：夜间 envI 只有 ≈0.05，中性补光保持原来的夜景色调（天空烘焙图是深蓝，会把墙面染蓝）
+    if (!ATMO_OPTS.env || e < -0.05) { this.scene.environment = this.roomEnv; sky.invalidateEnv() }
+    else if (flash < 0.01) {
+      const key = `${Math.round(this.lastHour * 4)}|${Math.round(gloom * 8)}`
+      // 亮度归一：环境图平均亮度 ≈ 正午水平，昼夜/阴晴的明暗仍只由色表 envI 控制（否则日落、暴雨时天空变暗 × envI 变小，双重压暗）
+      const skyL = (lum(u.uSkyColor.value) + lum((this.scene.fog as THREE.Fog).color)) * 0.5
+      const norm = clamp(1.02 / Math.max(skyL, 1e-3), 1, 3)
+      // 地平线以下：城市地面/楼体的反弹光 ≈ 雾色（已是 HDR）× groundK，再偏一点半球光地面色（否则立面只吃到半边天空，比 RoomEnvironment 暗很多）
+      u.uGround.value.copy((this.scene.fog as THREE.Fog).color).multiplyScalar(ATMO_OPTS.groundK).lerp(this.cHemiGround, 0.3)
+      const tex = sky.bakeEnv(this.renderer, `${key}|${ATMO_OPTS.envGain}|${ATMO_OPTS.groundK}|${ATMO_OPTS.envSat}`, performance.now() / 1000, SKY_ENV_GAIN * ATMO_OPTS.envGain * norm, ATMO_OPTS.envSat)
+      if (tex) this.scene.environment = tex
+    }
+  }
+
   /** 显示色 → AgX 前的 HDR 色；暗色（AgX 地板以下）反解不收敛时退回原色 */
   private toHdr(c: THREE.Color, exposure: number, out: THREE.Color) {
     agxInverse(c, exposure, out)
@@ -283,7 +411,9 @@ export class DayNight {
   // 采样结果（update 内临时使用）
   private hemiI = 1; private sunI = 1; private exposure = 1; private fogNear = 150; private fogFar = 380; private envI = 0.6; private rim = 0.15
 
+  private lastHour = 12
   private sample(h: number) {
+    this.lastHour = h
     let i = 0
     while (i < KEYS.length - 2 && KEYS[i + 1].h <= h) i++
     const a = KEYS[i], b = KEYS[i + 1]

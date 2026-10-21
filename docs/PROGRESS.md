@@ -84,8 +84,8 @@
 ## Phase 13 — 日常画面电影化（计划 ~/.claude/plans/dazzling-floating-kazoo.md）
 > 起因：用户想要"电影般的人物/场景"；选定只升级日常游玩画面，重效果仅 fx=high。外部库调研后采用 pmndrs/postprocessing + N8AO，天空/CSM 用 three 内置。
 - [x] P13.0 PostFX 迁移到 pmndrs/postprocessing（EffectPass 合并、N8AO 替 GTAO、ToneMapping AgX），画面与迁移前一致
-- [ ] P13.1 物理天空 Sky.js + 指数高度雾/太阳内散射 + 天空 PMREM 环境光（high）
-- [ ] P13.2 CSM 三级联阴影（high，含角色材质与分块材质）
+- [x] P13.1 物理天空 Sky.js + 指数高度雾/太阳内散射 + 天空 PMREM 环境光（high）
+- [x] P13.2 CSM 三级联阴影（high，含角色材质与分块材质）
 - [ ] P13.3 丁达尔光束 GodRaysEffect（rays 随时段）
 - [ ] P13.4 镜头光学：太阳鬼影/宽银幕拉丝、手持呼吸、速度 FOV + 边缘速度模糊
 - [ ] P13.5 程序化胶片 LUT（昼/夜两张）+ `?cine=0` 总开关 + 调试钩子
