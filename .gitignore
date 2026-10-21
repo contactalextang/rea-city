@@ -3,3 +3,4 @@ dist/
 .playwright-mcp/
 .DS_Store
 /data/
+.claude/worktrees/

@@ -81,6 +81,16 @@
 - [x] P10.E 夜店 + 恋爱关系：酒水、节奏舞蹈、8 位可约会 NPC、好感阶段、手机联系人、约会同伴
 - [x] P10.V 整合验收 + 看板/README/记忆
 
+## Phase 13 — 日常画面电影化（计划 ~/.claude/plans/dazzling-floating-kazoo.md）
+> 起因：用户想要"电影般的人物/场景"；选定只升级日常游玩画面，重效果仅 fx=high。外部库调研后采用 pmndrs/postprocessing + N8AO，天空/CSM 用 three 内置。
+- [x] P13.0 PostFX 迁移到 pmndrs/postprocessing（EffectPass 合并、N8AO 替 GTAO、ToneMapping AgX），画面与迁移前一致
+- [ ] P13.1 物理天空 Sky.js + 指数高度雾/太阳内散射 + 天空 PMREM 环境光（high）
+- [ ] P13.2 CSM 三级联阴影（high，含角色材质与分块材质）
+- [ ] P13.3 丁达尔光束 GodRaysEffect（rays 随时段）
+- [ ] P13.4 镜头光学：太阳鬼影/宽银幕拉丝、手持呼吸、速度 FOV + 边缘速度模糊
+- [ ] P13.5 程序化胶片 LUT（昼/夜两张）+ `?cine=0` 总开关 + 调试钩子
+- [ ] P13.V 四时段/暴雨/开车/竞技场截图对比 + 性能 + low/off 回归 + 看板/README/记忆
+
 ## 后续
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
 - [x] P12 射击 / 赛车 10 级难度阶梯（计划 ~/.claude/plans/soft-scribbling-garden.md）：src/data/tiers.ts；竞技场 botParams(t) 锚点插值 + dmgMul/utility，天梯按 ELO 定中心级别；赛车 RACE_TIERS（水平加成 + 橡皮筋参数）；各自 tier/tierMax 进存档，在最高级别获胜解锁下一级；奖金/XP ×TIER_REWARD；成就 race_legend/arena_legend
