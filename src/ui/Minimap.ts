@@ -90,12 +90,11 @@ export class Minimap {
       dot(p, poiCss(p.type), minor ? 1.6 : 2.6, !minor)
     }
     g.globalAlpha = 1
-    // 娱乐场馆（P10）：不透明大点，夜里找得到
+    // 娱乐场馆（P10）：不透明大点，夜里找得到；视野外夹到边缘（只有 4 个，不会围成一圈），远处也看得出方向
     for (const p of pois) {
       if (!VENUE.has(p.type)) continue
       const dx = p.x - px, dz = p.z - pz
-      if (dx * dx + dz * dz > view2) continue
-      dot(p, poiCss(p.type), 4.5 / this.scale, true)   // 屏幕上约 4.5 px，不随缩放变小
+      dot(p, poiCss(p.type), (dx * dx + dz * dz > view2 ? 3.2 : 4.5) / this.scale, true)   // 屏幕上约 4.5 px（边缘 3.2 px），不随缩放变小
     }
     // 已拥有产业：金色空心圈（屏幕上约 7 px 半径，不随缩放变细）
     for (const o of owned) {

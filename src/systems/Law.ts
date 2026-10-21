@@ -10,10 +10,12 @@ export type TrafficKind = 'speeding' | 'redLight' | 'collision' | 'hitPedTraffic
 export const DEMERIT_LIMIT = 24
 
 /**
- * 执法松紧可调参数（设置项 lawStrictness；默认 relaxed，?law=real 接近原版）。
+ * 执法松紧可调参数（设置项 lawStrictness；默认 casual 畅玩，?law=relaxed 宽松，?law=real 接近原版）。
  * 信号簇同步、碰撞按车辆对去重、肇事方判定、簇内部边不设停止线属于 bug 修复，两档都生效。
  */
 export interface LawTuning {
+  /** 畅玩：只管严重犯罪（撞人、枪击行人、攻击警察、开枪打车）；交通违规、碰撞、抢车、毁车、酒驾、街头赛都不追究 */
+  lenient: boolean
   /** 闯红灯扣分 */
   redLightPoints: number
   /** 越线时红灯已持续不足此秒数不罚（黄灯刚转红的容错） */
@@ -39,10 +41,11 @@ export interface LawTuning {
   bustTime: number
 }
 export const LAW_TUNING: Record<LawStrictness, LawTuning> = {
-  relaxed: { redLightPoints: 6, redLightGrace: 0.5, redLightCooldown: 10, hitVehicleHeat: 0.2, wantedCollisionTicket: false, chaseMinCrime: 0.5, hitPoliceCooldown: 5, busImpulseMul: 1.5, decayDelay: 8, decayPoliceDist: 50, ramSpeed: 30, bustTime: 4 },
-  real:    { redLightPoints: 12, redLightGrace: 0, redLightCooldown: 0, hitVehicleHeat: 0.34, wantedCollisionTicket: true, chaseMinCrime: 0, hitPoliceCooldown: 0, busImpulseMul: 1, decayDelay: 12, decayPoliceDist: 70, ramSpeed: 34, bustTime: 2.5 },
+  casual:  { lenient: true, redLightPoints: 6, redLightGrace: 0.5, redLightCooldown: 10, hitVehicleHeat: 0.2, wantedCollisionTicket: false, chaseMinCrime: 0.5, hitPoliceCooldown: 5, busImpulseMul: 1.5, decayDelay: 8, decayPoliceDist: 50, ramSpeed: 30, bustTime: 4 },
+  relaxed: { lenient: false, redLightPoints: 6, redLightGrace: 0.5, redLightCooldown: 10, hitVehicleHeat: 0.2, wantedCollisionTicket: false, chaseMinCrime: 0.5, hitPoliceCooldown: 5, busImpulseMul: 1.5, decayDelay: 8, decayPoliceDist: 50, ramSpeed: 30, bustTime: 4 },
+  real:    { lenient: false, redLightPoints: 12, redLightGrace: 0, redLightCooldown: 0, hitVehicleHeat: 0.34, wantedCollisionTicket: true, chaseMinCrime: 0, hitPoliceCooldown: 0, busImpulseMul: 1, decayDelay: 12, decayPoliceDist: 70, ramSpeed: 34, bustTime: 2.5 },
 }
-export const lawTuning = (ctx: Pick<Ctx, 'settings'>): LawTuning => LAW_TUNING[ctx.settings.lawStrictness] ?? LAW_TUNING.relaxed
+export const lawTuning = (ctx: Pick<Ctx, 'settings'>): LawTuning => LAW_TUNING[ctx.settings.lawStrictness] ?? LAW_TUNING.casual
 
 const TICKETS: Record<Exclude<TrafficKind, 'hitPedTraffic'>, { fine: number; points: number; label: string }> = {
   speeding: { fine: 150, points: 4, label: '超速' },
@@ -113,6 +116,7 @@ export class Law {
   /** 犯罪型事件：按身份路由 */
   crime(kind: CrimeKind, weight: number, ctx: Ctx) {
     const tune = lawTuning(ctx)
+    if (tune.lenient && (kind === 'carjack' || kind === 'wreck' || kind === 'hitVehicle' || (kind === 'shoot' && weight < 0.1))) return
     if (ctx.role.systems.wanted) { this.addCrime(weight, ctx.time, tune.chaseMinCrime); return }
     switch (kind) {
       case 'hitPed': this.traffic('hitPedTraffic', ctx); break
@@ -127,7 +131,7 @@ export class Law {
 
   /** 撞 NPC 车：80 m 内有警车才开罚单，5 s 内不重复 */
   collision(ctx: Ctx, force = false, label?: string) {
-    if (this.trafficExempt) return                  // 比赛中：碰撞罚单也豁免（撞警车的通缉热度照常在 crime() 里抬）
+    if (this.trafficExempt || lawTuning(ctx).lenient) return   // 畅玩档 / 比赛中：碰撞罚单也豁免（撞警车的通缉热度照常在 crime() 里抬）
     if (ctx.time - this.lastCollisionTicket < 5) return
     if (!force && this.policeDist(ctx) >= 80) return
     this.lastCollisionTicket = ctx.time
@@ -177,7 +181,7 @@ export class Law {
 
   /** 醉酒开车且附近警车看得见 → drunkDriving；每 0.5 s 扫一次 */
   private detectDrunk(dt: number, ctx: Ctx) {
-    if (!this.drunk) { this.drunkCaught = false; return }
+    if (!this.drunk || lawTuning(ctx).lenient) { this.drunkCaught = false; return }
     const v = ctx.player.vehicle
     if (!v || v.wrecked || this.drunkCaught || this.trafficExempt) return
     if (v.absSpeed < DRUNK_DRIVING.minSpeed || ctx.time - this.lastDrunkTicket < DRUNK_DRIVING.cooldown) return
@@ -233,7 +237,7 @@ export class Law {
    */
   private detectTraffic(dt: number, ctx: Ctx) {
     const v = ctx.player.vehicle
-    if (!v || v.wrecked || this.trafficExempt) { this.prevEdge = null; this.speedTimer = 0; return }
+    if (!v || v.wrecked || this.trafficExempt || lawTuning(ctx).lenient) { this.prevEdge = null; this.speedTimer = 0; return }
     const lane = ctx.graph.nearestLane(v.x, v.z, Math.sin(v.yaw), Math.cos(v.yaw))
     if (lane.dist > 8) { this.prevEdge = null; this.speedTimer = 0; return }
     const e = lane.edge

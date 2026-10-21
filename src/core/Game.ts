@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { FIXED_DT, PITCH, HALF, DRIVE_SIDE, MAX_TRAFFIC } from '../config'
 import { Input } from './Input'
 import { ChaseCamera } from './Camera'
-import { EventBus, type Ctx } from './Context'
+import { EventBus, type Ctx, type AppSection } from './Context'
 import type { RoadGraph, P2 } from '../world/RoadGraph'
 import { clampBrightness, loadSettings, type Settings } from './Settings'
 import type { StaticWorld, AABB } from '../world/Colliders'
@@ -26,7 +26,7 @@ import type { AssetId } from '../data/jobs'
 import { Audio } from '../systems/Audio'
 import { Weapon } from '../systems/Weapon'
 import { Hud } from '../ui/Hud'
-import { Minimap } from '../ui/Minimap'
+import { Minimap, fmtDist } from '../ui/Minimap'
 import { Clock } from '../systems/Clock'
 import { DayNight } from '../systems/DayNight'
 import { Weather, WEATHER_LABEL } from '../systems/Weather'
@@ -508,7 +508,7 @@ export class Game {
     this.audio.unlock()
     this.cam.snap(this.player.yaw)
     this.cam.camera.position.set(this.player.x - Math.sin(this.player.yaw) * 6, 3, this.player.z - Math.cos(this.player.yaw) * 6)
-    this.hud.toast('E 进入地点 · Tab 手机 · F 上车 · 黄色标记接任务', 4)
+    this.hud.toast('E 进入地点 · Tab 手机 · F 上车 · 黄色标记接任务 · 手机赛车/竞技场/赌场/联系人页可导航到娱乐场馆', 6)
   }
 
   /**
@@ -854,7 +854,7 @@ export class Game {
     const pl = this.player, v = pl.vehicle
     const pv = this.drunkPatrol
     if (pv && pv.active && pv.driver === 'none' && Math.hypot(pv.x - pl.worldX, pv.z - pl.worldZ) > 300) { pv.deactivate() }
-    if (!v || !this.law.drunk || this.law.trafficExempt || v.absSpeed < 5) { this.drunkPatrolT = 0; return }
+    if (!v || !this.law.drunk || this.law.trafficExempt || lawTuning(this.ctx).lenient || v.absSpeed < 5) { this.drunkPatrolT = 0; return }
     if (pv?.active && pv.driver === 'none') return
     if (this.law.policeDist(this.ctx) < 150) return
     this.drunkPatrolT += dt
@@ -1086,8 +1086,9 @@ export class Game {
     const police: P2[] = []
     let policeDist = Infinity
     for (const v of this.vehicles) if (v.active && v.driver === 'police') { police.push(v); policeDist = Math.min(policeDist, Math.hypot(v.x - pl.worldX, v.z - pl.worldZ)) }
-    // 目标优先级：进行中的工作 > 任务 > 被动工作（打卡/投资 → 最近办公楼）
-    const target = this.pluginTarget() ?? this.jobs.targetPoint ?? this.quests.targetPoint ?? this.business.navTarget ?? this.jobs.passiveTarget
+    // 目标优先级：插件（比赛 / 约会）> 手机里手动选的场馆导航 > 进行中的工作 > 任务 > 被动工作（打卡/投资 → 最近办公楼）
+    if (this.venueNav && Math.hypot(pl.worldX - this.venueNav.x, pl.worldZ - this.venueNav.z) < 15) this.venueNav = null
+    const target = this.pluginTarget() ?? this.venueNav ?? this.jobs.targetPoint ?? this.quests.targetPoint ?? this.business.navTarget ?? this.jobs.passiveTarget
     this.minimap.draw(pl.worldX, pl.worldZ, this.cam.yaw, target, this.quests.starts, police, this.quests.carPoint, this.hospital, this.pois.all, pl.health, this.business.points(), this.pluginPath())
     this.phoneTimer += dt
     if (this.phone.open && this.phoneTimer >= 0.25) {
@@ -1103,6 +1104,29 @@ export class Game {
     this.hud.mood(this.needs.mood, this.needs.moodMul)
     this.audio.update(this.time, pl.inVehicle, pl.vehicle?.speed ?? 0, pl.vehicle?.controls.throttle ?? 0, this.law.policeStars, policeDist)
     this.audio.ambient(this.ctx, dt)
+  }
+
+  /** 手机娱乐页「导航」选中的场馆门口；走到 15 m 内自动取消 */
+  venueNav: P2 | null = null
+  navTo(poiId: string) {
+    const p = this.pois.byId(poiId)
+    if (!p) return
+    this.venueNav = { x: p.door.x, z: p.door.z }
+    this.hud.toast(`导航到 ${p.name}`, 2)
+  }
+  /** 手机娱乐页顶部的场馆卡：营业时间、距离、导航按钮（场馆不存在 → 空数组） */
+  venueSections(poiId: string): AppSection[] {
+    const p = this.pois.byId(poiId), v = p && venueOf(p)
+    if (!p || !v) return []
+    const d = Math.hypot(p.door.x - this.player.worldX, p.door.z - this.player.worldZ)
+    const nav = !!this.venueNav && this.venueNav.x === p.door.x && this.venueNav.z === p.door.z
+    return [{
+      title: '场馆',
+      items: [{
+        title: p.name, desc: `${hoursText(v)} · 距离 ${fmtDist(d, ' ')}`, status: venueOpen(v, this.clock.hour) ? undefined : '现在打烊',
+        actions: [{ label: nav ? '导航中' : '导航', onClick: () => this.navTo(poiId) }],
+      }],
+    }]
   }
 
   private pluginTarget() {
@@ -1203,7 +1227,10 @@ export class Game {
       get wanted() { return { stars: self.law.stars, heat: self.law.pursuitLevel, demerits: self.law.demerits, fines: self.law.fines } },
       get role() { return self.role },
       get weaponReady() { return self.weapon.ready },
+      /** 手机娱乐页场馆导航：当前目标 / 导航到某场馆 */
+      venueNav: { get target() { return self.venueNav }, to(poiId: string) { self.navTo(poiId); return self.venueNav } },
       law: {
+        get strictness() { return self.settings.lawStrictness },
         traffic(kind: TrafficKind) { self.law.traffic(kind, self.ctx) },
         crime(kind: Parameters<Law['crime']>[0], weight = 1) { self.law.crime(kind, weight, self.ctx) },
         get pursuitLevel() { return self.law.pursuitLevel }, get stars() { return self.law.stars }, get chase() { return self.law.chase },

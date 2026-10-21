@@ -3,6 +3,7 @@ import type { Ctx } from '../../core/Context'
 import type { Vehicle } from '../../entities/Vehicle'
 import { releaseToken } from '../../entities/TrafficAI'
 import { lineClear } from '../../entities/PoliceAI'
+import { lawTuning } from '../../systems/Law'
 import { Marker, TARGET_COLOR } from '../../world/Marker'
 import { earn } from '../../systems/Wallet'
 import { RIVALS, PRIZE_POOL_SHARE, PRIZE_FIXED_SHARE, betOdds, type RaceRouteDef } from '../../data/races'
@@ -370,7 +371,7 @@ export class RaceSession {
   private checkPolice() {
     if (this.opts.mode !== 'street' || this.spotted || this.phase !== 'race') return
     const ctx = this.ctx
-    if (ctx.role.id === 'gang') return
+    if (ctx.role.id === 'gang' || lawTuning(ctx).lenient) return   // 黑帮 / 畅玩档：没人管街头赛
     const px = ctx.player.worldX, pz = ctx.player.worldZ
     for (const v of ctx.vehicles) {
       if (!v.active || v.wrecked || (v.driver !== 'police' && v !== this.patrol)) continue

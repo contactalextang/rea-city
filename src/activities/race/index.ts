@@ -223,7 +223,7 @@ export function installRace(game: Game) {
       `出赛 ${save.races} · 冠军 ${save.wins} · 领奖台 ${save.podiums}`,
     ]
     if (session) lines.unshift(`比赛中：${session.def.name} · ${session.hudCard().desc}`)
-    return { lines, sections: [{ title: '路线与纪录（右侧为最快用时）', items }], log: save.log }
+    return { lines, sections: [...game.venueSections(VENUE), { title: '路线与纪录（右侧为最快用时）', items }], log: save.log }
   }
 
   game.addPlugin({

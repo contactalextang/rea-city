@@ -229,6 +229,7 @@ export class Casino implements CasinoHost {
         `今日净输赢 ${this.signed(this.todayNet)}`,
       ],
       sections: [
+        ...this.game.venueSections(CASINO_POI),
         {
           title: '各游戏',
           items: CASINO_GAMES.map((g) => {

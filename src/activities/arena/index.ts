@@ -78,7 +78,7 @@ export function installArena(game: Game) {
     const lvlOk = isUnlocked(game.ctx.role.id, game.progress.level, 'arena_ranked')
     return {
       lines: [`段位：${rankOf(st.elo)}（ELO ${st.elo}，最高 ${rankOf(st.best)}）`, `战绩：${st.matches} 场 · 胜 ${st.wins}（${rate}%）· 天梯 ${st.ranked} 场`, `击杀 ${st.kills} · 死亡 ${st.deaths} · K/D ${kd} · 爆头 ${st.hs}`, lvlOk ? '丹戎巴葛射击俱乐部（24 小时）报名天梯赛' : `天梯赛 Lv${unlockLevel(game.ctx.role.id, 'arena_ranked')} 解锁`],
-      sections: [{
+      sections: [...game.venueSections('arena_tanjong_pagar'), {
         title: '最近 10 场',
         items: st.history.length ? st.history.map((h) => ({
           title: `${h.won ? '胜' : h.draw ? '平' : '负'} · ${MODES[h.mode]?.name ?? h.mode} · ${h.score}`,

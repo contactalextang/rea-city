@@ -9,6 +9,7 @@ import {
   type NpcDef, type Stage, type Prompt, type PromptOption, type Spot,
 } from '../../data/dates'
 import { Companion } from './Companion'
+import { CLUB_ID } from './Club'
 import { el, btn, drawPortrait, injectStyle, fmt$ } from './ui'
 
 /**
@@ -625,7 +626,7 @@ export class Relations {
   view(): AppView {
     const ks = this.known()
     const st = this.apptState()
-    if (!ks.length && !st) return { empty: '还没有认识的人 · 晚上去克拉码头夜店（21:00–04:00）看看，或者在小贩中心 / 商场 / 赌场留意身边的人' }
+    if (!ks.length && !st) return { lines: ['还没有认识的人 · 晚上去克拉码头夜店（21:00–04:00）看看，或者在小贩中心 / 商场 / 赌场留意身边的人'], sections: this.game.venueSections(CLUB_ID) }
     const lines = [`联系人 ${ks.length} 位 · 恋人 ${ks.filter((n) => this.rel[n.id].stage === 'lover').length} 位${Object.keys(this.inv).length ? ` · 礼物库存 ${Object.values(this.inv).reduce((a, b) => a + b, 0)} 件` : ''}`]
     if (st) lines.push(`约会：${st.npc.name} · ${st.place!.name} · ${Math.floor(this.appt!.at / 24) + 1 === this.day ? '今天' : '明天'} ${hhmm(this.appt!.at)}`)
     const items: AppItem[] = ks.map((npc) => {
@@ -650,7 +651,7 @@ export class Relations {
     return {
       lines,
       bars: ks.map((n) => ({ label: n.name, pct: this.rel[n.id].aff / 100, text: `${Math.round(this.rel[n.id].aff)} · ${STAGE_LABEL[this.rel[n.id].stage]}` })),
-      sections: [{ title: '联系人', items }],
+      sections: [...this.game.venueSections(CLUB_ID), { title: '联系人', items }],
       log: log.slice(0, 10).map((s) => s.slice(s.indexOf('|') + 1)),
     }
   }
