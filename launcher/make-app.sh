@@ -44,11 +44,11 @@ PORT=4173
 URL="http://127.0.0.1:\$PORT/"
 export PATH="\$HOME/.local/node22/bin:\$HOME/.local/node20/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH"
 cd "\$PROJECT" || { osascript -e 'display alert "REA City" message "找不到项目目录：'"\$PROJECT"'"'; exit 1; }
+# 源码比上次构建新（或还没构建）→ 重新构建；preview 直接读 dist/，服务已在跑时也要检查，否则一直是旧版
+if [ ! -f dist/index.html ] || [ -n "\$(find src index.html dev public vite.config.ts -newer dist/index.html 2>/dev/null | head -1)" ]; then
+  npx vite build >/tmp/rea-build.log 2>&1 || { osascript -e 'display alert "REA City" message "构建失败，详见 /tmp/rea-build.log"'; exit 1; }
+fi
 if ! curl -s -o /dev/null "\$URL"; then
-  # 源码比上次构建新（或还没构建）→ 重新构建
-  if [ ! -f dist/index.html ] || [ -n "\$(find src index.html dev public vite.config.ts -newer dist/index.html 2>/dev/null | head -1)" ]; then
-    npx vite build >/tmp/rea-build.log 2>&1 || { osascript -e 'display alert "REA City" message "构建失败，详见 /tmp/rea-build.log"'; exit 1; }
-  fi
   nohup npx vite preview --port \$PORT --strictPort --host 127.0.0.1 >/tmp/rea-preview.log 2>&1 &
   for i in \$(seq 1 60); do curl -s -o /dev/null "\$URL" && break; sleep 0.25; done
 fi
