@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { FIXED_DT, PITCH, HALF, DRIVE_SIDE, MAX_TRAFFIC } from '../config'
 import { Input } from './Input'
 import { ChaseCamera } from './Camera'
-import { EventBus, type Ctx, type AppSection } from './Context'
+import { EventBus, type Ctx, type AppSection, type AppItem, type AppView } from './Context'
 import type { RoadGraph, P2 } from '../world/RoadGraph'
 import { clampBrightness, loadSettings, type Settings } from './Settings'
 import type { StaticWorld, AABB } from '../world/Colliders'
@@ -20,7 +20,7 @@ import { Spawner, policeCountFor } from '../systems/Spawner'
 import { Law, lawTuning, type TrafficKind } from '../systems/Law'
 import { Signals, type Phase, type SignalLights } from '../systems/Signals'
 import { ROLES, type RoleDef } from '../data/roles'
-import { Jobs, taxiFare } from '../systems/Jobs'
+import { Jobs, taxiFare, isTaxiPeak } from '../systems/Jobs'
 import { Quests } from '../systems/Quests'
 import type { AssetId } from '../data/jobs'
 import { Audio } from '../systems/Audio'
@@ -51,12 +51,16 @@ import type { GamePlugin } from '../activities/Plugin'
 import { installActivities } from '../activities'
 import { identitySpec } from '../characters/presets'
 import { Creator, loadCreatorResult, saveCreatorResult, type CreatorResult } from '../ui/Creator'
+import { quote as rideQuote, canRide, routeDistance, grabSurge, RIDE_LABEL, type RideKind, type RideQuote } from '../systems/Ride'
 
 /** creator：开局建角色（世界暂停，只渲染建角色界面） */
 /** activity：全屏小游戏（Activity 宿主）；arena：射击竞技场（P10.D 切换渲染场景）——两者都暂停城市世界 */
-type State = 'intro' | 'creator' | 'play' | 'dead' | 'busted' | 'won' | 'panel' | 'activity' | 'arena'
+/** ride：手机叫车黑屏直达（P11.B），期间世界暂停、屏蔽输入 */
+type State = 'intro' | 'creator' | 'play' | 'dead' | 'busted' | 'won' | 'panel' | 'activity' | 'arena' | 'ride'
 /** 城市世界暂停（不跑物理/AI，骨骼动画冻结，时钟不走） */
-const worldPaused = (s: State) => s === 'panel' || s === 'activity' || s === 'arena'
+const worldPaused = (s: State) => s === 'panel' || s === 'activity' || s === 'arena' || s === 'ride'
+/** 叫车目的地：POI 门口或任意点 */
+export interface RideDest { x: number; z: number; yaw: number; label: string; poiId?: string }
 
 /**
  * 竞技场会话（P10.D 实现）：Game.enterArena(mode) 用 arenaFactory 创建，state='arena' 期间每渲染帧
@@ -322,6 +326,7 @@ export class Game {
     this.phone.registerView('shop', '商店', () => this.assets.view())
     this.phone.registerView('biz', '生意', () => this.business.view())
     this.phone.registerView('wallet', '钱包', () => this.wallet.view())
+    this.phone.registerView('ride', '出行', () => this.rideView())
     installActivities(this)
     // 升级装备：防弹衣减伤（所有玩家受伤都经 Player.damage）
     const rawDamage = this.player.damage.bind(this.player)
@@ -752,6 +757,12 @@ export class Game {
       return
     }
     if (this.state === 'creator') return
+    if (this.state === 'ride') {
+      // 叫车黑屏：世界暂停，输入全部吞掉，只推进淡入 / 传送 / 等区块 / 淡出
+      input.takeMouse()
+      this.updateRide(dt)
+      return
+    }
     if (this.state === 'panel') {
       // 面板：世界暂停，只响应 Esc / 关闭按钮；数值变化仍刷新 HUD
       if (input.justPressed('Escape')) this.closePanel()
@@ -1120,13 +1131,203 @@ export class Game {
     if (!p || !v) return []
     const d = Math.hypot(p.door.x - this.player.worldX, p.door.z - this.player.worldZ)
     const nav = !!this.venueNav && this.venueNav.x === p.door.x && this.venueNav.z === p.door.z
+    const dest = this.rideDest(poiId)!
+    const ride = this.rideActions(dest)
+    const status = [venueOpen(v, this.clock.hour) ? '' : '现在打烊', ride.reason].filter(Boolean).join(' · ')
     return [{
       title: '场馆',
       items: [{
-        title: p.name, desc: `${hoursText(v)} · 距离 ${fmtDist(d, ' ')}`, status: venueOpen(v, this.clock.hour) ? undefined : '现在打烊',
-        actions: [{ label: nav ? '导航中' : '导航', onClick: () => this.navTo(poiId) }],
+        title: p.name, desc: `${hoursText(v)} · 距离 ${fmtDist(d, ' ')}`, status: status || undefined,
+        actions: [{ label: nav ? '导航中' : '导航', onClick: () => this.navTo(poiId) }, ...ride.actions],
       }],
     }]
+  }
+
+  // ---------- P11.B 叫车（Taxi / Grab 黑屏直达） ----------
+  /** 进行中的叫车：in = 淡入，load = 已跳时传送、等区块加载，结束后淡出 */
+  private ride: { q: RideQuote; dest: RideDest; phase: 'in' | 'load'; t: number; drunk: boolean; closed: string | null } | null = null
+  /** 路程缓存：目的地 × 起点 25 m 格 → 路网距离（手机页每 0.25 s 刷新，避免反复 Dijkstra 与价格抖动重建 DOM） */
+  private rideDistCache = new Map<string, number>()
+  private rideFadeEl = document.getElementById('ride-fade')
+
+  private rideDest(to: string | RideDest): RideDest | null {
+    if (typeof to !== 'string') return to
+    const p = this.pois.byId(to)
+    return p ? { x: p.door.x, z: p.door.z, yaw: p.door.yaw, label: p.name, poiId: p.id } : null
+  }
+  /** 当前位置到 dest 的路程（m，取整） */
+  private rideDist(dest: { x: number; z: number }) {
+    const px = this.player.worldX, pz = this.player.worldZ
+    const key = `${Math.round(dest.x)},${Math.round(dest.z)}|${Math.round(px / 25)},${Math.round(pz / 25)}`
+    let d = this.rideDistCache.get(key)
+    if (d === undefined) {
+      if (this.rideDistCache.size > 256) this.rideDistCache.clear()
+      d = Math.round(routeDistance(this.graph, { x: px, z: pz }, dest))
+      this.rideDistCache.set(key, d)
+    }
+    return d
+  }
+  rideQuote(kind: RideKind, to: string | RideDest): RideQuote | null {
+    const dest = this.rideDest(to)
+    return dest ? rideQuote(kind, this.rideDist(dest), this.clock.hour, this.weather.state === 'storm') : null
+  }
+  /** 叫车拒绝原因（null = 可以叫）：通缉 / 非游玩状态 / 主动工作进行中 / 活动（比赛、约会）进行中 / 太近 */
+  rideBlock(distM?: number): string | null {
+    const j = this.jobs.active
+    const why = canRide({ state: this.state === 'panel' ? 'play' : this.state, chase: this.law.chase, stars: this.law.stars, job: j && !j.passive ? j.title : null, distM })
+    if (why) return why
+    if (this.plugins.some((pl) => pl.hudCard?.())) return '先结束当前活动'
+    return null
+  }
+  /** 手机页里一行目的地的 Taxi / Grab 按钮与禁用原因 */
+  private rideActions(dest: RideDest): { actions: NonNullable<AppItem['actions']>; reason: string | null; quotes: RideQuote[] } {
+    const distM = this.rideDist(dest)
+    const block = this.rideBlock(distM)
+    const quotes = (['taxi', 'grab'] as RideKind[]).map((k) => rideQuote(k, distM, this.clock.hour, this.weather.state === 'storm'))
+    const poor = !block && quotes.every((q) => q.fare > this.player.money)
+    const actions = quotes.map((q) => ({
+      label: `${RIDE_LABEL[q.kind]} $${q.fare.toFixed(2)}`,
+      disabled: !!block || q.fare > this.player.money,
+      onClick: () => { this.rideTo(dest, q.kind) },
+    }))
+    return { actions, reason: block ?? (poor ? '余额不足' : null), quotes }
+  }
+
+  /**
+   * 叫车直达：检查 → 扣车费（transport:taxi / transport:grab）→ 在车里先下车（车留原地）→ 黑屏
+   * → 跳时 + 传送到门口 → 等区块加载（≤ 3 s）→ 淡出。返回是否成功叫到车。
+   */
+  rideTo(to: string | RideDest, kind: RideKind): boolean {
+    const dest = this.rideDest(to)
+    if (!dest || this.ride) return false
+    const distM = this.rideDist(dest)
+    const why = this.rideBlock(distM)
+    if (why) { this.hud.toast(why, 2.5); return false }
+    const q = rideQuote(kind, distM, this.clock.hour, this.weather.state === 'storm')
+    if (!this.wallet.spend(q.fare, `transport:${kind}`)) { this.hud.toast(`余额不足：${RIDE_LABEL[kind]} 要 $${q.fare.toFixed(2)}`, 2.5); return false }
+    if (this.state === 'panel') this.closePanel()
+    this.phone.set(false)
+    if (this.player.vehicle) this.player.exit(this.world)
+    const poi = dest.poiId ? this.pois.byId(dest.poiId) : null
+    const v = venueOf(poi)
+    const arrive = (this.clock.hour + q.minutes / 60) % 24
+    const closed = v && !venueOpen(v, arrive) ? `${v.name.split(' ')[0]}现在打烊（${hoursText(v)}）` : null
+    this.ride = { q, dest, phase: 'in', t: 0, drunk: this.law.drunk, closed }
+    this.state = 'ride'
+    this.venueNav = null
+    this.showRideFade(`乘车中… ${RIDE_LABEL[kind]} · ${q.minutes} 分钟 · $${q.fare.toFixed(2)}`, `前往 ${dest.label} · ${(q.distM / 1000).toFixed(1)} km${q.surge > 1 ? ` · 加价 ×${q.surge}` : ''}`)
+    return true
+  }
+  private showRideFade(title: string | null, sub = '') {
+    const el = this.rideFadeEl; if (!el) return
+    if (title !== null) {
+      const t = el.querySelector('#ride-title'), s = el.querySelector('#ride-sub')
+      if (t) t.textContent = title
+      if (s) s.textContent = sub
+    }
+    el.classList.toggle('show', title !== null)
+  }
+  private updateRide(dt: number) {
+    const r = this.ride
+    if (!r) { this.state = 'play'; this.showRideFade(null); return }
+    r.t += dt
+    if (r.phase === 'in') {
+      if (r.t < 0.45) return
+      // 黑屏完全盖住后：跳时、结算需求、传送到门口，相机直接摆到身后（不从原地飞过去）
+      this.clock.skip(r.q.minutes / 60)
+      this.needs.sync()
+      const d = r.dest, pl = this.player
+      pl.place(d.x, d.z, d.yaw)
+      this.cam.snap(d.yaw)
+      this.cam.camera.position.set(d.x - Math.sin(d.yaw) * 5.5, 2.8, d.z - Math.cos(d.yaw) * 5.5)
+      r.phase = 'load'; r.t = 0
+      return
+    }
+    // 等新位置的区块加载完（step 开头 source.update 已按新位置更新目标集合）；最多 3 s
+    this.cam.update(dt, 'foot', this.player, 0, this.time, false, false)
+    this.player.sync()
+    const loaded = r.t > 0.3 && this.source.stats.pending === 0
+    if ((loaded && r.t >= 0.8) || r.t >= 3) this.finishRide()
+  }
+  private finishRide() {
+    const r = this.ride; if (!r) return
+    this.ride = null
+    this.showRideFade(null)
+    this.state = 'play'
+    this.unlockHintAt = this.time
+    this.venueNav = null
+    this.input.endFrame()
+    this.events.emit('rideTaken', { kind: r.q.kind, fare: r.q.fare, distM: r.q.distM, dest: r.dest.poiId ?? r.dest.label })
+    this.saveDue = true
+    const msg = [`到达 ${r.dest.label}`]
+    if (r.drunk) msg.push('安全到达，没有酒驾')
+    if (r.closed) msg.push(r.closed)
+    this.hud.toast(msg.join(' · '), r.closed || r.drunk ? 4 : 2.5)
+  }
+
+  /** 导航到任意点（出行页的任务目标等） */
+  private navPoint(x: number, z: number, label: string) {
+    this.venueNav = { x, z }
+    this.hud.toast(`导航到 ${label}`, 2)
+  }
+
+  /** 手机「出行」页：家 / 最近的公司 / 最近的小贩中心 / 娱乐场馆 / 当前目标，每行距离、两种车价、时长 */
+  private rideView(): AppView {
+    if (!this.ready) return { empty: '加载中…' }
+    const px = this.player.worldX, pz = this.player.worldZ
+    const rain = this.weather.state === 'storm'
+    const surge = grabSurge(this.clock.hour, rain)
+    const block = this.rideBlock()
+    const row = (dest: RideDest, title: string, extra?: string): AppItem => {
+      const r = this.rideActions(dest)
+      const [tq, gq] = r.quotes
+      const navOn = !!this.venueNav && Math.abs(this.venueNav.x - dest.x) < 0.01 && Math.abs(this.venueNav.z - dest.z) < 0.01
+      return {
+        title, value: fmtDist(r.quotes[0].distM, ' '),
+        desc: `Taxi 约 ${tq.minutes} 分 · Grab 约 ${gq.minutes} 分`,
+        status: [extra, block ? null : r.reason].filter(Boolean).join(' · ') || undefined,
+        actions: [{ label: navOn ? '导航中' : '导航', onClick: () => dest.poiId ? this.navTo(dest.poiId) : this.navPoint(dest.x, dest.z, dest.label) }, ...r.actions],
+      }
+    }
+    const fromPoi = (p: Poi | null | undefined) => p ? this.rideDest(p.id) : null
+    // 家：主住所在前，其次身份自带的家与其它自有房产
+    const homeIds = [this.assets.primaryHome, this.role.home, ...this.pois.all.filter((p) => this.assets.ownsHome(p.id)).map((p) => p.id)]
+    const homes: AppItem[] = []
+    for (const id of new Set(homeIds)) {
+      const d = fromPoi(this.pois.byId(id)); if (!d) continue
+      homes.push(row(d, `${id === this.assets.primaryHome ? '主住所' : '住家'} · ${d.label}`))
+    }
+    const daily: AppItem[] = []
+    const office = fromPoi(this.pois.nearest(px, pz, Infinity, ['office']))
+    if (office) daily.push(row(office, `公司 · ${office.label}`, '最近的办公楼'))
+    const hawker = fromPoi(this.pois.nearest(px, pz, Infinity, ['hawker']))
+    if (hawker) daily.push(row(hawker, `吃饭 · ${hawker.label}`, '最近的小贩中心'))
+    const venues: AppItem[] = []
+    for (const v of VENUES) {
+      const d = fromPoi(this.pois.byId(v.id)); if (!d) continue
+      venues.push(row(d, d.label.split(' ')[0], `${venueOpen(v, this.clock.hour) ? '营业中' : '现在打烊'} · ${hoursText(v)}`))
+    }
+    const sections: AppSection[] = [{ title: '家', items: homes }, { title: '日常', items: daily }, { title: '娱乐场馆', items: venues }]
+    // 当前工作 / 任务目标：最近的 POI 门口（60 m 内），否则目标点本身（在楼里就挪到最近的人行道）
+    const tgt = this.jobs.targetPoint ?? this.quests.targetPoint
+    if (tgt) {
+      const near = this.pois.nearest(tgt.x, tgt.z, 60)
+      let d: RideDest | null = fromPoi(near)
+      if (d) d.label = `${d.label}（目标）`
+      else {
+        let x = tgt.x, z = tgt.z
+        if (this.world.contains(x, z)) { const l = this.graph.nearestLane(x, z); const s = this.graph.sidewalkPoint(l.edge, l.t, { x: 0, z: 0 }); x = s.x; z = s.z }
+        d = { x, z, yaw: 0, label: '任务目标' }
+      }
+      sections.unshift({ title: '当前目标', items: [row(d, d.label)] })
+    }
+    return {
+      lines: [
+        block ? `叫不了车：${block}` : '叫车直达门口（黑屏跳过车程），车费按路网路程计。',
+        `Taxi 打表${isTaxiPeak(this.clock.hour) ? '（高峰 ×1.25）' : ''} · Grab ${surge > 1 ? `加价 ×${surge}` : '无加价'}${rain ? ' · 雨天' : ''}`,
+      ],
+      sections,
+    }
   }
 
   private pluginTarget() {
@@ -1229,6 +1430,14 @@ export class Game {
       get weaponReady() { return self.weapon.ready },
       /** 手机娱乐页场馆导航：当前目标 / 导航到某场馆 */
       venueNav: { get target() { return self.venueNav }, to(poiId: string) { self.navTo(poiId); return self.venueNav } },
+      /** P11.B 叫车：quote(kind, poiId) 报价、to(poiId, kind) 叫车、block 当前拒绝原因、active 进行中 */
+      ride: {
+        quote(kind: RideKind, poiId: string) { return self.rideQuote(kind, poiId) },
+        to(poiId: string, kind: RideKind) { if (self.state === 'intro') self['beginPlay'](); return self.rideTo(poiId, kind) },
+        get block() { return self.rideBlock() },
+        get active() { const r = self.ride; return r ? { phase: r.phase, t: r.t, kind: r.q.kind, dest: r.dest.label } : null },
+        get view() { return self.rideView() },
+      },
       law: {
         get strictness() { return self.settings.lawStrictness },
         traffic(kind: TrafficKind) { self.law.traffic(kind, self.ctx) },
@@ -1399,7 +1608,7 @@ export class Game {
         choose(index: number) { return self.panels.choose(index) },
         close() { self.closePanel() },
       },
-      phone: { get open() { return self.phone.open }, get sub() { return self.phone.subPage }, toggle() { self.phone.toggle() }, show(sub: 'work' | 'map' | 'settings' | 'progress' | 'shop' | 'biz' | 'wallet' | null) { self.phone.set(true); self.phone.showSub(sub) } },
+      phone: { get open() { return self.phone.open }, get sub() { return self.phone.subPage }, toggle() { self.phone.toggle() }, show(sub: 'work' | 'map' | 'settings' | 'progress' | 'shop' | 'biz' | 'wallet' | 'ride' | null) { self.phone.set(true); self.phone.showSub(sub) } },
       /** 成长：等级 / XP / 头衔 / 终身统计 / 成就；addXp 测试加经验 */
       progress: {
         get level() { return self.progress.level }, get xp() { return self.progress.xp }, get need() { return self.progress.need },

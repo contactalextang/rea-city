@@ -18,6 +18,9 @@ import { resolve } from 'node:path';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { GEO_DIR, LOCAL_DIR, ensureDir, fileSize, fmtBytes, log, warn } from './lib/common.ts';
 import { area, bbox, bboxContains, centroid, cleanRing, orient, pointInPolygon, type BBox, type Pos, type Ring } from './lib/geom.ts';
+import { RoadBands, buildingSkipReason } from './lib/clearance.ts';
+import { areaMP, clipFailures, differenceMP, intersectMP, unionRings, type MultiPolygon } from './lib/mesh.ts';
+import type { GraphData } from './lib/graph-types.ts';
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -84,6 +87,20 @@ const DEFAULT_H = 12;
 const H_MIN = 3;
 const H_MAX = 300;
 const LANDMARK_H = 120;
+/**
+ * 与非 service 车行道（03 的 graph.json）的净空：
+ *   侵入面积占比 ≥ DROP_AREA_RATIO → 剔除；
+ *   车行道中心线穿过楼（深度 ≥ 半宽）且楼 < BIG_CLIP_AREA → 剔除（OSM 里压在路上的楼，如天桥连廊、路中岗亭）；
+ *   其余（含深度 > 2 m 但只是立面越过路缘：OSM 车道数 / 中心线偏差导致的建模路面偏宽）→ 裁掉路面部分。
+ *   大楼被路穿过（如商场下的车道）裁成多块全部保留。
+ */
+const DROP_AREA_RATIO = 0.15;
+const BIG_CLIP_AREA = 1500;
+/** 深度低于此（m）视为贴边，不处理 */
+const DEPTH_EPS = 0.05;
+/** 裁剪后保留的最小块面积（m²）；裁后最大块 < 原面积 × CLIP_KEEP_RATIO 也剔除 */
+const CLIP_MIN_PIECE = 30;
+const CLIP_KEEP_RATIO = 0.5;
 const LANDMARK_RE =
   /Marina Bay Sands|Esplanade|Fullerton|UOB Plaza|One Raffles Place|Tanjong Pagar Centre|Guoco|Pinnacle|Capital Tower|Republic Plaza|OCBC Centre|Singapore Flyer|ArtScience|Lau Pa Sat|Telok Ayer Market|Sri Mariamman|Buddha Tooth|Thian Hock Keng|Jamae/i;
 
@@ -314,12 +331,35 @@ function main(): void {
   const matchedCsvKeys = new Set<string>();
   let nextId = 1;
 
+  // ---- 车行道净空（非 service 车行道带 + 路口圆帽）----
+  const graph = readJson<GraphData>(resolve(BUILD_DIR, 'graph.json'));
+  if (!graph) warn('graph.json missing — run 03-roads first; road clearance skipped');
+  const bands = graph ? new RoadBands(graph, false) : null;
+  const clear = {
+    skipped: {} as Record<string, number>,
+    intruding: 0,
+    dropped: { areaRatio: 0, through: 0, clipTooSmall: 0 },
+    deepClipped: 0,
+    clipped: 0,
+    clippedBigDeep: 0,
+    clipExtraPieces: 0,
+    clippedAreaM2: 0,
+    droppedNames: [] as string[],
+    ms: 0,
+  };
+
   for (const f of polys.features) {
     const p = f.properties ?? {};
     const btag = str(p.building);
     if (!btag || btag === 'no' || !f.geometry) continue;
     stats.inputBuildings++;
     bump(stats.byBuildingTag, btag);
+    // 顶棚 / 天桥 / 车棚 / 悬空 / 地下 / 室内：不从地面拉伸成实心体
+    const skip = buildingSkipReason(p);
+    if (skip) {
+      bump(clear.skipped, skip);
+      continue;
+    }
 
     const g = f.geometry;
     const parts: Ring[][] =
@@ -361,6 +401,51 @@ function main(): void {
         .slice(1)
         .map((r) => cleanRing(r))
         .filter((r) => r.length >= 3 && area(r) > 0);
+
+      // ---- 车行道净空：剔除 / 裁剪 ----
+      let pieces: { outer: Ring; holes: Ring[] }[] = [{ outer, holes }];
+      if (bands) {
+        const t0 = performance.now();
+        const { depth, through } = bands.polyDepthInfo({ outer, holes });
+        if (depth > DEPTH_EPS) {
+          clear.intruding++;
+          const b = bbox([outer]);
+          const road = unionRings(bands.ringsNear(b.minX - 1, b.minZ - 1, b.maxX + 1, b.maxZ + 1));
+          const bld: MultiPolygon = [[outer, ...holes]];
+          const ratio = areaMP(intersectMP(bld, road)) / a;
+          const bigDeep = through && a >= BIG_CLIP_AREA;
+          let drop: 'areaRatio' | 'through' | 'clipTooSmall' | null = null;
+          if (ratio >= DROP_AREA_RATIO) drop = 'areaRatio';
+          else if (through && !bigDeep) drop = 'through';
+          else {
+            const diff = differenceMP(bld, road)
+              .map((poly) => ({ poly, a: areaMP([poly]) }))
+              .sort((x, y) => y.a - x.a);
+            const best = diff[0];
+            if (!best || best.a < Math.max(MIN_AREA, CLIP_MIN_PIECE) || best.a < a * CLIP_KEEP_RATIO) drop = 'clipTooSmall';
+            else {
+              // 小侵入只留最大块；大楼深侵入（路从楼中间穿过）保留所有足够大的块
+              const keep = bigDeep ? diff.filter((d) => d.a >= CLIP_MIN_PIECE) : [best];
+              pieces = keep.map(({ poly }) => ({
+                outer: cleanRing(poly[0] as Ring),
+                holes: poly.slice(1).map((r) => cleanRing(r as Ring)).filter((r) => r.length >= 3),
+              })).filter((q) => q.outer.length >= 3);
+              clear.clipped++;
+              if (depth > 2) clear.deepClipped++;
+              if (bigDeep) clear.clippedBigDeep++;
+              clear.clipExtraPieces += pieces.length - 1;
+              clear.clippedAreaM2 += a - keep.reduce((sum, d) => sum + d.a, 0);
+            }
+          }
+          if (drop) {
+            clear.dropped[drop]++;
+            if (name && clear.droppedNames.length < 40) clear.droppedNames.push(name);
+            clear.ms += performance.now() - t0;
+            continue;
+          }
+        }
+        clear.ms += performance.now() - t0;
+      }
       if (hnRaw && streetRaw) stats.hdb.buildingsWithAddr++;
 
       // 所在 URA 地块（按质心）
@@ -440,31 +525,33 @@ function main(): void {
         cls = 'shophouse';
       }
 
-      // ---- 组装 ----
-      const rec: BuildingRec = {
-        id: nextId++,
-        ring: orient(outer, true).flatMap(([x, z]) => [r2(x), r2(z)]),
-        h,
-        levels,
-        cls,
-        src,
-      };
-      if (holes.length) rec.holes = holes.map((r) => orient(r, false).flatMap(([x, z]) => [r2(x), r2(z)]));
-      if (name) rec.name = name;
-      if (hdbMatched && hdbRow) {
-        rec.blk = hdbRow.blk_no;
-        rec.street = hdbRow.street;
-        stats.hdb.matchedBuildings++;
-      } else if (hnRaw && streetRaw) {
-        rec.blk = hnRaw;
-        rec.street = streetRaw;
-      }
-      recs.push(rec);
+      // ---- 组装（裁剪后可能是多块，属性共用）----
+      if (hdbMatched && hdbRow) stats.hdb.matchedBuildings++;
+      for (const piece of pieces) {
+        const rec: BuildingRec = {
+          id: nextId++,
+          ring: orient(piece.outer, true).flatMap(([x, z]) => [r2(x), r2(z)]),
+          h,
+          levels,
+          cls,
+          src,
+        };
+        if (piece.holes.length) rec.holes = piece.holes.map((r) => orient(r, false).flatMap(([x, z]) => [r2(x), r2(z)]));
+        if (name) rec.name = name;
+        if (hdbMatched && hdbRow) {
+          rec.blk = hdbRow.blk_no;
+          rec.street = hdbRow.street;
+        } else if (hnRaw && streetRaw) {
+          rec.blk = hnRaw;
+          rec.street = streetRaw;
+        }
+        recs.push(rec);
 
-      bump(stats.bySrc, src);
-      bump(stats.byCls, cls);
-      const bin = Math.floor(h / 10) * 10;
-      bump(stats.heightHistogram, `${bin}-${bin + 10}`);
+        bump(stats.bySrc, src);
+        bump(stats.byCls, cls);
+        const bin = Math.floor(h / 10) * 10;
+        bump(stats.heightHistogram, `${bin}-${bin + 10}`);
+      }
     }
   }
 
@@ -494,7 +581,9 @@ function main(): void {
   // ---- 输出 ----
   ensureDir(BUILD_DIR);
   writeFileSync(OUT_JSON, JSON.stringify(recs));
-  const full = { total: recs.length, ...stats, tallest, bytes: fileSize(OUT_JSON) };
+  clear.clippedAreaM2 = Math.round(clear.clippedAreaM2);
+  clear.ms = Math.round(clear.ms);
+  const full = { total: recs.length, ...stats, roadClearance: { ...clear, clipFailures }, tallest, bytes: fileSize(OUT_JSON) };
   writeFileSync(OUT_STATS, JSON.stringify(full, null, 2));
 
   log(`\nbuildings: ${recs.length} (from ${stats.inputBuildings} OSM features; dropped small=${stats.dropped.smallArea} degenerate=${stats.dropped.degenerate})`);
@@ -505,6 +594,14 @@ function main(): void {
       `csv rows on slice streets=${stats.hdb.csvRowsOnSliceStreets}, matched=${stats.hdb.matchedCsvRows} (${(stats.hdb.matchRateOfCsv * 100).toFixed(1)}%), unmatched (no geocode yet)=${stats.hdb.csvRowsOnSliceStreetsUnmatched}`,
   );
   log(`no parcel=${stats.noParcel} parcel without GPR=${stats.parcelNoGpr} clamped low/high=${stats.clamped.low}/${stats.clamped.high} height raised by building:part=${stats.heightRaisedByParts}`);
+  const nSkip = Object.values(clear.skipped).reduce((x, y) => x + y, 0);
+  log(`skipped (not ground-extruded) ${nSkip}: ${JSON.stringify(clear.skipped)}`);
+  log(
+    `road clearance (non-service carriageway): intruding=${clear.intruding} dropped=${JSON.stringify(clear.dropped)} ` +
+      `clipped=${clear.clipped} (depth>2 m ${clear.deepClipped}; big+through kept multi-piece ${clear.clippedBigDeep}, extra pieces ${clear.clipExtraPieces}, area removed ${clear.clippedAreaM2} m²) ` +
+      `clip failures=${JSON.stringify(clipFailures)} ${clear.ms} ms`,
+  );
+  if (clear.droppedNames.length) log(`  dropped named: ${clear.droppedNames.join(' | ')}`);
   log('height histogram (10 m bins):');
   for (const [k, v] of Object.entries(stats.heightHistogram)) log(`  ${k.padStart(8)} ${String(v).padStart(5)} ${'#'.repeat(Math.min(60, Math.round(v / 10)))}`);
   log('tallest 10:');

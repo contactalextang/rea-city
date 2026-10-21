@@ -8,8 +8,11 @@ import type { RoadGraph } from './RoadGraph'
  */
 const CELL = 32
 const MAX_ITER = 4
-/** 建索引时额外外扩（≥ 查询时的 r + margin） */
-const PAD = 2
+/**
+ * 建索引时额外外扩：deepest() 只查点所在的单格，所以每个要素必须登记进"距其边界 ≤ PAD 的所有格"，
+ * 查询半径 r + margin 必须 ≤ PAD（地铁出口 2.2 + 0.5 = 2.7）。
+ */
+const PAD = 3
 
 export interface FitResult {
   /** false：推不出（路口圆心附近 / 两条路夹缝里来回顶 / 位移过大） */
@@ -99,7 +102,7 @@ export class RoadClearance {
     return h
   }
 
-  /** 点（半径 r 的杆）是否侵入车行道 + 净空 margin（r + margin 需 ≤ PAD） */
+  /** 点（半径 r 的杆）是否侵入车行道 + 净空 margin（r + margin 需 ≤ PAD = 3） */
   intrudes(x: number, z: number, r: number, margin = 0) {
     return this.deepest(x, z, r + margin).depth > 1e-3
   }

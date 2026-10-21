@@ -12,11 +12,14 @@ import { resolve } from 'node:path';
 import { GEO_DIR, LOCAL_DIR, ensureDir, fileSize, fmtBytes, log, warn } from './lib/common.ts';
 import { LOCAL_BBOX } from './lib/proj.ts';
 import type { GraphData, GraphEdgeData, GraphNodeData, RoadKind } from './lib/graph-types.ts';
+import { PolyGrid, buildingSkipReason, polygonsOfGeometry, tagOf } from './lib/clearance.ts';
+import { cleanRing } from './lib/geom.ts';
 
 const BUILD_DIR = resolve(GEO_DIR, 'build');
 const DEBUG_DIR = resolve(BUILD_DIR, 'debug');
 const IN_LINES = resolve(LOCAL_DIR, 'osm-lines.geojson');
 const IN_POINTS = resolve(LOCAL_DIR, 'osm-points.geojson');
+const IN_POLYGONS = resolve(LOCAL_DIR, 'osm-polygons.geojson');
 const OUT_GRAPH = resolve(BUILD_DIR, 'graph.json');
 const OUT_STATS = resolve(BUILD_DIR, 'graph-stats.json');
 const OUT_SVG = resolve(DEBUG_DIR, 'graph.svg');
@@ -34,6 +37,10 @@ const SCC_KEEP_RATIO = 0.9; // 最大强连通分量占比低于此才裁剪
 // 切片边界截断的单向路（AYE / ECP / MCE 地面段、匝道）只进不出或只出不进，不在 SCC 里但仍是主干道，
 // 只裁真正孤立的小岛（经隧道 / 步行道才相连的停车场内道等）。设为 false 则严格只留最大 SCC。
 const KEEP_WEAKLY_ATTACHED = true;
+/** service 边中心线落在建筑内的比例超过此值即剔除（楼内车道 / 停车库坡道） */
+const SERVICE_INSIDE_RATIO = 0.6;
+/** 直接丢弃的 service=* 子类（停车场通道 / 得来速） */
+const DROP_SERVICE = new Set(['parking_aisle', 'drive-through']);
 
 const KIND_OF: Record<string, RoadKind> = {
   motorway: 'expressway',
@@ -164,6 +171,9 @@ interface ParseStats {
   ignoredHighway: Record<string, number>;
   droppedTunnel: number;
   droppedLayer: number;
+  droppedCovered: number;
+  droppedLevel: number;
+  droppedService: Record<string, number>;
   runs: number;
 }
 
@@ -189,6 +199,28 @@ function parseWays(features: Feature[], stats: ParseStats): Run[] {
     if (Number.isFinite(layer) && layer <= -1) {
       stats.droppedLayer++;
       continue;
+    }
+    // 有顶（楼内 / 裙楼下穿）的 service：路面会铺进楼墙里。
+    // 干道（New Bridge Road / Eu Tong Sen Street 等穿过连廊下的短段）保留，否则主干道断开。
+    if (kind === 'service' && tagOf(p, 'covered') === 'yes') {
+      stats.droppedCovered++;
+      continue;
+    }
+    // 地下楼层（level 取最小值，如 "-1;1" → -1）
+    const level = kind === 'service' ? tagOf(p, 'level') : undefined;
+    if (level) {
+      const lv = level.split(';').map((v) => parseFloat(v)).filter(Number.isFinite);
+      if (lv.length && Math.min(...lv) < 0) {
+        stats.droppedLevel++;
+        continue;
+      }
+    }
+    if (kind === 'service') {
+      const sv = tagOf(p, 'service');
+      if (sv && DROP_SERVICE.has(sv)) {
+        bump(stats.droppedService, sv);
+        continue;
+      }
     }
 
     // 单向
@@ -499,6 +531,75 @@ function buildEdges(chains: Chain[], nodeInfo: Map<string, NodeInfo>): BuiltGrap
     }
   }
   return { nodes, edges, mergedShort, droppedShort };
+}
+
+// ---------------------------------------------------------------------------
+// 5b. 剔除中心线大半落在建筑内的 service 边（楼内车道、裙楼下的落客区等）
+// ---------------------------------------------------------------------------
+/** 读 OSM 建筑面（与 04-buildings 同一套跳过规则：顶棚 / 天桥 / 悬空 / 地下的不算） */
+function loadBuildingGrid(): PolyGrid | null {
+  if (fileSize(IN_POLYGONS) <= 0) {
+    warn(`missing ${IN_POLYGONS}; service-in-building culling skipped`);
+    return null;
+  }
+  const fc = JSON.parse(readFileSync(IN_POLYGONS, 'utf8')) as { features: Feature[] };
+  const grid = new PolyGrid(64);
+  for (const f of fc.features) {
+    const p = f.properties ?? {};
+    const b = typeof p.building === 'string' ? p.building : undefined;
+    if (!b || b === 'no' || buildingSkipReason(p)) continue;
+    for (const rings of polygonsOfGeometry(f.geometry)) {
+      const outer = cleanRing(rings[0] ?? []);
+      if (outer.length < 3) continue;
+      grid.add({ outer, holes: rings.slice(1).map((r) => cleanRing(r)).filter((r) => r.length >= 3) });
+    }
+  }
+  return grid;
+}
+
+/** 删除给定边（含其 reverse），再删掉失去所有边的孤立节点，重新编号 */
+function removeEdges(g: BuiltGraph, drop: Set<number>): BuiltGraph {
+  const kept = g.edges.filter((e) => !drop.has(e.id));
+  const used = new Uint8Array(g.nodes.length);
+  for (const e of kept) used[e.from] = used[e.to] = 1;
+  const nodeMap = new Map<number, number>();
+  const nodes: GraphNodeData[] = [];
+  for (const n of g.nodes) {
+    if (!used[n.id]) continue;
+    nodeMap.set(n.id, nodes.length);
+    nodes.push({ ...n, id: nodes.length });
+  }
+  const edgeMap = new Map<number, number>();
+  kept.forEach((e, i) => edgeMap.set(e.id, i));
+  const edges = kept.map((e, i) => ({
+    ...e,
+    id: i,
+    from: nodeMap.get(e.from)!,
+    to: nodeMap.get(e.to)!,
+    reverse: e.reverse === null ? null : (edgeMap.get(e.reverse) ?? null),
+  }));
+  return { nodes, edges, mergedShort: g.mergedShort, droppedShort: g.droppedShort };
+}
+
+function cullServiceInBuildings(g: BuiltGraph): { graph: BuiltGraph; culledPairs: number; culledEdges: number; culledLengthM: number; orphanNodes: number } {
+  const grid = loadBuildingGrid();
+  if (!grid) return { graph: g, culledPairs: 0, culledEdges: 0, culledLengthM: 0, orphanNodes: 0 };
+  const drop = new Set<number>();
+  let pairs = 0;
+  let len = 0;
+  for (const e of g.edges) {
+    if (e.kind !== 'service') continue;
+    if (e.reverse !== null && e.reverse < e.id) continue;
+    const { inside, total } = grid.insideLength(e.pts);
+    if (total > 0 && inside / total > SERVICE_INSIDE_RATIO) {
+      drop.add(e.id);
+      if (e.reverse !== null) drop.add(e.reverse);
+      pairs++;
+      len += total;
+    }
+  }
+  const graph = removeEdges(g, drop);
+  return { graph, culledPairs: pairs, culledEdges: drop.size, culledLengthM: Math.round(len), orphanNodes: g.nodes.length - graph.nodes.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -922,18 +1023,30 @@ function main(): void {
   }
   ensureDir(DEBUG_DIR);
   const fc = JSON.parse(readFileSync(IN_LINES, 'utf8')) as { features: Feature[] };
-  const parseStats: ParseStats = { waysByHighway: {}, ignoredHighway: {}, droppedTunnel: 0, droppedLayer: 0, runs: 0 };
+  const parseStats: ParseStats = {
+    waysByHighway: {},
+    ignoredHighway: {},
+    droppedTunnel: 0,
+    droppedLayer: 0,
+    droppedCovered: 0,
+    droppedLevel: 0,
+    droppedService: {},
+    runs: 0,
+  };
   const runs = parseWays(fc.features, parseStats);
   const removedPts = dedupeRuns(runs);
-  log(`ways: ${fc.features.length} features → ${parseStats.runs} drivable runs (dropped tunnel ${parseStats.droppedTunnel}, layer≤-1 ${parseStats.droppedLayer}); removed ${removedPts} near-duplicate points`);
+  log(`ways: ${fc.features.length} features → ${parseStats.runs} drivable runs (dropped tunnel ${parseStats.droppedTunnel}, layer≤-1 ${parseStats.droppedLayer}, covered ${parseStats.droppedCovered}, level<0 ${parseStats.droppedLevel}, service ${JSON.stringify(parseStats.droppedService)}); removed ${removedPts} near-duplicate points`);
 
   const nodeInfo = classifyNodes(runs);
   const pieces = splitRuns(runs, nodeInfo);
   const chains = buildChains(pieces, nodeInfo);
   log(`nodes classified: ${nodeInfo.size}, pieces ${pieces.length} → chains ${chains.length}`);
 
-  const built = buildEdges(chains, nodeInfo);
-  log(`edges built: ${built.edges.length} (nodes ${built.nodes.length}; short edges merged ${built.mergedShort}, dropped ${built.droppedShort})`);
+  const built0 = buildEdges(chains, nodeInfo);
+  log(`edges built: ${built0.edges.length} (nodes ${built0.nodes.length}; short edges merged ${built0.mergedShort}, dropped ${built0.droppedShort})`);
+  const cull = cullServiceInBuildings(built0);
+  const built = cull.graph;
+  log(`service edges >${SERVICE_INSIDE_RATIO * 100}% inside buildings: culled ${cull.culledPairs} roads (${cull.culledEdges} directed edges, ${cull.culledLengthM} m), orphan nodes removed ${cull.orphanNodes}`);
 
   const { nodes, edges, scc } = pruneToLargestScc(built);
   log(
@@ -985,6 +1098,10 @@ function main(): void {
       ignoredHighway: parseStats.ignoredHighway,
       droppedTunnel: parseStats.droppedTunnel,
       droppedLayerBelowZero: parseStats.droppedLayer,
+      droppedCovered: parseStats.droppedCovered,
+      droppedLevelBelowZero: parseStats.droppedLevel,
+      droppedService: parseStats.droppedService,
+      serviceInBuildingCulled: { roads: cull.culledPairs, edges: cull.culledEdges, lengthM: cull.culledLengthM, orphanNodes: cull.orphanNodes },
       runs: parseStats.runs,
       removedNearDuplicatePoints: removedPts,
       signalPoints: signals.length,

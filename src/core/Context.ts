@@ -76,6 +76,8 @@ export interface GameEvents {
   dated: { npc: string; stage: string }
   /** 喝了 n 杯 */
   drank: { n: number }
+  /** P11.B 手机叫车到达：kind = 'taxi' | 'grab'，fare = 车费，distM = 路程，dest = 目的地 POI id（或标签） */
+  rideTaken: { kind: 'taxi' | 'grab'; fare: number; distM: number; dest: string }
 }
 export type PurchaseKind = 'vehicle' | 'property' | 'upgrade' | 'biz' | 'bizTier' | 'manager'
 

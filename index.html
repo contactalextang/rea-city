@@ -120,7 +120,17 @@
     .phone .job button:hover { background: rgba(126,231,135,.25); border-color: #7ee787; }
     .phone .job button.stop { border-color: #ff5f5f; }
     .phone .job button.stop:hover { background: rgba(255,95,95,.3); }
+    .phone .sub button:disabled { opacity: .4; cursor: default; background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.2); }
     .phone .apps button.on { background: rgba(126,231,135,.25); border-color: #7ee787; }
+    /* P11.B 叫车黑屏：淡入 → 跳时 + 传送 → 等区块加载 → 淡出 */
+    .ride-fade { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; flex-direction: column; background: #05070f; color: #fff; opacity: 0; pointer-events: none; transition: opacity .4s; font-family: inherit; }
+    .ride-fade.show { opacity: 1; pointer-events: auto; }
+    .ride-fade .rt { font-size: 26px; letter-spacing: 2px; }
+    .ride-fade .rs { margin-top: 10px; font-size: 15px; opacity: .75; }
+    .ride-fade .rd { margin-top: 18px; display: flex; gap: 8px; }
+    .ride-fade .rd i { width: 8px; height: 8px; border-radius: 50%; background: #7ee787; opacity: .25; animation: rideDot 1.2s infinite; }
+    .ride-fade .rd i:nth-child(2) { animation-delay: .2s; } .ride-fade .rd i:nth-child(3) { animation-delay: .4s; }
+    @keyframes rideDot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
     .phone .app .stat { font-size: 12px; opacity: .85; margin-bottom: 4px; line-height: 1.5; }
     .phone .app .sect { font-size: 12px; font-weight: 700; opacity: .7; letter-spacing: 1px; margin: 12px 0 6px; }
     .phone .app .empty { font-size: 13px; opacity: .7; padding: 18px 8px; text-align: center; border: 1px dashed rgba(255,255,255,.25); border-radius: 8px; margin-top: 8px; }
@@ -185,6 +195,7 @@
       <button data-app="shop">商店</button>
       <button data-app="biz">生意</button>
       <button data-app="wallet">钱包</button>
+      <button data-app="ride">出行</button>
       <button data-app="contacts">联系人</button>
       <button data-app="casino">赌场</button>
       <button data-app="race">赛车</button>
@@ -226,6 +237,7 @@
     <div class="go" id="ov-go">按任意键或点击开始</div>
     <div class="attrib" id="ov-attrib" style="display:none"></div>
   </div>
+  <div class="ride-fade" id="ride-fade"><div class="rt" id="ride-title"></div><div class="rs" id="ride-sub"></div><div class="rd"><i></i><i></i><i></i></div></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

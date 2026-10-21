@@ -6,6 +6,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { GEO_DIR, LOCAL_DIR, ensureDir, fileSize, fmtBytes, log, warn } from './lib/common.ts';
 import { pointInPolygon } from './lib/raster.ts';
+import { RoadBands } from './lib/clearance.ts';
+import type { GraphData } from './lib/graph-types.ts';
 
 type PropType = 'lamp' | 'signal' | 'busstop' | 'taxistand' | 'gantry' | 'mrtexit' | 'linkway' | 'bridge' | 'tree';
 interface Prop {
@@ -36,6 +38,10 @@ const ROAD_SNAP = 25;
 const TREE_CAP = 6000;
 const PARK_M2_PER_TREE = 150;
 const ROAD_TREE_STEP = 25;
+/** 地铁出口：3×3 m 盒的半对角、离路缘净空、最大推移距离（m）。车行道口径用 graph.json（与运行时 RoadClearance 一致） */
+const MRT_R = 2.1;
+const MRT_MARGIN = 0.8;
+const MRT_MAX_PUSH = 12; // 8 m 会丢掉 City Hall C / Raffles Place J / Esplanade B（需 8.5–11 m）
 /** 米制 → 弧度 yaw（0 朝 +z） */
 const yawOf = (dx: number, dz: number) => Math.atan2(dx, dz);
 
@@ -310,7 +316,50 @@ function main(): void {
   addPoints('signal', 'lta-traffic-light');
   addPoints('busstop', 'lta-bus-stop', (p) => (p.LOC_DESC ? String(p.LOC_DESC) : undefined));
   addPoints('taxistand', 'lta-taxi-stand', (p) => (p.LOC_DESC ? String(p.LOC_DESC) : undefined));
+  // 地铁出口：LTA 坐标常落在车道里（City Hall Exit C 侵入 7.7 m）→ 按路网车道带 + 路口圆帽推到路缘外，推不出则丢弃
+  const graphPath = resolve(buildDir, 'graph.json');
+  const bands = fileSize(graphPath) > 0 ? new RoadBands(JSON.parse(readFileSync(graphPath, 'utf8')) as GraphData, true) : null;
+  if (!bands) warn('graph.json missing — run 03-roads first; MRT exits not pushed off carriageway');
+  const mrt = { total: 0, moved: 0, ringSearch: 0, dropped: 0, maxPush: 0, droppedNames: [] as string[] };
+  const mrtStart = props.length;
   addPoints('mrtexit', 'lta-train-station-exit', (p) => [p.stn_name, p.exit_code].filter(Boolean).join(' '));
+  if (bands) {
+    const kept: Prop[] = [];
+    for (const q of props.splice(mrtStart)) {
+      mrt.total++;
+      let f = bands.fit(q.x, q.z, MRT_R, MRT_MARGIN, MRT_MAX_PUSH);
+      if (!f.ok) {
+        // 两条路之间来回顶：环形搜索最近的净空点（0.5 m 步长、24 方向）
+        search: for (let d = 0.5; d <= MRT_MAX_PUSH; d += 0.5) {
+          for (let k = 0; k < 24; k++) {
+            const a = (k / 24) * Math.PI * 2;
+            const x = q.x + Math.cos(a) * d, z = q.z + Math.sin(a) * d;
+            if (bands.pointDepth(x, z, MRT_R + MRT_MARGIN).depth <= 1e-3) {
+              f = { ok: true, x, z, moved: true, dist: d };
+              mrt.ringSearch++;
+              break search;
+            }
+          }
+        }
+      }
+      if (!f.ok) {
+        mrt.dropped++;
+        if (q.name) mrt.droppedNames.push(q.name);
+        continue;
+      }
+      if (f.moved) {
+        mrt.moved++;
+        mrt.maxPush = Math.max(mrt.maxPush, f.dist);
+        q.x = r2(f.x);
+        q.z = r2(f.z);
+        const hit = roads.nearest(q.x, q.z, ROAD_SNAP);
+        if (hit) q.yaw = r3(yawOf(hit.dx, hit.dz));
+      }
+      kept.push(q);
+    }
+    props.push(...kept);
+    log(`mrt exits: ${mrt.total}, pushed off carriageway ${mrt.moved} (max ${mrt.maxPush.toFixed(2)} m; ring search ${mrt.ringSearch}), dropped ${mrt.dropped}${mrt.droppedNames.length ? ' [' + mrt.droppedNames.join(' | ') + ']' : ''}`);
+  }
 
   // ERP 龙门架：LTA 给的是跨路的线（实际跨度）。线有效时直接用线的中点 / 方向 / 长度；
   // 退化为点时按规格用最近道路方向 + 90°、len = 车道数 × 3.3（无 lanes 取 10）。
@@ -450,6 +499,7 @@ function main(): void {
       duplicatesRemoved: dupes,
       noRoadWithin25m: noRoad,
       gantryFromLine,
+      mrtExitClearance: { ...mrt, maxPush: r2(mrt.maxPush) },
       trees: { park: parkTrees.length, road: roadTrees.length, beforeCap: treeTotal, cap: TREE_CAP },
     },
   };

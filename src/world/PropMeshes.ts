@@ -253,7 +253,15 @@ export class PropMeshes {
           }
           break
         }
-        case 5: push('mrtexit', x, z, yaw); rect(x, z, yaw, 0, 0, 3, 3, 3); break
+        case 5: {
+          // 地铁出口（3×3 m 盒，半对角 ≈ 2.1 m）：烘焙时已推出路缘，这里再兜底一次；
+          // 仍侵入车行道则只渲染不建碰撞体，免得在路中间挡车
+          const q = this.clear.fit(x, z, 2.2, 0.5)
+          if (q.ok) { if (q.moved) st.moved++; x = q.x; z = q.z }
+          push('mrtexit', x, z, yaw)
+          if (q.ok && !this.clear.intrudes(x, z, 2.2)) rect(x, z, yaw, 0, 0, 3, 3, 3); else st.dropped++
+          break
+        }
         case 6: {
           const len = Math.max(2, p.len || 6)
           push('linkwayRoof', x, z, yaw, 1, 1, len)
@@ -272,9 +280,16 @@ export class PropMeshes {
           const len = Math.max(4, p.len || 20)
           push('bridgeDeck', x, z, yaw, 1, 1, len)
           for (const sgn of [-1, 1]) {
-            push('stair', x, z, yaw, 1, 1, 1, -1, 0, sgn * (len / 2 + 2))
-            rect(x, z, yaw, 0, sgn * (len / 2 + 2), 2.5, 4, 5.5)
             push('post', x, z, yaw, 2, 5.5, 2, -1, 0, sgn * (len / 2 - 0.5))
+            // 楼梯（2.5×4，半对角 ≈ 2.4）沿桥轴向外找第一个不压车行道的位置，找不到就不放
+            let off = -1
+            for (let o = len / 2 + 2; o <= len / 2 + 10; o++) {
+              const [px, pz] = local(x, z, yaw, 0, sgn * o)
+              if (!this.clear.intrudes(px, pz, 2.4, 0.3)) { off = o; break }
+            }
+            if (off < 0) { st.dropped++; continue }
+            push('stair', x, z, yaw, 1, 1, 1, -1, 0, sgn * off)
+            rect(x, z, yaw, 0, sgn * off, 2.5, 4, 5.5)
           }
           break
         }

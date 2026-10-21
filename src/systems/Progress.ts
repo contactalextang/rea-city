@@ -38,6 +38,9 @@ export interface LifeStats {
   /** 发展成恋人的人数（dated 事件 stage === 'lover' 的不同 npc） */
   lovers: string[]
   drinks: number
+  /** P11.B 手机叫车次数 / 车费累计 */
+  rides: number
+  rideFares: number
 }
 export interface ProgressSave {
   level: number
@@ -65,7 +68,7 @@ const QUEST_XP_CAP = 2000
 const defaultStats = (): LifeStats => ({
   earned: 0, spent: 0, bizIncome: 0, distanceKm: 0, trips: 0, arrests: 0, daysPlayed: 1, peakNetWorth: 0, bought: {},
   gambleNet: 0, gambleRounds: 0, gambleBestWin: 0, races: 0, raceWins: 0, matches: 0, matchWins: 0, matchStreak: 0, matchBestStreak: 0,
-  kills: 0, headshots: 0, dates: 0, lovers: [], drinks: 0,
+  kills: 0, headshots: 0, dates: 0, lovers: [], drinks: 0, rides: 0, rideFares: 0,
 })
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`
 
@@ -105,6 +108,7 @@ export class Progress implements Subsystem<ProgressSave> {
       this.addXp(XP.slept)
     })
     ev.on('clockIn', () => this.addXp(XP.clockIn))
+    ev.on('rideTaken', ({ fare }) => { this.stats.rides++; this.stats.rideFares = round2(this.stats.rideFares + fare); this.check() })
     ev.on('questDone', ({ reward }) => this.questDone(reward))
     ev.on('purchased', ({ kind, cost }) => {
       this.stats.bought[kind] = (this.stats.bought[kind] ?? 0) + 1
@@ -234,6 +238,7 @@ export class Progress implements Subsystem<ProgressSave> {
       streak_5: s.matchBestStreak >= 5,
       headshot_king: s.headshots >= 50,
       lover: s.lovers.length >= 1,
+      no_drive: s.rides >= 10,
     }
     for (const a of ACHIEVEMENTS) {
       if (!cond[a.id] || this.achievements.has(a.id)) continue
@@ -262,6 +267,7 @@ export class Progress implements Subsystem<ProgressSave> {
           { title: '累计收入', value: usd(s.earned) }, { title: '累计花费', value: usd(s.spent) },
           { title: '产业收入', value: usd(s.bizIncome) }, { title: '净资产峰值', value: usd(s.peakNetWorth) },
           { title: '里程', value: `${s.distanceKm.toFixed(1)} km` }, { title: '的士趟数', value: `${s.trips}` },
+          { title: '叫车出行', value: `${s.rides} 次`, desc: s.rides ? `车费累计 ${usd(s.rideFares)}` : undefined },
           { title: '被捕次数', value: `${s.arrests}` }, { title: '游戏天数', value: `${s.daysPlayed}` },
         ] },
         { title: '娱乐', items: [
