@@ -23,7 +23,8 @@
     "geo:chunks": "node scripts/geo/09-chunks.ts",
     "geo:check": "node scripts/geo/check-clearance.ts",
     "char:build": "node scripts/char/build.ts",
-    "props:build": "node scripts/props/build.ts"
+    "props:build": "node scripts/props/build.ts",
+    "lut:build": "node scripts/lut/build.ts"
   },
   "keywords": [],
   "author": "",

@@ -45,6 +45,7 @@ import { Business } from '../systems/Business'
 import { ACHIEVEMENTS } from '../data/progression'
 import { saveSettings } from './Settings'
 import { PostFX } from './PostFX'
+import { cine } from './Cine'
 import type { FxQuality } from './Settings'
 import { CharacterLibrary } from '../characters/CharacterLibrary'
 import type { GamePlugin } from '../activities/Plugin'
@@ -1371,6 +1372,9 @@ export class Game {
       this.cam.camera.updateMatrixWorld()
       this.peds.animate(dt, this.cam.camera)
     }
+    // P13.3–13.6 电影化（仅 fx=high）：相机手持晃动 / 速度 FOV 开关；光束 / 鬼影要的太阳方向与速度模糊要的车速
+    this.cam.cineEnabled = this.postfx?.quality === 'high'
+    this.postfx?.setCine(this.dayNight.sun, this.player.inVehicle ? this.player.vehicle?.speed ?? 0 : 0)
     if (this.postfx) {
       this.postfx.setGrade(this.dayNight.grade)
       this.postfx.render(dt)
@@ -1544,7 +1548,7 @@ export class Game {
       /** 后期画质：fx.set('high'|'low'|'off')；fx.grade 当前调色参数 */
       bright: { set(v: number) { self.settings.brightness = clampBrightness(v) }, get value() { return self.settings.brightness } },
       get nightLights() { return self.dayNight.nightLights.stats },
-      fx: { set(q: FxQuality) { self.setFx(q) }, get quality() { return self.postfx?.quality ?? 'off' }, get grade() { return self.dayNight.grade }, get exposure() { return self.renderer.toneMappingExposure }, get envIntensity() { return self.scene.environmentIntensity } },
+      fx: { set(q: FxQuality) { self.setFx(q) }, get quality() { return self.postfx?.quality ?? 'off' }, get grade() { return self.dayNight.grade }, get exposure() { return self.renderer.toneMappingExposure }, get envIntensity() { return self.scene.environmentIntensity }, /** P13.6：cine.on 总开关 + rays/lens/lut/shake/fov/blur 强度倍率（0 = 关） */ cine },
       audio: { get state() { return self.audio.state }, get musicMode() { return self.audio.musicMode }, get crashCount() { return self.audio.crashCount } },
       clock: {
         set(hour: number, day?: number) { self.clock.set(hour, day) },

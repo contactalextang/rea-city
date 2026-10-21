@@ -86,10 +86,10 @@
 - [x] P13.0 PostFX 迁移到 pmndrs/postprocessing（EffectPass 合并、N8AO 替 GTAO、ToneMapping AgX），画面与迁移前一致
 - [x] P13.1 物理天空 Sky.js + 指数高度雾/太阳内散射 + 天空 PMREM 环境光（high）
 - [x] P13.2 CSM 三级联阴影（high，含角色材质与分块材质）
-- [ ] P13.3 丁达尔光束 GodRaysEffect（rays 随时段）
-- [ ] P13.4 镜头光学：太阳鬼影/宽银幕拉丝、手持呼吸、速度 FOV + 边缘速度模糊
-- [ ] P13.5 程序化胶片 LUT（昼/夜两张）+ `?cine=0` 总开关 + 调试钩子
-- [ ] P13.V 四时段/暴雨/开车/竞技场截图对比 + 性能 + low/off 回归 + 看板/README/记忆
+- [x] P13.3 丁达尔光束 GodRaysEffect（rays 随时段）
+- [x] P13.4 镜头光学：太阳鬼影/宽银幕拉丝、手持呼吸、速度 FOV + 边缘速度模糊
+- [x] P13.5 程序化胶片 LUT（昼/夜两张）+ `?cine=0` 总开关 + 调试钩子
+- [x] P13.V 四时段/暴雨/开车/竞技场截图对比 + 性能 + low/off 回归 + 看板/README/记忆
 
 ## 后续
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
@@ -115,3 +115,5 @@
 - 2026-10-21 试玩反馈：执法太严、找不到娱乐场馆。新增默认执法档 `casual`（Law.ts LAW_TUNING.lenient：不罚交通违规/碰撞/抢车/毁车/对空开枪/酒驾，不刷酒驾路检，街头赛不上星；撞人、枪击行人、攻击警察、开枪打车照旧），`?law=relaxed|real` 切回，lawStrictness 不再从 localStorage 读。场馆导航：Game.venueNav/navTo/venueSections，手机赛车/竞技/赌场/联系人页加场馆卡；小地图远处场馆钉边缘；手动导航优先于工作/任务目标。
 - 2026-10-21 P11（计划 ~/.claude/plans/proud-sparking-abelson.md）试玩反馈：建筑与地铁出口挡路、想要叫车直达。P11.A：03 丢弃 covered/level<0/parking_aisle/drive-through 的 service 路并剔除穿楼 service 边（节点/边 3410/5738→2871/4609，主干道长度不变）；04 跳过屋顶/悬空/天桥/indoor/地下 108 栋，压车行道的剔除 8、裁剪 236（建筑 3704→3589）；06 地铁出口推出路缘 19 个（最远 11 m）；PropMeshes 地铁出口与天桥楼梯运行时净空兜底，RoadClearance PAD 3。`npm run geo:check`：压路建筑 111→0、压路出口 17→0、穿楼非 service 边 6→0。P11.B：Ride.ts（Taxi 打表 / Grab 加价报价、canRide）、Game.rideTo 黑屏直达（state 'ride'）、手机「出行」与场馆卡 Taxi/Grab 按钮、rideTaken 统计与成就「不想开车」；`npm run ride:sim` 25398 项通过；实测叫 Grab 到金沙扣费/跳时/落门口/可进赌场。
   遗留：15 条 service 边仍部分穿楼（≤60%）；悬空楼直接不渲染（未做按 min_height 悬空拉伸）；金沙门口有灯杆挡镜头。
+- 2026-10-22 Phase 13 日常画面电影化完成（仅 fx=high）：P13.0 2aa7738（PostFX 迁 pmndrs/postprocessing + N8AO，同页像素差 ≤2.3%）、P13.1/2 0e1569b（Atmosphere.ts：Sky.js 混色表、指数高度雾 + 太阳内散射、天空 PMREM、CSM 3 级 350 m 全局片段按片元选级）、P13.3–6（Cine.ts：GodRays 半分辨率、太阳鬼影/拉丝、程序化 day/night LUT `npm run lut:build`、手持晃动、速度 FOV 62→70°、边缘速度模糊、`?cine=0`）。验收：high/cine=0/low/off/grid/box 0 报错 60 fps；日落朝阳 cine 开销约 +1.8 ms、夜晚 +0.3 ms（headless DPR1）。
+  约定：城市场景只能有 CSM 的 3 盏投影方向光（Atmosphere.ts 顶部注释）；夜晚 this.sun 换成月光方向，靠 grade.rays=0 关光束。遗留：早晨太阳常被雾化远楼挡住光束偏弱；屏幕空间光束无遮挡时只是一团光晕；远级阴影 4 帧刷新远处车影轻微卡顿；白天天空环境光略偏冷；每次加载楼体颜色随机导致跨版本像素对比不可靠；N8AO 后性能需在空闲真机 DPR2 复测。

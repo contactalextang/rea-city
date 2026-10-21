@@ -431,6 +431,14 @@ export class DayNight {
     gr.grain = lerp(ga.grain, gb.grain, t); gr.chroma = lerp(ga.chroma, gb.chroma, t)
     gr.bloom = lerp(ga.bloom, gb.bloom, t); gr.bloomThreshold = lerp(ga.bTh, gb.bTh, t)
     this.rim = lerp(ga.rim, gb.rim, t)
+    // P13.3/13.5（仅 fx=high 生效）：光束强度——太阳方向光离开地平线（7.12–19.05 h，之外 this.sun 换成月光方向）才有，
+    // 日出（≈7.6 h）/ 日落（≈18.5 h）最强、正午弱、夜晚与暴雨 0；胶片 LUT 昼夜权重（6:30 / 19:40 前后各 1 h 渐变）
+    const sunUp = smoothstep(7.15, 7.45, h) * (1 - smoothstep(18.75, 19.05, h))
+    const golden = Math.max(1 - smoothstep(0, 1.6, Math.abs(h - 7.6)), 1 - smoothstep(0, 1.6, Math.abs(h - 18.5)))
+    gr.rays = sunUp * (0.22 + 0.58 * golden) * (1 - this.gloom)
+    const nightW = clamp(1 - smoothstep(5.8, 6.8, h) + smoothstep(19.2, 20.2, h), 0, 1)
+    gr.lutDay = (1 - nightW) * 0.85 * (1 - 0.3 * this.gloom)
+    gr.lutNight = nightW * 0.8 * (1 - 0.3 * this.gloom)
   }
 
   /**

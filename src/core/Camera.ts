@@ -1,5 +1,16 @@
 import * as THREE from 'three'
 import { dampAngle, damp } from '../config'
+import { cine } from './Cine'
+
+const BASE_FOV = 62
+/** P13.4 开车速度 FOV：62° → 最高 70°（≈10 → 38 m/s） */
+const MAX_FOV = 70
+/** 手持晃动幅度（弧度）：步行 ≈0.15°；开车基础 0.08° + 随速度的路面颠簸 ≤0.18° */
+const SHAKE_FOOT = THREE.MathUtils.degToRad(0.15)
+const SHAKE_CAR = THREE.MathUtils.degToRad(0.08)
+const SHAKE_BUMP = THREE.MathUtils.degToRad(0.18)
+/** 低频平滑噪声：几组不可通约频率的正弦叠加（-1..1） */
+const noise1 = (t: number, s: number) => (Math.sin(t * 1.13 + s) * 0.5 + Math.sin(t * 0.71 + s * 2.3) * 0.3 + Math.sin(t * 2.37 + s * 4.1) * 0.2)
 
 export type CamMode = 'foot' | 'car' | 'orbit'
 
@@ -13,6 +24,12 @@ export class ChaseCamera {
   private dist = 6
   private idle = 10        // 距上次鼠标操作的秒数
   private aimBlend = 0     // 0 普通追尾，1 过肩瞄准
+  /** P13.4 速度 FOV（度，阻尼）与手持晃动时钟 / 强度 */
+  private fov = BASE_FOV
+  private shakeT = 0
+  private shakeAmt = 0
+  /** 由 Game 设置：仅 fx=high 时开启手持晃动与速度 FOV（low/off 不变） */
+  cineEnabled = false
   private static readonly SENS = 0.0022
   /** 开场环绕镜头的中心与半径（方格城绕原点 160 m；真实城市绕出生点） */
   orbitCenter = { x: 0, z: 0 }
@@ -45,6 +62,8 @@ export class ChaseCamera {
       this.look.set(o.x, 10, o.z)
       this.camera.position.lerp(this.pos, 1 - Math.exp(-2 * dt))
       this.camera.lookAt(this.look)
+      this.shakeAmt = 0
+      this.applyFov(BASE_FOV, dt)
       return
     }
     const car = mode === 'car'
@@ -80,6 +99,39 @@ export class ChaseCamera {
     // 鼠标操作中相机贴得更紧，避免拖影感
     this.camera.position.lerp(this.pos, 1 - Math.exp(-(this.idle < 1.2 || aiming ? 30 : 14) * dt))
     this.camera.lookAt(this.look)
+    this.cineFx(dt, car, Math.abs(speed), b)
+  }
+
+  /**
+   * P13.4 镜头呼吸感（仅 cineEnabled && cine.on）：lookAt 之后叠加低频手持晃动（不累积：下一帧 lookAt 重置朝向），
+   * 瞄准时按 aimBlend 关掉；开车 FOV 随速度阻尼变宽。
+   */
+  private cineFx(dt: number, car: boolean, speed: number, aim: number) {
+    const on = this.cineEnabled && cine.on
+    const sp = car ? Math.min(1, Math.max(0, (speed - 10) / 28)) : 0
+    const fovWant = on && car ? BASE_FOV + (MAX_FOV - BASE_FOV) * sp * sp * (3 - 2 * sp) * cine.fov * (1 - aim) : BASE_FOV
+    this.applyFov(fovWant, dt)
+    const want = on ? (car ? SHAKE_CAR + SHAKE_BUMP * sp : SHAKE_FOOT) * cine.shake * (1 - aim) : 0
+    this.shakeAmt = damp(this.shakeAmt, want, 3, dt)
+    if (this.shakeAmt < 1e-5) return
+    this.shakeT += dt
+    const t = this.shakeT
+    let pitch = noise1(t * 0.9, 0.0) * this.shakeAmt
+    let yaw = noise1(t * 0.7, 5.0) * this.shakeAmt * 0.8
+    let roll = noise1(t * 0.5, 9.0) * this.shakeAmt * 0.5
+    if (car && sp > 0) {
+      // 路面颠簸：更高频的小幅纵向抖动
+      const bump = (Math.sin(t * 17.3) * 0.6 + Math.sin(t * 23.9 + 1.7) * 0.4) * SHAKE_BUMP * 0.35 * sp * cine.shake * (1 - aim)
+      pitch += bump; roll += bump * 0.3
+    }
+    this.camera.rotateX(pitch); this.camera.rotateY(yaw); this.camera.rotateZ(roll)
+  }
+
+  /** FOV 阻尼；按 0.1° 量化后才更新投影（CSM 按投影变化重算分割，避免每帧触发） */
+  private applyFov(want: number, dt: number) {
+    this.fov = damp(this.fov, want, 1.5, dt)
+    const q = Math.abs(this.fov - want) < 0.05 ? want : Math.round(this.fov * 10) / 10
+    if (q !== this.camera.fov) { this.camera.fov = q; this.camera.updateProjectionMatrix() }
   }
 
   /** 远裁剪面（真实城市要看到天际线，需 ≥ 1000 m） */
