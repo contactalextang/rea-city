@@ -108,6 +108,17 @@ export class RoadClearance {
   }
 
   /**
+   * 朝最近车行道的单位方向（P14.4：路灯弯臂 / 信号灯悬臂 / 候车亭开口转向路面用）：
+   * 只看路缘外 PAD（3 m）以内的车行道；更远或正落在路口圆心上返回 false。结果写进 out。
+   */
+  roadDir(x: number, z: number, out: { x: number; z: number }): boolean {
+    const h = this.deepest(x, z, PAD)
+    if (h.depth <= 1e-3 || (h.nx === 0 && h.nz === 0)) return false
+    out.x = -h.nx; out.z = -h.nz
+    return true
+  }
+
+  /**
    * 把半径 r 的杆推到路缘外 margin 处；最多迭代几次（推出一条路可能顶进另一条），
    * 总位移超过 maxPush 或仍侵入则 ok=false。
    */

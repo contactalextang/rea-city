@@ -96,7 +96,7 @@
 - [x] P14.1 程序化外墙：src/world/FacadeShader.ts（Standard + onBeforeCompile，全城 1 个 program 'rea-facade'）；BuildingMesh 属性 aWall(s, 立面宽, 随机, 闭合) / aBld(种子, cls, 楼高, 色调)，转角 <30° 的边并成一段立面、开间取整、墙角柱；HDB 走廊栏板带 + 视差走廊 / 店屋五脚基拱廊 + 粉彩开间 + 百叶窗 + 瓦顶 / 玻璃塔竖梃幕墙 / 普通楼带形窗；凹窗视差 + 室内盒房间 + 夜窗 HDR；风化与导数凹凸；fwidth 分轴远处淡化。颜色按建筑 id 确定（修跨版本像素对比）。fx=off 仍走 Lambert 窗格，运行时切档换材质。high programs +1。遗留：近处冷白亮窗略过曝、斜边导数凹凸轻微锯齿、Landmarks/skyline 未改
 - [x] P14.3 街道表面：src/world/StreetShaders.ts（onBeforeCompile 注入沥青色差/补丁/骨料/油污、人行道 30 cm 红灰透水砖或 60 cm 混凝土板 + fwidth 砖缝、标线磨损剥落、地面草/土细节、积水三层遮罩 uStreetWet）；路缘运行时由人行道三角网边界生成（ChunkManager.buildWalkGeometry，临车道 0.15 m 立面 + 路缘顶 + 倒角高光，外缘落地），与人行道同一网格 draw 不增；fx=off 关细节（setStreetDetail）。遗留：路缘不投影、拐角条带重叠、无无障碍坡口、快速路无人行道落差
 - [ ] P14.2 建筑几何细节件（女儿墙/檐口、店屋五脚基、HDB 架空层柱、屋顶水箱/机房、空调外机；仅近处块）
-- [ ] P14.4 街道家具升级（路灯/信号悬臂/巴士站/MRT 口低模，护栏/垃圾桶/消防栓/护柱/花槽，树叶透光）
+- [x] P14.4 街道家具：src/world/PropShapes.ts（程序化低模 + aPbr 逐顶点金属度/粗糙度/自发光，道具 Standard 材质；弯臂路灯 LAMP_HEAD (1.75,6.12,0)、信号杆悬臂双灯头、拱顶巴士站 + 广告灯箱、MRT 亭、ERP 龙门、linkway 等）；PropType 追加 9 railing/10 bin/11 hydrant/12 bollard/13 planter，06-props streetFurniture() 新增 4347 件（道具 13810→18157，public/world/sg +87 KB），护栏/花槽多边形碰撞、其余圆形；RoadClearance.roadDir 让灯臂/悬臂/站台朝向车行道；树叶逆光透射 + 风摆。high 三角形约 +20–25%、programs +2。斑马线剥落阈值调低。遗留：道具材质只在启动时读 fx；无双臂分隔带路灯；树透光偏含蓄；dev/world.html 在 HEAD 就有 fakeCtx.camera 报错
 - [ ] P14.5（可选）反射与接触阴影
 - [ ] P14.V 固定机位前后对比 + 性能 + fx/角色回归 + 看板/README/记忆
 

@@ -1,11 +1,14 @@
 import * as THREE from 'three'
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { rand } from '../config'
+import { loadSettings } from '../core/Settings'
 import type { ChunkProp } from './ChunkFormat'
 import type { RoadGraph, RoadNode, RoadEdge, P2 } from './RoadGraph'
 import { polyBody, type StaticBody } from './Colliders'
 import { signalClusters, type SignalLights } from '../systems/Signals'
 import { RoadClearance } from './RoadClearance'
+import { LAMP_HEAD, PROP_UNIFORMS, SHAPES, SIGNAL, tintScale, makePropMaterial, makeSignalHeadMaterial, makeTreeMaterial, signalHead } from './PropShapes'
+
+export { LAMP_HEAD }
 
 /**
  * 街道道具：全局 InstancedMesh（每种道具一个池），按区块维护实例记录；
@@ -17,67 +20,47 @@ import { RoadClearance } from './RoadClearance'
  * 杆状道具（路灯 / 信号灯杆 / 的士站牌 / 行道树）的 LTA 原始坐标约两成落在建模车行道里：加载时用 RoadClearance
  * 沿法线推到路缘外 0.5 m（实例与碰撞体一起移）；推不出的路灯/树直接不放，信号灯杆保留外观（灯头要用）但不建碰撞体。
  * ERP 龙门架的立柱不挪（横梁要对齐），立柱在车行道内就只去掉碰撞体。
+ *
+ * P14.4：形体全部改由 PropShapes 程序化生成（弯臂 LED 路灯、带悬臂的信号灯杆 + 遮光檐灯箱、新加坡式候车亭、MRT 出口亭…），
+ * 另加 5 种街道小件池（railing / bin / hydrant / bollard / planter，06-props 沿人行道烘焙）。材质：除信号灯头外全部共用
+ * PropShapes.makePropMaterial（Standard，金属度/粗糙度/夜间自发光逐顶点），行道树单独一个带逆光透射 + 风摆的材质；
+ * ?fx=off 退回 Lambert。垃圾桶 / 消防栓的漆色编码在实例 y 缩放里（PropShapes.tintScale），不用 instanceColor，不额外分 program。
+ * 路灯弯臂、信号灯悬臂、候车亭开口用 RoadClearance.roadDir 转向最近车行道；信号灯头朝进入路口的边的来车方向。
  */
 
 type PoolName = 'lamp' | 'signalPole' | 'signalHead' | 'busstop' | 'taxistand' | 'gantryBeam' | 'mrtexit' | 'linkwayRoof' | 'bridgeDeck' | 'stair' | 'post' | 'tree'
-const POOL_NAMES: PoolName[] = ['lamp', 'signalPole', 'signalHead', 'busstop', 'taxistand', 'gantryBeam', 'mrtexit', 'linkwayRoof', 'bridgeDeck', 'stair', 'post', 'tree']
+  | 'railing' | 'bin' | 'hydrant' | 'bollard' | 'planter'
+const POOL_NAMES: PoolName[] = ['lamp', 'signalPole', 'signalHead', 'busstop', 'taxistand', 'gantryBeam', 'mrtexit', 'linkwayRoof', 'bridgeDeck', 'stair', 'post', 'tree',
+  'railing', 'bin', 'hydrant', 'bollard', 'planter']
 
 interface Entry { pool: PoolName; m: THREE.Matrix4; edgeId: number }
 
-/** 灯头相对灯柱实例原点的偏移（DayNight 光晕用） */
-export const LAMP_HEAD = new THREE.Vector3(0.5, 5.45, 0)
+const NO_CAST = new Set<PoolName>(['railing', 'bin', 'hydrant', 'bollard', 'planter'])
 const SIGNAL_SNAP = 20
 /** 杆状道具与路缘的净空 (m) */
 const KERB_CLEAR = 0.5
 const RED = new THREE.Color(0xff2b2b)
 const tmpP: P2 = { x: 0, z: 0 }
+const tmpD: P2 = { x: 0, z: 0 }
 const tmpV = new THREE.Vector3(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3()
 const Y_AXIS = new THREE.Vector3(0, 1, 0)
-
-/** 给几何加上统一顶点色（合并后用一个 vertexColors 材质） */
-function colored(g: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
-  const c = new THREE.Color(hex)
-  const n = g.attributes.position.count
-  const arr = new Float32Array(n * 3)
-  for (let k = 0; k < n; k++) { arr[k * 3] = c.r; arr[k * 3 + 1] = c.g; arr[k * 3 + 2] = c.b }
-  g.setAttribute('color', new THREE.BufferAttribute(arr, 3))
-  return g
-}
-const box = (w: number, h: number, d: number, x: number, y: number, z: number, hex: number) => colored(new THREE.BoxGeometry(w, h, d).translate(x, y, z), hex)
-const cyl = (rt: number, rb: number, h: number, x: number, y: number, z: number, hex: number, seg = 6) => colored(new THREE.CylinderGeometry(rt, rb, h, seg).translate(x, y, z), hex)
-const merge = (parts: THREE.BufferGeometry[]) => {
-  const g = mergeGeometries(parts.map((p) => p.toNonIndexed()), false)!
-  for (const p of parts) p.dispose()
-  return g
-}
-
-const METAL = 0x4a4f57, DARK = 0x2b2f36, CONCRETE = 0x9a9ea5, WHITE = 0xe8eef5, BLUE = 0x2b6cb0
+/** 垃圾桶（绿 / 灰）与消防栓（红 / 黄）的漆色号（PropShapes.TINT_SRGB 下标），按坐标哈希挑 */
+const BIN_TINTS = [0, 0, 0, 1, 1]
+const HYDRANT_TINTS = [2, 2, 3]
+/** 坐标整数哈希（确定性：同一道具每次加载颜色一致） */
+const hash2 = (x: number, z: number) => ((Math.imul(Math.round(x * 10), 73856093) ^ Math.imul(Math.round(z * 10), 19349663)) >>> 0)
+/** 让本地 +x 指向世界方向 (tx, tz) 的 yaw（本地 +x 在世界里是 (cos yaw, −sin yaw)） */
+const yawFacingX = (tx: number, tz: number) => Math.atan2(-tz, tx)
 
 function makeGeometries(): Record<PoolName, THREE.BufferGeometry> {
-  return {
-    lamp: merge([cyl(0.1, 0.14, 5.5, 0, 2.75, 0, METAL), box(1.2, 0.25, 0.5, 0.5, 5.6, 0, METAL)]),
-    signalPole: merge([cyl(0.07, 0.09, 3.6, 0, 1.8, 0, DARK), box(0.44, 1.3, 0.44, 0, 3.9, 0, DARK)]),
-    signalHead: new THREE.BoxGeometry(0.5, 0.42, 0.5).translate(0, 3.9, 0),
-    busstop: merge([
-      box(1.5, 0.1, 4, 0, 2.6, 0, 0xdddfe3), box(0.05, 1.6, 4, -0.72, 1.7, 0, 0x9fb3c8),
-      cyl(0.05, 0.05, 2.6, 0.7, 1.3, -1.9, METAL), cyl(0.05, 0.05, 2.6, 0.7, 1.3, 1.9, METAL),
-      cyl(0.04, 0.04, 2.6, 0.7, 1.3, 2.4, METAL), box(0.06, 0.5, 0.45, 0.7, 2.35, 2.4, BLUE),
-    ]),
-    taxistand: merge([cyl(0.04, 0.05, 2.5, 0, 1.25, 0, METAL), box(0.6, 0.4, 0.06, 0, 2.2, 0, 0xf2c516)]),
-    // 横梁单位长（沿 z），实例按 len 缩放 z
-    gantryBeam: merge([box(0.5, 0.6, 1, 0, 5.6, 0, WHITE), box(0.52, 0.2, 1, 0, 5.3, 0, BLUE)]),
-    mrtexit: merge([box(3, 3, 3, 0, 1.5, 0, 0x8f949c), box(3.6, 0.2, 3.6, 0, 3.1, 0, 0x5a5f66)]),   // 站名牌由 Signage 提供
-    linkwayRoof: merge([box(2.5, 0.12, 1, 0, 2.75, 0, 0xb8bcc2)]),
-    bridgeDeck: merge([box(2.5, 0.4, 1, 0, 5.5, 0, CONCRETE), box(0.08, 1.0, 1, -1.21, 6.2, 0, METAL), box(0.08, 1.0, 1, 1.21, 6.2, 0, METAL)]),
-    stair: merge([box(2.5, 5.5, 4, 0, 2.75, 0, CONCRETE)]),
-    // 单位高柱子，实例按高度缩放 y
-    post: merge([cyl(0.12, 0.14, 1, 0, 0.5, 0, 0x6e7278)]),
-    tree: merge([cyl(0.18, 0.25, 2.2, 0, 1.1, 0, 0x6b4a2b), colored(new THREE.ConeGeometry(2.2, 4.5, 7).translate(0, 4.2, 0), 0x3f7a2e)]),
-  }
+  const g = {} as Record<PoolName, THREE.BufferGeometry>
+  for (const n of POOL_NAMES) g[n] = n === 'signalHead' ? signalHead() : SHAPES[n]()
+  return g
 }
 
 class Pool {
   mesh: THREE.InstancedMesh
+  /** colorable：信号灯头（Signals 每帧写 instanceColor） */
   constructor(readonly name: PoolName, public geo: THREE.BufferGeometry, readonly mat: THREE.Material, capacity: number, readonly colorable: boolean) {
     this.mesh = this.make(capacity)
   }
@@ -92,9 +75,11 @@ class Pool {
     const m = new THREE.InstancedMesh(this.geo, this.mat, capacity)
     m.count = 0
     m.frustumCulled = false
-    m.castShadow = !this.colorable
+    // P14.4 新增小件（护栏 / 垃圾桶 / 消防栓 / 护柱 / 花槽）不投影：数量多、影子细碎，进 CSM 三级阴影 pass 不划算；仍接收阴影
+    const cast = !this.colorable && !NO_CAST.has(this.name)
+    m.castShadow = cast
     m.receiveShadow = !this.colorable
-    m.userData.castShadow = !this.colorable
+    m.userData.castShadow = cast
     if (this.colorable) for (let k = 0; k < capacity; k++) m.setColorAt(k, RED)
     return m
   }
@@ -134,13 +119,17 @@ export class PropMeshes {
 
   constructor(private graph: RoadGraph, lampCapacity = 4096) {
     const geos = makeGeometries()
-    const lambert = new THREE.MeshLambertMaterial({ vertexColors: true })
-    const headMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+    // fx=off：退回 Lambert（启动时读一次档位；运行时切档沿用当前材质）
+    let simple = false
+    try { simple = loadSettings().fx === 'off' } catch { /* 非浏览器环境 */ }
+    const propMat = makePropMaterial(simple)
+    const treeMat = makeTreeMaterial(simple)
+    const headMat = makeSignalHeadMaterial()
     this.pools = {} as Record<PoolName, Pool>
     for (const name of POOL_NAMES) {
       const colorable = name === 'signalHead'
-      const cap = name === 'lamp' ? lampCapacity : colorable ? 512 : 256
-      const p = new Pool(name, geos[name], colorable ? headMat : lambert, cap, colorable)
+      const cap = name === 'lamp' ? lampCapacity : colorable ? 1024 : 256
+      const p = new Pool(name, geos[name], colorable ? headMat : name === 'tree' ? treeMat : propMat, cap, colorable)
       p.mesh.name = `prop:${name}`
       this.pools[name] = p
       this.group.add(p.mesh)
@@ -172,6 +161,12 @@ export class PropMeshes {
     this.pools[pool].setGeometry(g)
   }
 
+  /** 每帧推进道具着色器时钟（树的风摆） */
+  update(dt: number) {
+    const u = PROP_UNIFORMS.uPropTime
+    u.value = (u.value + dt) % 3600
+  }
+
   get stats() {
     let props = 0
     for (const list of this.chunks.values()) props += list.length
@@ -182,14 +177,16 @@ export class PropMeshes {
   addChunk(key: string, props: ChunkProp[], bodies: StaticBody[]) {
     if (this.chunks.has(key)) this.removeChunk(key)
     const entries: Entry[] = []
-    const push = (pool: PoolName, x: number, z: number, yaw: number, sx = 1, sy = 1, sz = 1, edgeId = -1, lx = 0, lz = 0) => {
+    const push = (pool: PoolName, x: number, z: number, yaw: number, sx = 1, sy = 1, sz = 1, edgeId = -1, lx = 0, lz = 0, y = 0) => {
       // 本地偏移 (lx, lz) 先按 yaw 旋转：x' = x cos + z sin，z' = −x sin + z cos
       const c = Math.cos(yaw), s = Math.sin(yaw)
-      tmpV.set(x + lx * c + lz * s, 0, z - lx * s + lz * c)
+      tmpV.set(x + lx * c + lz * s, y, z - lx * s + lz * c)
       tmpQ.setFromAxisAngle(Y_AXIS, yaw)
       tmpS.set(sx, sy, sz)
       entries.push({ pool, m: new THREE.Matrix4().compose(tmpV, tmpQ, tmpS), edgeId })
     }
+    // 朝最近车行道转 yaw（本地 +x 指向路面）；找不到（离路缘 > 3 m）返回 fallback
+    const towardRoad = (x: number, z: number, fallback: number) => this.clear.roadDir(x, z, tmpD) ? yawFacingX(tmpD.x, tmpD.z) : fallback
     const aabb = (x: number, z: number, r: number, h: number) => bodies.push({ minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r, h })
     // 旋转矩形足迹（本地中心 (lx,lz)，尺寸 w×d）→ 多边形碰撞体
     const rect = (x: number, z: number, yaw: number, lx: number, lz: number, w: number, d: number, h: number) => {
@@ -220,27 +217,39 @@ export class PropMeshes {
         case 0: {
           const q = fit(x, z, 0.2)
           if (!q) break                          // 落在路口圆心 / 夹缝里：数据误差，直接不放
-          push('lamp', q.x, q.z, yaw); aabb(q.x, q.z, 0.2, 5.5)
+          // 弯臂朝路面：灯头（LAMP_HEAD）伸到车行道上方
+          push('lamp', q.x, q.z, towardRoad(q.x, q.z, yaw)); aabb(q.x, q.z, 0.2, 6)
           break
         }
         case 1: {
           const q = fit(x, z, 0.15)
           if (q) { x = q.x; z = q.z }
           const edgeId = this.signalEdge(x, z)
-          push('signalPole', x, z, yaw)
-          if (edgeId >= 0) push('signalHead', x, z, yaw, 1, 1, 1, edgeId)
-          if (q) aabb(x, z, 0.15, 3.6)          // 推不出：保留外观（灯头）但不建碰撞体
+          // 杆：悬臂朝最近车行道；灯头：杆上一盏 + 悬臂末端一盏，都朝该入口边的来车方向（同 edgeId，Signals 一起变色）
+          const py = towardRoad(x, z, yaw)
+          push('signalPole', x, z, py)
+          if (edgeId >= 0) {
+            this.graph.dirAt(this.graph.edges[edgeId], this.graph.edges[edgeId].length, tmpD)
+            const hy = Math.atan2(-tmpD.x, -tmpD.z)
+            push('signalHead', x - tmpD.x * SIGNAL.headOut, z - tmpD.z * SIGNAL.headOut, hy, 1, 1, 1, edgeId, 0, 0, SIGNAL.poleHeadY)
+            const [ax, az] = local(x, z, py, SIGNAL.armHeadX, 0)
+            push('signalHead', ax, az, hy, 1, 1, 1, edgeId, 0, 0, SIGNAL.armHeadY)
+          }
+          if (q) aabb(x, z, 0.15, 5.6)          // 推不出：保留外观（灯头）但不建碰撞体
           break
         }
         case 2: {
-          push('busstop', x, z, yaw)
-          for (const lz of [-1.9, 1.9, 2.4]) { const [px, pz] = local(x, z, yaw, 0.7, lz); aabb(px, pz, 0.12, 2.6) }
-          rect(x, z, yaw, -0.72, 0, 0.1, 4, 1.7)
+          // 候车亭开口（+x）朝路面：数据 yaw 沿路，只需判断是否翻转 180°
+          const y2 = this.clear.roadDir(x, z, tmpD) && tmpD.x * Math.cos(yaw) - tmpD.z * Math.sin(yaw) < 0 ? yaw + Math.PI : yaw
+          push('busstop', x, z, y2)
+          rect(x, z, y2, -1.0, 0, 0.36, 5.4, 2.5)                      // 后排立柱 + 玻璃挡板 + 广告灯箱
+          rect(x, z, y2, -0.7, -1.0, 0.44, 2.6, 0.5)                   // 长椅
+          { const [px, pz] = local(x, z, y2, 1.0, -3.3); aabb(px, pz, 0.08, 2.9) }   // 站牌柱
           break
         }
         case 3: {
           const q = fit(x, z, 0.1)
-          if (q) { push('taxistand', q.x, q.z, yaw); aabb(q.x, q.z, 0.1, 2.5) }
+          if (q) { push('taxistand', q.x, q.z, yaw); aabb(q.x, q.z, 0.1, 2.6) }
           break
         }
         case 4: {
@@ -299,6 +308,20 @@ export class PropMeshes {
           if (q) { push('tree', q.x, q.z, yaw, s, s, s); aabb(q.x, q.z, 0.35, 2.2) }
           break
         }
+        // ---- P14.4 街道小件（烘焙时已避开车行道 / 建筑 / 其它道具，这里不再挪位）；都建碰撞体：人走不过去、车撞得上 ----
+        case 9: {
+          // 护栏：按 2 m 一节平铺（整段均分，节长 = len / n），末端补一根立柱
+          const len = Math.max(2, p.len || 4)
+          const n = Math.max(1, Math.round(len / 2)), seg = len / n
+          for (let k = 0; k < n; k++) push('railing', x, z, yaw, 1, 1, seg / 2, -1, 0, -len / 2 + (k + 0.5) * seg)
+          push('post', x, z, yaw, 0.35, 1.05, 0.35, -1, 0, len / 2)
+          rect(x, z, yaw, 0, 0, 0.12, len, 1.05)
+          break
+        }
+        case 10: push('bin', x, z, yaw, 1, tintScale(BIN_TINTS[hash2(x, z) % BIN_TINTS.length])); aabb(x, z, 0.27, 1.05); break
+        case 11: push('hydrant', x, z, yaw + (hash2(x, z) % 7) * 0.4, 1, tintScale(HYDRANT_TINTS[hash2(z, x) % HYDRANT_TINTS.length])); aabb(x, z, 0.18, 0.85); break
+        case 12: push('bollard', x, z, yaw); aabb(x, z, 0.1, 0.9); break
+        case 13: push('planter', x, z, yaw); rect(x, z, yaw, 0, 0, 0.5, 1.6, 0.6); break
         default: break
       }
     }

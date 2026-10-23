@@ -35,9 +35,13 @@ export type BuildingCls = 0 | 1 | 2 | 3 | 4
 export const BUILDING_CLS_NAMES = ['generic', 'hdb', 'shophouse', 'glass', 'landmark'] as const
 export type BuildingClsName = (typeof BUILDING_CLS_NAMES)[number]
 
-/** 道具类型：0 lamp, 1 signal, 2 busstop, 3 taxistand, 4 gantry, 5 mrtexit, 6 linkway, 7 bridge, 8 tree */
-export type PropType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
-export const PROP_TYPE_NAMES = ['lamp', 'signal', 'busstop', 'taxistand', 'gantry', 'mrtexit', 'linkway', 'bridge', 'tree'] as const
+/**
+ * 道具类型：0 lamp, 1 signal, 2 busstop, 3 taxistand, 4 gantry, 5 mrtexit, 6 linkway, 7 bridge, 8 tree,
+ * P14.4 街道小件（06-props 沿人行道撒点）：9 railing（路口行人护栏，len = 长度）, 10 bin, 11 hydrant, 12 bollard, 13 planter
+ * （只在末尾追加：旧 chunk 的编号不变；旧运行时遇到未知编号走 default 忽略）
+ */
+export type PropType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
+export const PROP_TYPE_NAMES = ['lamp', 'signal', 'busstop', 'taxistand', 'gantry', 'mrtexit', 'linkway', 'bridge', 'tree', 'railing', 'bin', 'hydrant', 'bollard', 'planter'] as const
 export type PropTypeName = (typeof PROP_TYPE_NAMES)[number]
 
 /** 标线类型：0 车道虚线, 1 斑马线, 2 停止线, 3 路缘 */

@@ -1,22 +1,25 @@
 // 第 6 步：街道小品（props）。从 LTA 灯柱 / 红绿灯 / 巴士站 / 德士站 / ERP 龙门架 / 地铁出口 /
 // 有盖走廊 / 天桥，以及公园与住宅路两侧的树，生成带朝向的点位 → data/geo/build/props.json。
 // 依赖 05-landuse 的 landuse.json（parks 多边形用于种树）。
+// P14.4：再沿 graph.json 的人行道（路缘外 2 m 带）撒街道小件——路口行人护栏 / 垃圾桶 / 消防栓 / 护柱 / 花槽，
+// 避开路口圆帽、斑马线、车行道、建筑足迹与已有道具（依赖 03-roads 的 graph.json、04-buildings 的 buildings.json）。
 // 用法：node scripts/geo/06-props.ts
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { GEO_DIR, LOCAL_DIR, ensureDir, fileSize, fmtBytes, log, warn } from './lib/common.ts';
 import { pointInPolygon } from './lib/raster.ts';
-import { RoadBands } from './lib/clearance.ts';
+import { PolyGrid, RoadBands, type Poly } from './lib/clearance.ts';
+import type { Ring } from './lib/geom.ts';
 import type { GraphData } from './lib/graph-types.ts';
 
-type PropType = 'lamp' | 'signal' | 'busstop' | 'taxistand' | 'gantry' | 'mrtexit' | 'linkway' | 'bridge' | 'tree';
+type PropType = 'lamp' | 'signal' | 'busstop' | 'taxistand' | 'gantry' | 'mrtexit' | 'linkway' | 'bridge' | 'tree' | 'railing' | 'bin' | 'hydrant' | 'bollard' | 'planter';
 interface Prop {
   type: PropType;
   x: number;
   z: number;
   /** 弧度，0 朝 +z，逆时针（从 +z 转向 +x）为正：yaw = atan2(dx, dz) */
   yaw: number;
-  /** gantry 跨度 / linkway、bridge 主轴长度（m） */
+  /** gantry 跨度 / linkway、bridge 主轴长度 / railing 护栏长度（m） */
   len?: number;
   name?: string;
 }
@@ -42,6 +45,19 @@ const ROAD_TREE_STEP = 25;
 const MRT_R = 2.1;
 const MRT_MARGIN = 0.8;
 const MRT_MAX_PUSH = 12; // 8 m 会丢掉 City Hall C / Raffles Place J / Esplanade B（需 8.5–11 m）
+/** 新加坡靠左行驶：边的行驶侧人行道在左（与运行时 config.DRIVE_SIDE 一致） */
+const DRIVE_SIDE = -1;
+/** 街道小件：距路缘（车行道边）的横向距离 (m)。人行道 2 m 宽、行人走中线（路缘外 1 m），小件都贴路缘一侧放 */
+const SF_OFF = { railing: 0.3, bin: 0.45, hydrant: 0.4, bollard: 0.35, planter: 0.4 } as const;
+/** 撒点间距 (m)：垃圾桶 / 消防栓 / 花槽按边弧长等距（带确定性抖动） */
+const BIN_STEP = 95;
+const HYDRANT_STEP = 140;
+const PLANTER_STEP = 90;
+/** 护栏：路口一侧最长 12 m（2 m 一节），离路口圆帽 1 m 起 */
+const RAIL_MAX = 12;
+const RAIL_MIN = 4;
+/** 斑马线全长（与 08-roadmesh ZEBRA_LEN 一致） */
+const ZEBRA_LEN = 2.4;
 /** 米制 → 弧度 yaw（0 朝 +z） */
 const yawOf = (dx: number, dz: number) => Math.atan2(dx, dz);
 
@@ -284,6 +300,202 @@ class PolyIndex {
 }
 
 // ---------------------------------------------------------------------------
+// P14.4 街道小件：沿 graph.json 每条边的行驶侧人行道撒点
+// ---------------------------------------------------------------------------
+interface BuildingRec {
+  ring: number[];
+  holes?: number[][];
+}
+const toRing = (flat: number[]): Ring => {
+  const r: Ring = [];
+  for (let k = 0; k + 1 < flat.length; k += 2) r.push([flat[k], flat[k + 1]] as Pos);
+  return r;
+};
+function loadBuildingGrid(buildDir: string): PolyGrid | null {
+  const path = resolve(buildDir, 'buildings.json');
+  if (fileSize(path) <= 0) {
+    warn('buildings.json missing — street furniture not checked against footprints');
+    return null;
+  }
+  const grid = new PolyGrid();
+  for (const b of JSON.parse(readFileSync(path, 'utf8')) as BuildingRec[]) grid.add({ outer: toRing(b.ring), holes: (b.holes ?? []).map(toRing) } as Poly);
+  return grid;
+}
+
+/** 已占位的圆（4 m 网格）：已有道具 + 新撒的小件互相避让 */
+class Occupancy {
+  private cells = new Map<number, number[]>();
+  private key(cx: number, cz: number) {
+    return (cx + 8192) * 16384 + (cz + 8192);
+  }
+  add(x: number, z: number, r: number) {
+    const k = this.key(Math.floor(x / 4), Math.floor(z / 4));
+    let l = this.cells.get(k);
+    if (!l) this.cells.set(k, (l = []));
+    l.push(x, z, r);
+  }
+  /** 半径 r 的圆与已占位圆的间隙 < gap 即冲突（查 ±2 格 = 8 m：占位圆 ≤ 4 m、查询 r + gap ≤ 4 m） */
+  hit(x: number, z: number, r: number, gap: number): boolean {
+    const cx = Math.floor(x / 4), cz = Math.floor(z / 4);
+    for (let i = cx - 2; i <= cx + 2; i++)
+      for (let j = cz - 2; j <= cz + 2; j++) {
+        const l = this.cells.get(this.key(i, j));
+        if (!l) continue;
+        for (let k = 0; k < l.length; k += 3) if (Math.hypot(l[k] - x, l[k + 1] - z) < l[k + 2] + r + gap) return true;
+      }
+    return false;
+  }
+}
+
+/** 折线弧长 t 处的点与单位方向 */
+function polyAt(pts: number[], cum: number[], t: number): { x: number; z: number; dx: number; dz: number } {
+  const n = pts.length >> 1;
+  let k = 0;
+  while (k < n - 2 && cum[k + 1] < t) k++;
+  const ax = pts[k * 2], az = pts[k * 2 + 1], bx = pts[k * 2 + 2], bz = pts[k * 2 + 3];
+  const L = cum[k + 1] - cum[k];
+  const u = L > 1e-6 ? Math.max(0, Math.min(1, (t - cum[k]) / L)) : 0;
+  const dx = L > 1e-6 ? (bx - ax) / L : 1, dz = L > 1e-6 ? (bz - az) / L : 0;
+  return { x: ax + (bx - ax) * u, z: az + (bz - az) * u, dx, dz };
+}
+
+function streetFurniture(g: GraphData, bands: RoadBands, buildings: PolyGrid | null, existing: Prop[]): { props: Prop[]; stats: Record<string, number> } {
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const r3 = (v: number) => Math.round(v * 1000) / 1000;
+  // occ：全部占位（小件之间、小件与杆/树互相避让）；big：只含大件（巴士站 / 地铁口 / 的士站 / 走廊 / 天桥），
+  // 护栏只避大件——现实里护栏本来就绕着灯杆、信号灯杆走（杆在路缘外 0.5 m，护栏 0.3 m，视觉上不穿插）
+  const occ = new Occupancy();
+  const big = new Occupancy();
+  const both = (x: number, z: number, r: number) => {
+    occ.add(x, z, r);
+    big.add(x, z, r);
+  };
+  // 已有道具的占位半径（巴士站 / 地铁口 / 有盖走廊 / 天桥按外形近似）
+  for (const p of existing) {
+    switch (p.type) {
+      case 'busstop': both(p.x, p.z, 4); break;
+      case 'mrtexit': both(p.x, p.z, 3.2); break;
+      case 'taxistand': both(p.x, p.z, 1.5); break;
+      case 'lamp': case 'signal': occ.add(p.x, p.z, 0.4); break;
+      case 'tree': occ.add(p.x, p.z, 0.8); break;
+      case 'linkway': case 'bridge': {
+        // 沿主轴每 2 m 一个圆（天桥两端再外延 10 m 给楼梯）
+        const len = (p.len ?? 6) + (p.type === 'bridge' ? 20 : 0);
+        const ux = Math.sin(p.yaw), uz = Math.cos(p.yaw);
+        for (let s = -len / 2; s <= len / 2; s += 2) both(p.x + ux * s, p.z + uz * s, p.type === 'bridge' ? 2.5 : 1.6);
+        break;
+      }
+      default: break;
+    }
+  }
+  const rand = prng(1404);
+  const out: Prop[] = [];
+  const stats: Record<string, number> = { railing: 0, railM: 0, bin: 0, hydrant: 0, bollard: 0, planter: 0, rejected: 0 };
+  /** 点可放：不侵入车行道（含 service 与路口圆帽）、不在建筑内 */
+  const clearAt = (x: number, z: number, r: number) => bands.pointDepth(x, z, r + 0.05).depth <= 1e-3 && !(buildings?.contains(x, z) ?? false);
+  const NO_WALK = new Set(['expressway', 'trunk']);
+  const BUSY = new Set(['primary', 'secondary', 'tertiary']);
+  for (const e of g.edges) {
+    if (NO_WALK.has(e.kind) || e.bridge) continue;
+    const rev = e.reverse !== null ? g.edges[e.reverse] : null;
+    const half = ((e.lanes + (rev ? rev.lanes : 0)) * e.laneW) / 2;
+    const pts = e.pts;
+    const cum = [0];
+    for (let k = 2; k + 1 < pts.length; k += 2) cum.push(cum[cum.length - 1] + Math.hypot(pts[k] - pts[k - 2], pts[k + 1] - pts[k - 1]));
+    const L = cum[cum.length - 1];
+    const nFrom = g.nodes[e.from], nTo = g.nodes[e.to];
+    const t0 = nFrom.jr + 1, t1 = L - nTo.jr - 1;
+    if (t1 - t0 < 4) continue;
+    // 双向路每个方向只管自己的行驶侧；单向路两侧都管
+    const sides = rev ? [DRIVE_SIDE] : [DRIVE_SIDE, -DRIVE_SIDE];
+    const nearCrossing = (a: number, b: number) => e.crossings.some((c) => c > a - ZEBRA_LEN / 2 - 1.5 && c < b + ZEBRA_LEN / 2 + 1.5);
+    for (const side of sides) {
+      const at = (t: number, d: number) => {
+        const q = polyAt(pts, cum, t);
+        const off = side * (half + d);
+        return { x: q.x - q.dz * off, z: q.z + q.dx * off, yaw: yawOf(q.dx, q.dz) };
+      };
+      const place = (type: keyof typeof SF_OFF, t: number, r: number, gap: number, len = 0): boolean => {
+        const d = SF_OFF[type];
+        const c = at(t, d);
+        // 长件（花槽）：两端也要可放
+        const ends = len > 0 ? [at(t - len / 2, d), at(t + len / 2, d)] : [];
+        if (!clearAt(c.x, c.z, r) || ends.some((p) => !clearAt(p.x, p.z, r)) || occ.hit(c.x, c.z, r + len / 2, gap) || nearCrossing(t - len / 2, t + len / 2)) {
+          stats.rejected++;
+          return false;
+        }
+        occ.add(c.x, c.z, r + len / 2);
+        out.push({ type, x: r2(c.x), z: r2(c.z), yaw: r3(c.yaw) });
+        stats[type]++;
+        return true;
+      };
+      // 1) 路口行人护栏：信号灯路口的较繁忙道路，两端各一段（离路口圆帽 1 m 起，2 m 一节），整段逐米可放才放，否则缩短
+      if (BUSY.has(e.kind)) {
+        for (const end of [0, 1]) {
+          if (!(end ? nTo : nFrom).signal) continue;
+          // 路口口部常有斑马线：护栏从斑马线外侧开始
+          let s0 = t0, s1 = t1;
+          for (const c of e.crossings) {
+            if (!end && c >= t0 - ZEBRA_LEN && c < t0 + 16) s0 = Math.max(s0, c + ZEBRA_LEN / 2 + 1.6);
+            if (end && c <= t1 + ZEBRA_LEN && c > t1 - 16) s1 = Math.min(s1, c - ZEBRA_LEN / 2 - 1.6);
+          }
+          for (let len = Math.min(RAIL_MAX, Math.floor((s1 - s0) / 4) * 2); len >= RAIL_MIN; len -= 4) {
+            const a = end ? s1 - len : s0, b = a + len;
+            if (nearCrossing(a, b)) continue;
+            let ok = true;
+            for (let s = a; s <= b + 1e-6 && ok; s += 1) {
+              const p = at(s, SF_OFF.railing);
+              ok = clearAt(p.x, p.z, 0.1) && !big.hit(p.x, p.z, 0.1, 0.3);
+            }
+            if (!ok) continue;
+            for (let s = a; s <= b + 1e-6; s += 2) {
+              const p = at(s, SF_OFF.railing);
+              both(p.x, p.z, 0.3);
+            }
+            const pa = at(a, SF_OFF.railing), pb = at(b, SF_OFF.railing);
+            out.push({ type: 'railing', x: r2((pa.x + pb.x) / 2), z: r2((pa.z + pb.z) / 2), yaw: r3(yawOf(pb.x - pa.x, pb.z - pa.z)), len: r2(Math.hypot(pb.x - pa.x, pb.z - pa.z)) });
+            stats.railing++;
+            stats.railM += len;
+            break;
+          }
+        }
+      }
+      // 2) 护柱：较繁忙道路的斑马线两侧各一根（行人过街口防车冲上人行道）
+      for (const c of BUSY.has(e.kind) ? e.crossings : []) {
+        if (c < t0 || c > t1) continue;
+        for (const dir of [-1, 1]) {
+          for (const k of [0]) {
+            const p = at(c + dir * (ZEBRA_LEN / 2 + 0.6 + k * 1.3), SF_OFF.bollard);
+            if (!clearAt(p.x, p.z, 0.12) || occ.hit(p.x, p.z, 0.12, 0.3)) {
+              stats.rejected++;
+              continue;
+            }
+            occ.add(p.x, p.z, 0.15);
+            out.push({ type: 'bollard', x: r2(p.x), z: r2(p.z), yaw: r3(p.yaw) });
+            stats.bollard++;
+          }
+        }
+      }
+      // 3) 垃圾桶 / 消防栓 / 花槽：等距 + 抖动（service 路不放）
+      if (e.kind === 'service') continue;
+      const span = t1 - t0;
+      const scatter = (type: keyof typeof SF_OFF, step: number, r: number, gap: number, len = 0) => {
+        let t = t0 + step * (0.3 + 0.7 * rand());
+        while (t < t1) {
+          // 放不下就往前挪 3 m 再试一次
+          if (!place(type, t, r, gap, len) && t + 3 < t1) place(type, t + 3, r, gap, len);
+          t += step * (0.8 + 0.4 * rand());
+        }
+      };
+      if (span > 20) scatter('bin', BIN_STEP, 0.3, 2);
+      if (span > 30) scatter('hydrant', HYDRANT_STEP, 0.2, 2);
+      if (BUSY.has(e.kind) && span > 12) scatter('planter', PLANTER_STEP, 0.3, 1.5, 1.6);
+    }
+  }
+  return { props: out, stats };
+}
+
+// ---------------------------------------------------------------------------
 // 主流程
 // ---------------------------------------------------------------------------
 function main(): void {
@@ -491,6 +703,19 @@ function main(): void {
     bump(p.type);
   }
 
+  // P14.4 街道小件（在去重后追加：已有道具都已定位，用来避让）
+  const sf = bands && fileSize(graphPath) > 0
+    ? streetFurniture(JSON.parse(readFileSync(graphPath, 'utf8')) as GraphData, bands, loadBuildingGrid(buildDir), deduped)
+    : null;
+  if (!sf) warn('graph.json missing — street furniture skipped');
+  else {
+    for (const p of sf.props) {
+      deduped.push(p);
+      bump(p.type);
+    }
+    log(`street furniture: ${sf.props.length} ${JSON.stringify(sf.stats)}`);
+  }
+
   const out = {
     props: deduped,
     stats: {
@@ -501,6 +726,7 @@ function main(): void {
       gantryFromLine,
       mrtExitClearance: { ...mrt, maxPush: r2(mrt.maxPush) },
       trees: { park: parkTrees.length, road: roadTrees.length, beforeCap: treeTotal, cap: TREE_CAP },
+      streetFurniture: sf?.stats ?? null,
     },
   };
   const outPath = resolve(buildDir, 'props.json');

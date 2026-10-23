@@ -248,7 +248,7 @@ export function patchMarking(sh: { vertexShader: string; fragmentShader: string;
 		float wear = sNoise( p * 0.8 ) * 0.6 + sNoiseAA( p + 7.0, 2.3, pix ) * 0.4;
 		float chips = sNoiseAA( p - 13.0, 9.0, pix );
 		// 缺损：磨损重处剥落成沥青色小块；像素足迹大于 3 cm 时不剥（远处不闪）
-		float lose = smoothstep( 0.68, 0.74, wear * 0.7 + chips * 0.45 ) * near * ( 1.0 - smoothstep( 0.015, 0.04, pix ) );
+		float lose = smoothstep( 0.80, 0.86, wear * 0.7 + chips * 0.45 ) * near * ( 1.0 - smoothstep( 0.015, 0.04, pix ) );
 		if ( lose > 0.5 ) discard;
 		diffuseColor.rgb *= mix( 1.0, mix( 0.62, 1.0, smoothstep( 0.25, 0.65, wear ) ), near );
 		vec3 sWet = sWetMasks( sPuddleField( p ), 0.0 );

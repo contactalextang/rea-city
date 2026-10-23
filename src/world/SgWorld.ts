@@ -210,6 +210,7 @@ export class SgWorld implements WorldSource {
 
   update(px: number, pz: number, dt: number) {
     this.chunks.update(px, pz)
+    this.props.update(dt)
     this.landmarks?.update(dt)
     if (!this.firstLoadedAt && this.chunks.idle && this.chunks.stats.loaded > 0) this.firstLoadedAt = performance.now()
   }
