@@ -9,12 +9,14 @@ import type { Signage } from './Signage'
 import { isReplaced } from './Landmarks'
 import { makeRoadMaterial } from './RoadMaterial'
 import { KERB_TOP, patchSidewalk } from './StreetShaders'
+import { BuildingDetail } from './BuildingDetail'
 
 /**
  * 区块流式加载：以玩家所在块为中心的 5×5 为目标集合，每帧最多发起 1 次 fetch、构建 1 个块；
  * 离开 7×7 的块卸载（释放几何、world.removeChunk、道具/标线实例移除）。
  * 每块产物：路面 Mesh（y=0）、人行道 Mesh（y=0.12，含运行时从人行道边界生成的路缘立面，见 buildWalkGeometry）、建筑合并 Mesh（窗格贴图 + 顶点色）、碰撞体、道具实例、标线实例、
  * 文字招牌（Signage，可选：只在玩家周围 5×5 块激活）。
+ * P14.2 建筑几何细节件（BuildingDetail：女儿墙/檐口/屋顶设备/五脚基檐篷/空调外机/建筑前铺装）只在 3×3 内生成并合并成全局网格。
  */
 export const LOAD_RADIUS = 2
 export const UNLOAD_RADIUS = 3
@@ -29,6 +31,10 @@ export interface ChunkStats {
   marks: number
   triangles: number
   failed: number
+  /** P14.2 细节件：合并块数 / 三角数（细节 + 铺装）/ 每块生成耗时 */
+  detailChunks: number
+  detailTris: number
+  detailGenMs: number
 }
 
 interface Built {
@@ -64,6 +70,8 @@ export class ChunkManager {
   /** 累计被地标模型取代而跳过挤出的楼栋数（调试用） */
   replaced = 0
   private wanted: string[] = []
+  /** P14.2 建筑几何细节件（3×3） */
+  readonly detail: BuildingDetail
 
   constructor(
     private manifest: Manifest,
@@ -76,6 +84,8 @@ export class ChunkManager {
     this.group.name = 'chunks'
     for (const c of manifest.chunks) this.files.set(`${c.i}_${c.j}`, c.file)
     this.wallMat = makeWallMaterial()
+    this.detail = new BuildingDetail(world, this.walkMat)
+    this.group.add(this.detail.group)
   }
 
   private get bldMat(): THREE.Material { return this.facadeOn ? this.facadeMat : this.wallMat }
@@ -96,7 +106,11 @@ export class ChunkManager {
     for (const b of this.built.values()) { buildings += b.buildings; props += b.props; triangles += b.tris }
     let pending = 0
     for (const k of this.wanted) if (!this.built.has(k)) pending++
-    return { loaded: this.built.size, pending, buildings, props, marks: this.marks.count, triangles, failed: this.failed.size }
+    const d = this.detail.stats
+    return {
+      loaded: this.built.size, pending, buildings, props, marks: this.marks.count, triangles, failed: this.failed.size,
+      detailChunks: d.chunks, detailTris: d.tris + d.apronTris, detailGenMs: d.genMsAvg,
+    }
   }
 
   /** 目标集合里的块是否全部构建完成 */
@@ -118,13 +132,16 @@ export class ChunkManager {
       break
     }
     // 2. 构建一个块（优先离中心近的）
+    let built = false
     for (const key of this.wanted) {
       const data = this.decoded.get(key)
       if (!data) continue
       this.decoded.delete(key)
       this.build(key, data)
+      built = true
       break
     }
+    this.detail.update(ci, cj, FACADE.on, built)
     if (FACADE.on !== this.facadeOn) {
       this.facadeOn = FACADE.on
       for (const b of this.built.values()) for (const m of b.meshes) if (m.name.startsWith('bld:')) m.material = this.bldMat
@@ -210,9 +227,12 @@ export class ChunkManager {
 
     // 建筑：合并成一个 Mesh；碰撞体按足迹。被地标精做模型取代的楼（Landmarks.isReplaced）只留碰撞体
     const bodies: StaticBody[] = []
+    /** 被地标取代的楼（细节件也跳过） */
+    const skip = new Uint8Array(c.buildings.length)
     if (c.buildings.length) {
       const sink = new GeomSink()
-      for (const b of c.buildings) {
+      for (let bi = 0; bi < c.buildings.length; bi++) {
+        const b = c.buildings[bi]
         if (b.ring.length < 6) continue
         bodies.push(polyBody(b.ring, b.h))
         const name = b.nameIdx >= 0 ? c.names[b.nameIdx] : undefined
@@ -221,7 +241,7 @@ export class ChunkManager {
           let cx = 0, cz = 0
           const n = b.ring.length >> 1
           for (let k = 0; k < b.ring.length; k += 2) { cx += b.ring[k]; cz += b.ring[k + 1] }
-          if (isReplaced(name, cx / n, cz / n)) { this.replaced++; continue }
+          if (isReplaced(name, cx / n, cz / n)) { this.replaced++; skip[bi] = 1; continue }
         }
         tris += appendBuilding(sink, b, buildingColor(b.cls, tmpColor, b.id))
       }
@@ -231,6 +251,11 @@ export class ChunkManager {
         m.castShadow = true; m.receiveShadow = true
         meshes.push(m)
       }
+    }
+    {
+      const [i, j] = key.split('_').map(Number)
+      const { minX, minZ } = this.manifest.grid
+      this.detail.addChunk(key, c, skip, minX + i * CHUNK_SIZE, minZ + j * CHUNK_SIZE)
     }
     this.props.addChunk(key, c.props, bodies)
     this.marks.addChunk(key, c.marks)
@@ -249,6 +274,7 @@ export class ChunkManager {
     this.props.removeChunk(key)
     this.marks.removeChunk(key)
     this.signs?.removeChunk(key)
+    this.detail.removeChunk(key)
   }
 
   /** 全部卸载（切换世界时） */
@@ -257,6 +283,7 @@ export class ChunkManager {
     this.decoded.clear()
     this.wanted = []
     this.props.flush(); this.marks.flush(); this.signs?.flush()
+    this.detail.dispose()
     this.roadMat.dispose(); this.walkMat.dispose(); this.wallMat.dispose(); this.facadeMat.dispose()
     this.group.removeFromParent()
   }

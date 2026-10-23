@@ -26,6 +26,44 @@ import * as THREE from 'three'
 /** fx 档开关：DayNight 每帧按 settings.fx 写入；ChunkManager 据此在新旧外墙材质间切换 */
 export const FACADE = { on: true }
 
+/**
+ * 立面网格常量（米）：着色器与 BuildingDetail（P14.2 几何细节件在 JS 端复算窗格/开间）共用的唯一真相。
+ * 改这里两边同时生效；GLSL 里通过模板插值写成浮点字面量。
+ */
+export const FACADE_DIMS = {
+  /** 店屋首层（五脚基）顶高；首层顶招牌梁 3.2–3.5 m */
+  shopBase: 3.5,
+  shopBeam0: 3.2,
+  /** 层高基准：HDB / 店屋 / 玻璃塔（+0.5·种子）/ 普通楼（+0.35·种子） */
+  floorHdb: 2.8,
+  floorShop: 3.4,
+  floorGlass: 3.6,
+  floorGeneric: 3.05,
+  /** 开间基准：HDB 走廊面 / HDB 窗户面 / 店屋 / 玻璃 / 普通楼带形窗 / 普通楼方窗（+0.9·hash） */
+  bayHdbCorr: 3.2,
+  bayHdb: 2.6,
+  bayShop: 5.0,
+  bayGlass: 1.5,
+  bayRibbon: 1.8,
+  bayGeneric: 2.6,
+  /** 墙角柱宽：玻璃 / 店屋 / 其它 */
+  pierGlass: 0.15,
+  pierShop: 0.35,
+  pierOther: 0.7,
+  /** 顶部女儿墙（不开窗）高度：玻璃 / 其它 */
+  parapetGlass: 0.6,
+  parapet: 0.9,
+  /** HDB 走廊面判定：立面随机 < corrP 且立面宽 > corrMinW；普通楼带形窗判定 fract(seed·3.17) < ribbonP */
+  corrP: 0.45,
+  corrMinW: 9.0,
+  ribbonP: 0.38,
+  /** 店屋五脚基拱廊柱宽（开间两侧各一根） */
+  arcadeCol: 0.38,
+} as const
+/** 数字 → GLSL 浮点字面量 */
+const gf = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : String(v))
+const D = FACADE_DIMS
+
 const FACADE_PARS = /* glsl */`
 varying vec4 vFacWall;
 varying vec4 vFacBld;
@@ -135,21 +173,21 @@ void facadeEval( vec3 baseCol, vec2 fw, float night, out vec3 alb, out float rou
 
 	bool isHdb = cls == 1.0, isShop = cls == 2.0, isGlass = cls == 3.0;
 	// HDB 两种立面：走廊面（横向栏板带）/ 窗户面
-	bool corridor = isHdb && runSeed < 0.45 && W > 9.0;
+	bool corridor = isHdb && runSeed < ${gf(D.corrP)} && W > ${gf(D.corrMinW)};
 	// 普通楼：带形窗 / 方窗
-	bool ribbon = !isHdb && !isShop && !isGlass && fract( seed * 3.17 ) < 0.38;
+	bool ribbon = !isHdb && !isShop && !isGlass && fract( seed * 3.17 ) < ${gf(D.ribbonP)};
 
 	// —— 风格参数 ——
-	float floorT = isHdb ? 2.8 : isShop ? 3.4 : isGlass ? 3.6 + 0.5 * seed : 3.05 + 0.35 * seed;
-	float yBase = isShop ? 3.5 : 0.0;               // 店屋底层五脚基另算
-	float parapet = isGlass ? 0.6 : 0.9;
+	float floorT = isHdb ? ${gf(D.floorHdb)} : isShop ? ${gf(D.floorShop)} : isGlass ? ${gf(D.floorGlass)} + 0.5 * seed : ${gf(D.floorGeneric)} + 0.35 * seed;
+	float yBase = isShop ? ${gf(D.shopBase)} : 0.0;               // 店屋底层五脚基另算
+	float parapet = isGlass ? ${gf(D.parapetGlass)} : ${gf(D.parapet)};
 	// 层高按楼高取整（顶层不被女儿墙切半）：可用高度 / 层数，层高偏差超过 ±30% 时退回标准层高
 	float avail = H - yBase - parapet;
 	float nFloors = max( floor( avail / floorT + 0.5 ), 1.0 );
 	float floorH = avail / nFloors;
 	if ( floorH < floorT * ( nFloors < 1.5 ? 0.55 : 0.72 ) || floorH > floorT * 1.35 ) floorH = floorT;
-	float bayT = isHdb ? ( corridor ? 3.2 : 2.6 ) : isShop ? 5.0 : isGlass ? 1.5 : ( ribbon ? 1.8 : 2.6 + 0.9 * fract( seed * 7.3 ) );
-	float pierT = isGlass ? 0.15 : isShop ? 0.35 : 0.7;
+	float bayT = isHdb ? ( corridor ? ${gf(D.bayHdbCorr)} : ${gf(D.bayHdb)} ) : isShop ? ${gf(D.bayShop)} : isGlass ? ${gf(D.bayGlass)} : ( ribbon ? ${gf(D.bayRibbon)} : ${gf(D.bayGeneric)} + 0.9 * fract( seed * 7.3 ) );
+	float pierT = isGlass ? ${gf(D.pierGlass)} : isShop ? ${gf(D.pierShop)} : ${gf(D.pierOther)};
 	float pier = closedLoop > 0.5 ? 0.0 : min( pierT, W * 0.2 );
 	float inner = W - 2.0 * pier;
 	float bays = max( floor( inner / bayT + 0.5 ), 1.0 );
@@ -301,12 +339,12 @@ void facadeEval( vec3 baseCol, vec2 fw, float night, out vec3 alb, out float rou
 
 	// —— 店屋五脚基：柱 + 拱券开口，进深 2.4 m 后是店面玻璃 / 卷闸门 ——
 	if ( arcade && solid < 0.5 ) {
-		float colW = 0.38;
+		float colW = ${gf(D.arcadeCol)};
 		float cu = ( xm - colW ) / ( bw - 2.0 * colW );
 		float archTop = 2.75 + 0.45 * sqrt( max( 0.0, 1.0 - pow( ( cu - 0.5 ) / 0.5, 2.0 ) ) );
 		float open = facBand( xm, colW, bw - colW, fw.x ) * facBand( y, -1.0, archTop, fw.y );
 		// 底层檐口/招牌梁（3.2–3.5 m）
-		float beam = facBand( y, 3.2, 3.5, fw.y );
+		float beam = facBand( y, ${gf(D.shopBeam0)}, ${gf(D.shopBase)}, fw.y );
 		c = mix( c, c * 0.85, beam ); hgt += 0.05 * beam;
 		hgt -= 0.25 * open;
 		// 拱内：视差到店面平面

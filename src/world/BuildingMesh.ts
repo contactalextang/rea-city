@@ -42,7 +42,7 @@ export function buildingColor(cls: BuildingCls, out = new THREE.Color(), id?: nu
 }
 
 /** 鞋带公式有向面积 ×2（(x,z) 平面） */
-function shoelace(r: ArrayLike<number>): number {
+export function shoelace(r: ArrayLike<number>): number {
   const n = r.length >> 1
   let a = 0
   for (let k = 0; k < n; k++) {
@@ -53,7 +53,7 @@ function shoelace(r: ArrayLike<number>): number {
 }
 
 /** 返回朝向满足要求的环（鞋带符号 wantNegative 为 true 时要求 < 0），必要时拷贝反转 */
-function oriented(r: Float32Array, wantNegative: boolean): Float32Array {
+export function oriented(r: Float32Array, wantNegative: boolean): Float32Array {
   const s = shoelace(r)
   if ((s < 0) === wantNegative || s === 0) return r
   const n = r.length >> 1

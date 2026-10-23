@@ -95,10 +95,10 @@
 > 起因：对照 mrdoob「Slop New York」（three.js 官方转发），差距不在后期而在表面内容：程序化外墙/室内映射、檐口等几何细节件、路缘与路面/人行道着色器、像样的街道家具。保持 WebGL + pmndrs，手法移植成 GLSL。截图脚本 `__game.camAbs` 固定世界机位（c77e9f7）。
 - [x] P14.1 程序化外墙：src/world/FacadeShader.ts（Standard + onBeforeCompile，全城 1 个 program 'rea-facade'）；BuildingMesh 属性 aWall(s, 立面宽, 随机, 闭合) / aBld(种子, cls, 楼高, 色调)，转角 <30° 的边并成一段立面、开间取整、墙角柱；HDB 走廊栏板带 + 视差走廊 / 店屋五脚基拱廊 + 粉彩开间 + 百叶窗 + 瓦顶 / 玻璃塔竖梃幕墙 / 普通楼带形窗；凹窗视差 + 室内盒房间 + 夜窗 HDR；风化与导数凹凸；fwidth 分轴远处淡化。颜色按建筑 id 确定（修跨版本像素对比）。fx=off 仍走 Lambert 窗格，运行时切档换材质。high programs +1。遗留：近处冷白亮窗略过曝、斜边导数凹凸轻微锯齿、Landmarks/skyline 未改
 - [x] P14.3 街道表面：src/world/StreetShaders.ts（onBeforeCompile 注入沥青色差/补丁/骨料/油污、人行道 30 cm 红灰透水砖或 60 cm 混凝土板 + fwidth 砖缝、标线磨损剥落、地面草/土细节、积水三层遮罩 uStreetWet）；路缘运行时由人行道三角网边界生成（ChunkManager.buildWalkGeometry，临车道 0.15 m 立面 + 路缘顶 + 倒角高光，外缘落地），与人行道同一网格 draw 不增；fx=off 关细节（setStreetDetail）。遗留：路缘不投影、拐角条带重叠、无无障碍坡口、快速路无人行道落差
-- [ ] P14.2 建筑几何细节件（女儿墙/檐口、店屋五脚基、HDB 架空层柱、屋顶水箱/机房、空调外机；仅近处块）
+- [x] P14.2 建筑几何细节件：src/world/BuildingDetail.ts（每块 0.5 m 栅格判定墙外是车行道/人行道/楼；女儿墙压顶、店屋两级檐口 + 招牌梁线脚、临街五脚基檐篷 + 与着色器对齐的柱（空地 ≥1.6 m 才立柱并加碰撞体，否则无柱悬挑）、空调外机按着色器窗格复算、HDB 机房水箱/普通楼设备与冷却塔、楼前铺装带铺到人行道）；只在 3×3 块内，合并成 2 个全局网格，draw +≤5、三角 +200–300k、每块 5–6 ms；FacadeShader 导出 FACADE_DIMS；`?detail=0`。遗留：檐篷前沿统一奶白、无实体晾衣杆、退界 >10 m 只铺 1.5 m
 - [x] P14.4 街道家具：src/world/PropShapes.ts（程序化低模 + aPbr 逐顶点金属度/粗糙度/自发光，道具 Standard 材质；弯臂路灯 LAMP_HEAD (1.75,6.12,0)、信号杆悬臂双灯头、拱顶巴士站 + 广告灯箱、MRT 亭、ERP 龙门、linkway 等）；PropType 追加 9 railing/10 bin/11 hydrant/12 bollard/13 planter，06-props streetFurniture() 新增 4347 件（道具 13810→18157，public/world/sg +87 KB），护栏/花槽多边形碰撞、其余圆形；RoadClearance.roadDir 让灯臂/悬臂/站台朝向车行道；树叶逆光透射 + 风摆。high 三角形约 +20–25%、programs +2。斑马线剥落阈值调低。遗留：道具材质只在启动时读 fx；无双臂分隔带路灯；树透光偏含蓄；dev/world.html 在 HEAD 就有 fakeCtx.camera 报错
-- [ ] P14.5（可选）反射与接触阴影
-- [ ] P14.V 固定机位前后对比 + 性能 + fx/角色回归 + 看板/README/记忆
+- [ ] P14.5（可选，暂缓）反射与接触阴影
+- [x] P14.V 固定机位（keongsaik/southbridge/hdb/cbd/aerial）前后对比：high/low/off 0 报错、60 fps（headless vsync），high draw 111–218、三角 1.3–2.6M（基线 0.4–1.8M）、programs 47→51；单测 18/18、geo:check 不变
 
 ## 后续
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
@@ -127,3 +127,4 @@
 - 2026-10-22 Phase 13 日常画面电影化完成（仅 fx=high）：P13.0 2aa7738（PostFX 迁 pmndrs/postprocessing + N8AO，同页像素差 ≤2.3%）、P13.1/2 0e1569b（Atmosphere.ts：Sky.js 混色表、指数高度雾 + 太阳内散射、天空 PMREM、CSM 3 级 350 m 全局片段按片元选级）、P13.3–6（Cine.ts：GodRays 半分辨率、太阳鬼影/拉丝、程序化 day/night LUT `npm run lut:build`、手持晃动、速度 FOV 62→70°、边缘速度模糊、`?cine=0`）。验收：high/cine=0/low/off/grid/box 0 报错 60 fps；日落朝阳 cine 开销约 +1.8 ms、夜晚 +0.3 ms（headless DPR1）。
   约定：城市场景只能有 CSM 的 3 盏投影方向光（Atmosphere.ts 顶部注释）；夜晚 this.sun 换成月光方向，靠 grade.rays=0 关光束。遗留：早晨太阳常被雾化远楼挡住光束偏弱；屏幕空间光束无遮挡时只是一团光晕；远级阴影 4 帧刷新远处车影轻微卡顿；白天天空环境光略偏冷；每次加载楼体颜色随机导致跨版本像素对比不可靠；N8AO 后性能需在空闲真机 DPR2 复测。
 - 2026-10-23 上线准备（计划 ~/.claude/plans/ticklish-hatching-nygaard.md）：部署改为 Cloudflare Workers 静态资源（`wrangler.jsonc`、`public/_headers`、`npm run deploy:cf`，自定义域 rea.alextang.dev），已部署上线（版本 b69135f5，245 个文件；线上加载 0 报错、118 fps，缓存头生效）；alextang.dev 加项目页 `site/content/projects/rea-city.md`（order 2、首页精选第 2 位，封面 `public/projects/rea-city.webp`）。账号与云存档设计及费用对比见 `docs/ACCOUNTS.md`（同一 Worker + D1，开放注册时开 Workers Paid $5/月）。待办：网站仓库提交并 push。
+- 2026-10-23 Phase 14 街景细节完成（对照 mrdoob Slop New York）：P14.1 1d822a5 外墙着色器、P14.3 17eab96 街道表面、P14.4 7cc15c2 街道家具、P14.2 建筑几何细节件；截图脚本用 `__game.camAbs` 世界坐标机位（c77e9f7）。遗留：道具材质运行时切档不换、树透光含蓄、近处冷白亮窗略过曝、Landmarks/skyline 仍旧材质、P14.5 反射暂缓。
