@@ -176,7 +176,10 @@ export class Game {
   playerName = ''
   /** 测试：固定相机 [x,y,z,lookX,lookY,lookZ]（玩家局部坐标），null = 正常追尾 */
   private camShotRel: number[] | null = null
+  /** 测试：固定相机（世界坐标），优先于 camShotRel */
+  private camShotAbs: number[] | null = null
   private get camShot(): number[] | null {
+    if (this.camShotAbs) return this.camShotAbs
     const r = this.camShotRel; if (!r) return null
     // 相对玩家局部坐标（+Z 前、+X 左），随玩家朝向旋转
     const x = this.player.x, z = this.player.z, c = Math.cos(this.player.yaw), sn = Math.sin(this.player.yaw)
@@ -1407,6 +1410,8 @@ export class Game {
       wardrobe() { return self.openWardrobe() },
       /** 测试：相机固定在玩家相对位置看向相对点；null 恢复 */
       camShot(rel: number[] | null) { self.camShotRel = rel },
+      /** 测试：相机固定在世界坐标 [x,y,z,lookX,lookY,lookZ]；null 恢复 */
+      camAbs(abs: number[] | null) { self.camShotAbs = abs },
       /** 测试：把所有活动行人挪到玩家 r 米内的人行道上（压测 LOD / 截图） */
       gatherPeds(r = 30) {
         const px = self.player.worldX, pz = self.player.worldZ, tmp = { x: 0, z: 0 }
