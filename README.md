@@ -43,6 +43,17 @@ node --test scripts/test/*.test.ts   # 单元测试（碰撞、分块编解码�
 | `bright=0.7–1.6` | 画面亮度倍率（默认 1，乘到曝光上；夜里嫌暗可以调高，例如 `?bright=1.2`）。手机设置页的「亮度」滑杆（70–160%）是同一个设置 |
 | `racedbg=1` | 赛车 AI 调试：每帧记录 AI 决策文字（`__game.plug.race.state().ai[i].dbg`） |
 
+## 部署（Cloudflare Workers 静态资源）
+
+线上地址 <https://rea.alextang.dev>。配置在 `wrangler.jsonc`：目前没有 `main`，`dist/` 全部作为静态资源上传，请求不经过 Worker 代码，免费且不限流量。缓存头在 `public/_headers`：`assets/*.js|css` 带 hash，长期缓存；角色、道具、LUT、`world/` 文件名固定，缓存 1 天；`index.html` 不缓存。
+
+```bash
+npx wrangler login     # 首次：浏览器登录 Cloudflare
+npm run deploy:cf      # 构建 + 上传；自定义域 rea.alextang.dev 由 routes.custom_domain 自动建 DNS 与证书
+```
+
+限制（免费版）：每个版本最多 20,000 个文件、单文件不超过 25 MiB，目前 dist 约 250 个文件、最大 3.7 MB。账号与云存档的后端设计（同一 Worker + D1）和各云平台费用对比见 `docs/ACCOUNTS.md`。
+
 ## 操作
 
 | 按键 | 作用 |
