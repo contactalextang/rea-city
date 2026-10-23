@@ -7,6 +7,7 @@ import { defaultGrade, type GradeParams } from '../core/PostFX'
 import { LOOK } from '../core/LookUniforms'
 import { agx, agxInverse } from '../core/AgX'
 import { NightLights } from './NightLights'
+import { FACADE } from '../world/FacadeShader'
 import { ATMO, ATMO_DEBUG, ATMO_OPTS, CsmShadows, SkyDome, installAtmosphereChunks } from './Atmosphere'
 
 /**
@@ -102,7 +103,7 @@ export class DayNight {
   private sunDir = new THREE.Vector3()
   private cSky = new THREE.Color(); private cFog = new THREE.Color(); private cHemiSky = new THREE.Color(); private cHemiGround = new THREE.Color(); private cSun = new THREE.Color()
   private tmpA = new THREE.Color(); private tmpB = new THREE.Color(); private tmpC = new THREE.Color()
-  private windows: THREE.MeshLambertMaterial[] = []
+  private windows: (THREE.MeshLambertMaterial | THREE.MeshStandardMaterial)[] = []
   private halo: THREE.InstancedMesh | null = null
   private pool: THREE.InstancedMesh | null = null
   private haloMat: THREE.ShaderMaterial | null = null
@@ -130,6 +131,7 @@ export class DayNight {
     ATMO_DEBUG.renderer = renderer
     startFrameToken()
     this.shadowsOn = settings.shadows
+    FACADE.on = settings.fx !== 'off'
     renderer.shadowMap.enabled = this.shadowsOn
     renderer.shadowMap.type = THREE.PCFShadowMap   // r186 已移除 PCFSoft，PCF 即为软阴影
     renderer.toneMapping = THREE.AgXToneMapping
@@ -223,7 +225,7 @@ export class DayNight {
   /** 世界网格就绪后调用：读取 userData 约定、设置投影/接收阴影、生成路灯光晕 */
   attachWorld() {
     const ud = this.scene.userData
-    this.windows = (ud.windows as THREE.MeshLambertMaterial[] | undefined) ?? []
+    this.windows = (ud.windows as (THREE.MeshLambertMaterial | THREE.MeshStandardMaterial)[] | undefined) ?? []
     this.applyShadowFlags(this.scene)
     const lamps = ud.lamps as THREE.InstancedMesh | undefined
     if (lamps) {
@@ -335,6 +337,8 @@ export class DayNight {
     const target = Math.max(on, gloom * 0.55)
     this.lights = Math.abs(target - this.lights) > 0.3 ? target : lerp(this.lights, target, 1 - Math.exp(-dt * 3))
     for (const w of this.windows) w.emissiveIntensity = 1.5 * this.lights   // HDR：>1 才会被泛光阈值抓到
+    // 程序化外墙（FacadeShader 读 emissive.r 作夜灯强度）只在 fx=high/low 用；fx=off 回退 Lambert 窗格贴图
+    FACADE.on = this.settings.fx !== 'off'
     LOOK.uSignGlow.value = this.lights
     if (this.haloMat) { this.haloMat.uniforms.uOpacity.value = this.lights; this.halo!.visible = this.lights > 0.01 }
     if (this.poolMat) {

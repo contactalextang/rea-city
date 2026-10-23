@@ -93,7 +93,7 @@
 
 ## Phase 14 — 街景细节（计划 ~/.claude/plans/immutable-squishing-bee.md）
 > 起因：对照 mrdoob「Slop New York」（three.js 官方转发），差距不在后期而在表面内容：程序化外墙/室内映射、檐口等几何细节件、路缘与路面/人行道着色器、像样的街道家具。保持 WebGL + pmndrs，手法移植成 GLSL。截图脚本 `__game.camAbs` 固定世界机位（c77e9f7）。
-- [~] P14.1 程序化外墙着色器（窗格对齐、墙角柱、腰线窗台、凹窗窗框、室内映射夜窗、玻璃反射、风化；HDB/店屋/玻璃塔/普通楼分风格；颜色按建筑 id 确定性）
+- [x] P14.1 程序化外墙：src/world/FacadeShader.ts（Standard + onBeforeCompile，全城 1 个 program 'rea-facade'）；BuildingMesh 属性 aWall(s, 立面宽, 随机, 闭合) / aBld(种子, cls, 楼高, 色调)，转角 <30° 的边并成一段立面、开间取整、墙角柱；HDB 走廊栏板带 + 视差走廊 / 店屋五脚基拱廊 + 粉彩开间 + 百叶窗 + 瓦顶 / 玻璃塔竖梃幕墙 / 普通楼带形窗；凹窗视差 + 室内盒房间 + 夜窗 HDR；风化与导数凹凸；fwidth 分轴远处淡化。颜色按建筑 id 确定（修跨版本像素对比）。fx=off 仍走 Lambert 窗格，运行时切档换材质。high programs +1。遗留：近处冷白亮窗略过曝、斜边导数凹凸轻微锯齿、Landmarks/skyline 未改
 - [x] P14.3 街道表面：src/world/StreetShaders.ts（onBeforeCompile 注入沥青色差/补丁/骨料/油污、人行道 30 cm 红灰透水砖或 60 cm 混凝土板 + fwidth 砖缝、标线磨损剥落、地面草/土细节、积水三层遮罩 uStreetWet）；路缘运行时由人行道三角网边界生成（ChunkManager.buildWalkGeometry，临车道 0.15 m 立面 + 路缘顶 + 倒角高光，外缘落地），与人行道同一网格 draw 不增；fx=off 关细节（setStreetDetail）。遗留：路缘不投影、拐角条带重叠、无无障碍坡口、快速路无人行道落差
 - [ ] P14.2 建筑几何细节件（女儿墙/檐口、店屋五脚基、HDB 架空层柱、屋顶水箱/机房、空调外机；仅近处块）
 - [ ] P14.4 街道家具升级（路灯/信号悬臂/巴士站/MRT 口低模，护栏/垃圾桶/消防栓/护柱/花槽，树叶透光）

@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { CHUNK_SIZE, chunkIndexOf, decodeChunk, type ChunkData, type Manifest } from './ChunkFormat'
 import { polyBody, type StaticBody, type StaticWorld } from './Colliders'
 import { GeomSink, appendBuilding, buildingColor, makeWallMaterial } from './BuildingMesh'
+import { FACADE, makeFacadeMaterial } from './FacadeShader'
 import type { PropMeshes } from './PropMeshes'
 import type { RoadMarkings } from './RoadMarkings'
 import type { Signage } from './Signage'
@@ -51,6 +52,9 @@ export class ChunkManager {
   readonly roadMat = makeRoadMaterial({ side: THREE.DoubleSide })
   readonly walkMat = makeWalkMaterial()
   readonly wallMat: THREE.MeshLambertMaterial
+  /** P14.1 程序化外墙（fx=high/low）；fx=off 用 wallMat。FACADE.on 由 DayNight 按画质写入，切档时整体换材质 */
+  readonly facadeMat = makeFacadeMaterial()
+  private facadeOn = FACADE.on
   private files = new Map<string, string>()
   private fetching = new Set<string>()
   private decoded = new Map<string, ChunkData>()
@@ -74,6 +78,8 @@ export class ChunkManager {
     this.wallMat = makeWallMaterial()
   }
 
+  private get bldMat(): THREE.Material { return this.facadeOn ? this.facadeMat : this.wallMat }
+
   attach(scene: THREE.Scene) {
     scene.add(this.group)
     const roads = (scene.userData.roads as THREE.Material[] | undefined) ?? []
@@ -81,7 +87,7 @@ export class ChunkManager {
     roads.push(this.roadMat, this.walkMat)
     scene.userData.roads = roads
     const windows = (scene.userData.windows as THREE.Material[] | undefined) ?? []
-    windows.push(this.wallMat)
+    windows.push(this.wallMat, this.facadeMat)
     scene.userData.windows = windows
   }
 
@@ -118,6 +124,10 @@ export class ChunkManager {
       this.decoded.delete(key)
       this.build(key, data)
       break
+    }
+    if (FACADE.on !== this.facadeOn) {
+      this.facadeOn = FACADE.on
+      for (const b of this.built.values()) for (const m of b.meshes) if (m.name.startsWith('bld:')) m.material = this.bldMat
     }
     this.props.flush()
     this.marks.flush()
@@ -213,10 +223,10 @@ export class ChunkManager {
           for (let k = 0; k < b.ring.length; k += 2) { cx += b.ring[k]; cz += b.ring[k + 1] }
           if (isReplaced(name, cx / n, cz / n)) { this.replaced++; continue }
         }
-        tris += appendBuilding(sink, b, buildingColor(b.cls, tmpColor))
+        tris += appendBuilding(sink, b, buildingColor(b.cls, tmpColor, b.id))
       }
       if (sink.vertexCount) {
-        const m = new THREE.Mesh(sink.toGeometry(), this.wallMat)
+        const m = new THREE.Mesh(sink.toGeometry(), this.bldMat)
         m.name = `bld:${key}`
         m.castShadow = true; m.receiveShadow = true
         meshes.push(m)
@@ -247,7 +257,7 @@ export class ChunkManager {
     this.decoded.clear()
     this.wanted = []
     this.props.flush(); this.marks.flush(); this.signs?.flush()
-    this.roadMat.dispose(); this.walkMat.dispose(); this.wallMat.dispose()
+    this.roadMat.dispose(); this.walkMat.dispose(); this.wallMat.dispose(); this.facadeMat.dispose()
     this.group.removeFromParent()
   }
 }
