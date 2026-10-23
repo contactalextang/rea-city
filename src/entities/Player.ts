@@ -108,15 +108,15 @@ export class Player implements Body {
 
   /** 读取输入 → 车辆控制 或 步行运动 */
   update(dt: number, input: Input, camYaw: number, world: StaticWorld, enabled: boolean) {
-    const live = input.locked   // 鼠标控制视角时，移动方向实时跟随相机
+    const live = input.locked || input.lookActive   // 鼠标 / 触屏控制视角时，移动方向实时跟随相机
     this.hurtTimer = Math.max(0, this.hurtTimer - dt)
     this.running = false
     if (this.vehicle) {
       const c = this.vehicle.controls
       if (enabled) {
-        c.throttle = input.axis('KeyS', 'KeyW') + input.axis('ArrowDown', 'ArrowUp')
-        c.steer = input.axis('KeyA', 'KeyD') + input.axis('ArrowLeft', 'ArrowRight')
-        c.throttle = clamp(c.throttle, -1, 1)
+        const mv = input.moveAxis()
+        c.throttle = mv.fwd
+        c.steer = mv.side
         // 键盘转向做平滑：低速打满约 0.15 s，速度越高打方向越慢（30 m/s 约 0.4 s），回正始终较快，避免一按就甩
         const want = clamp(c.steer, -1, 1)
         const sp = Math.abs(this.vehicle.speed)
@@ -134,9 +134,10 @@ export class Player implements Body {
       return
     }
     // 步行：输入组合变化时锁定当时的相机朝向，避免相机跟随造成螺旋
-    const fwdIn = enabled ? input.axis('KeyS', 'KeyW') + input.axis('ArrowDown', 'ArrowUp') : 0
-    const sideIn = enabled ? input.axis('KeyA', 'KeyD') + input.axis('ArrowLeft', 'ArrowRight') : 0
-    const keys = `${fwdIn},${sideIn}`
+    const mv = enabled ? input.moveAxis() : { fwd: 0, side: 0 }
+    const fwdIn = mv.fwd, sideIn = mv.side
+    // 摇杆是模拟量、每帧微变：按 8 方向量化后再判断“输入组合变化”，否则每帧重锁朝向
+    const keys = fwdIn !== 0 || sideIn !== 0 ? String(Math.round(Math.atan2(sideIn, fwdIn) / (Math.PI / 4))) : ''
     if (keys !== this.lastKeys || live) { this.lastKeys = keys; this.latchYaw = camYaw }
     const running = enabled && (input.down('ShiftLeft') || input.down('ShiftRight')) && (fwdIn !== 0 || sideIn !== 0)
     this.running = running

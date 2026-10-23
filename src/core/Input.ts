@@ -13,6 +13,13 @@ export class Input {
   /** 滚轮 deltaY 累计（takeWheel 取走；endFrame 清零，避免城市里滚的量带进竞技场） */
   private wheel = 0
   private lockTarget: HTMLElement | null = null
+  /** 触屏模式：粗指针设备或 URL ?touch=1（桌面测试用）；由 TouchControls 写入下面的虚拟输入 */
+  readonly touch = matchMedia('(pointer: coarse)').matches || new URLSearchParams(location.search).get('touch') === '1'
+  /** 虚拟摇杆（-1..1）：stickX 右正、stickY 前正 */
+  stickX = 0
+  stickY = 0
+  /** 触屏正在拖动视角（步行方向实时跟随相机，等同桌面锁定鼠标） */
+  lookActive = false
 
   constructor() {
     document.addEventListener('mousemove', (e) => {
@@ -30,7 +37,7 @@ export class Input {
     })
     window.addEventListener('keyup', (e) => this.held.delete(e.code))
     window.addEventListener('wheel', (e) => { this.wheel += e.deltaY }, { passive: true })
-    window.addEventListener('blur', () => this.held.clear())
+    window.addEventListener('blur', () => { this.held.clear(); this.stickX = 0; this.stickY = 0; this.lookActive = false })
   }
 
   get locked() { return this.lockTarget !== null && document.pointerLockElement === this.lockTarget }
@@ -62,6 +69,22 @@ export class Input {
   down(code: string) { return this.held.has(code) }
   justPressed(code: string) { return this.pressed.has(code) }
   axis(neg: string, pos: string) { return (this.down(pos) ? 1 : 0) - (this.down(neg) ? 1 : 0) }
+  /** 移动轴：WASD + 方向键 + 虚拟摇杆，各自 clamp 到 [-1, 1] */
+  moveAxis() {
+    const c = (v: number) => Math.max(-1, Math.min(1, v))
+    return {
+      fwd: c(this.axis('KeyS', 'KeyW') + this.axis('ArrowDown', 'ArrowUp') + this.stickY),
+      side: c(this.axis('KeyA', 'KeyD') + this.axis('ArrowLeft', 'ArrowRight') + this.stickX),
+    }
+  }
+
+  /** 触屏按钮：按下 / 松开一个虚拟键（复用键码，justPressed / down 照常生效） */
+  setVirtual(code: string, on: boolean) {
+    if (on) { if (!this.held.has(code)) { this.held.add(code); this.pressed.add(code); this.anyKeyPressed = true } }
+    else this.held.delete(code)
+  }
+  /** 触屏拖动视角：直接累计到鼠标位移（无需指针锁定） */
+  addLook(dx: number, dy: number) { this.mouseDX += dx; this.mouseDY += dy }
 
   /** 每帧渲染结束后调用，清除边沿状态 */
   endFrame() { this.pressed.clear(); this.anyKeyPressed = false; this.clicked = false; this.mouseDownEdge.clear(); this.mouseUpEdge.clear(); this.wheel = 0 }

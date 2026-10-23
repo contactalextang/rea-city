@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>REA City</title>
   <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -11,6 +11,16 @@
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b1020; font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif; }
     #app { position: fixed; inset: 0; }
+    /* 不能给 body 设 touch-action: none（会连带禁止手机抽屉 / 面板的滑动滚动）；画布与触屏层自己设 none */
+    html, body { touch-action: manipulation; overscroll-behavior: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+    canvas.game { touch-action: none; }
+    /* 触屏模式（TouchControls）：小地图缩小移到右上给按钮让位，HUD 避开刘海 */
+    body.touch .hud-tl { left: calc(12px + env(safe-area-inset-left)); top: calc(10px + env(safe-area-inset-top)); }
+    body.touch .hud-tr { right: calc(12px + env(safe-area-inset-right)); top: calc(10px + env(safe-area-inset-top)); }
+    body.touch #minimap { width: 110px; height: 110px; bottom: auto; top: calc(96px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); }
+    body.touch .debug { display: none; }
+    body.touch .toast { font-size: 18px; max-width: 60vw; top: 18%; }
+    @media (max-aspect-ratio: 1/1) { body.touch .hud-bc { bottom: 250px; width: 90vw; } body.touch .hint { top: 42%; max-width: 80vw; } }
     canvas.game { display: block; width: 100%; height: 100%; }
     #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8); user-select: none; }
     .hud-tl { position: absolute; left: 16px; top: 14px; font-size: 14px; line-height: 1.5; }
@@ -57,6 +67,15 @@
     .overlay .go { margin-top: 24px; font-size: 18px; color: #7ee787; animation: blink 1.2s infinite; }
     @keyframes blink { 50% { opacity: .35; } }
     .overlay .attrib { position: absolute; left: 16px; right: 16px; bottom: 12px; font-size: 11px; opacity: .55; text-align: center; white-space: pre-line; line-height: 1.5; }
+    /* 横屏手机等矮屏：说明改四列紧凑排布，保证“点击开始”可见 */
+    @media (max-height: 520px) {
+      .overlay h1 { font-size: 30px; margin: 0 0 2px; }
+      .overlay p { font-size: 13px; margin: 2px 0; }
+      .overlay .keys { margin-top: 8px; grid-template-columns: auto auto auto auto; gap: 4px 12px; font-size: 12px; padding: 8px 14px; }
+      .overlay kbd { font-size: 11px; padding: 1px 5px; }
+      .overlay .go { margin-top: 10px; font-size: 15px; }
+      .overlay .attrib { font-size: 9px; bottom: 4px; }
+    }
     .crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; display: none; }
     .crosshair::before, .crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,.9); box-shadow: 0 0 2px #000; }
     .crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
@@ -181,6 +200,7 @@
     <div class="buttons" id="panel-buttons"></div>
   </div>
   <div class="phone" id="phone">
+    <button class="xbtn" id="phone-close" title="关闭 (Tab)">×</button>
     <h2>REA PHONE</h2>
     <div class="ptime" id="phone-time"></div>
     <div class="pmoney" id="phone-money">$0</div>

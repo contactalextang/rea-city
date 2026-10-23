@@ -41,9 +41,9 @@ export class Hud {
     if (mission) {
       m.style.display = ''
       $('mission-title').textContent = mission.title
-      $('mission-desc').textContent = mission.desc
+      $('mission-desc').textContent = this.keys(mission.desc)
       $('mission-timer').textContent = mission.timer
-      const sub = $('mission-sub'); sub.textContent = mission.sub ?? ''; sub.style.display = mission.sub ? '' : 'none'
+      const sub = $('mission-sub'); sub.textContent = this.keys(mission.sub ?? ''); sub.style.display = mission.sub ? '' : 'none'
       this.nav()
     } else m.style.display = 'none'
     this.toastTimer -= dt
@@ -141,13 +141,37 @@ export class Hud {
     $('weapon').classList.toggle('show', on && this.gun)
   }
 
+  /** 触屏模式：开局说明换成触屏操作，提示里的按键名换成按钮名 */
+  private touch = false
+  touchHelp() {
+    this.touch = true
+    $('ov-keys').innerHTML = [
+      ['左侧拖动', '移动 / 驾驶（推到底奔跑）'], ['右侧拖动', '转动视角'], ['上车 / 下车', '靠近车辆后点'],
+      ['交互', '进入地点（绿框亮起时）'], ['跳 / 手刹', '跳跃 / 手刹漂移'], ['手机', '状态 / 工作 / 地图 / 设置 / 存档'],
+      ['任务', '任务提示'], ['全屏', '切换全屏（iPhone 请“添加到主屏幕”）'],
+    ].map(([k, v]) => `<span><kbd>${k}</kbd></span><span>${v}</span>`).join('')
+    const tip = document.querySelector('#phone .tip'); if (tip) tip.textContent = '点右上 × 关闭手机'
+    $('weapon').textContent = '手枪 · 按住「开火」射击'
+  }
+
+  /** 触屏模式：文案里的按键名换成屏幕按钮名 */
+  private keys(text: string) {
+    if (!this.touch) return text
+    return text
+      .replace(/按 ?F ?(上车|下车)?/g, (_, w) => w === '下车' ? '点「下车」' : '点「上车」')
+      .replace(/按 ?E ?/g, '点「交互」').replace(/按 ?M ?/g, '点「任务」')
+      .replace(/(^|[^A-Za-z])F (?=上车|上客|下车)/g, '$1「上车」').replace(/(^|[^A-Za-z])E (?=进入|与)/g, '$1「交互」')
+      .replace(/Tab ?(?=手机|关闭|开工|→)/g, '')
+  }
+
   hint(text: string | null) {
+    if (text) text = this.keys(text)
     if (text) { this.hintEl.textContent = text; this.hintEl.classList.add('show') } else this.hintEl.classList.remove('show')
   }
 
   toast(text: string, seconds = 2.5) {
     if (this.sink?.(text, seconds)) return
-    this.toastEl.textContent = text
+    this.toastEl.textContent = this.keys(text)
     this.toastEl.classList.add('show')
     this.toastTimer = seconds
   }

@@ -27,6 +27,7 @@ import type { AssetId } from '../data/jobs'
 import { Audio } from '../systems/Audio'
 import { Weapon } from '../systems/Weapon'
 import { Hud } from '../ui/Hud'
+import { TouchControls } from '../ui/TouchControls'
 import { Minimap, fmtDist } from '../ui/Minimap'
 import { Clock } from '../systems/Clock'
 import { DayNight } from '../systems/DayNight'
@@ -126,6 +127,8 @@ export class Game {
   interactions!: Interactions
   panels = new Panels()
   phone: Phone
+  /** 触屏操作层（仅触屏设备 / ?touch=1） */
+  private touchUi: TouchControls | null = null
   /** P10 活动宿主（全屏小游戏）；openActivity 打开 */
   activity!: Activity
   /** P10.D 注入：竞技场会话工厂（null = 竞技场未实现，enterArena 返回 false） */
@@ -194,6 +197,11 @@ export class Game {
     this.renderer.domElement.className = 'game'
     container.appendChild(this.renderer.domElement)
     this.input.bindPointerLock(document.body)   // 覆盖层上点击也能开始并锁定鼠标
+    if (this.input.touch) {
+      this.touchUi = new TouchControls(this.input, { fullscreen: () => this.toggleFullscreen(), aim: (on) => { this.forceAim = on } })
+      document.body.classList.add('touch')
+      this.hud.touchHelp()
+    }
     this.scene.background = new THREE.Color(0xa9c9e8)
     this.scene.fog = new THREE.Fog(0xa9c9e8, 150, 380)   // 之后每帧由 DayNight 更新
     this.cam = new ChaseCamera(window.innerWidth / window.innerHeight)
@@ -464,6 +472,12 @@ export class Game {
       if (!this.ready) { this.fitViewport(); return }   // 世界加载中：只显示覆盖层
       const hudEl = document.getElementById('hud')
       const uiOpen = !!this.creatorUi?.isOpen || this.state === 'activity' || this.state === 'arena'
+      this.touchUi?.update({
+        show: !uiOpen && this.state === 'play' && !this.phone.open,
+        inVehicle: this.player.inVehicle,
+        canInteract: !!this.interactions.near || this.jobs.canBoardTaxi,
+        hasGun: this.role.systems.gun,
+      })
       if (hudEl && (hudEl.style.visibility === 'hidden') !== uiOpen) hudEl.style.visibility = uiOpen ? 'hidden' : ''
       if (uiOpen && this.creatorUi) {
         // 建角色 / 衣柜：世界模拟暂停，HUD 隐藏，只更新并渲染界面（界面自己铺满底色）
@@ -1085,8 +1099,8 @@ export class Game {
     let hint: string | null = null
     if (this.state === 'play') {
       if (this.phone.open) hint = null
-      else if (!this.input.locked && this.time - this.unlockHintAt < 4) hint = '点击画面锁定鼠标，转动视角（Esc 解锁）'
-      else if (this.jobs.canBoardTaxi) hint = '按 F 上客'
+      else if (!this.input.locked && this.time - this.unlockHintAt < 4) hint = this.input.touch ? '左侧拖动移动 · 右侧拖动转视角' : '点击画面锁定鼠标，转动视角（Esc 解锁）'
+      else if (this.jobs.canBoardTaxi) hint = this.input.touch ? '点「上车」上客' : '按 F 上客'
       else if (this.interactions.hint) hint = this.interactions.hint
       else if (!pl.inVehicle && pl.findNearbyVehicle(this.vehicles)) hint = '按 F 上车'
       else if (pl.vehicle?.wrecked) hint = '车已报废，按 F 下车'

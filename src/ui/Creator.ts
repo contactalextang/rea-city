@@ -713,4 +713,14 @@ const CSS = `
   .cr-hint { display: none; }
   .cr-foot .cr-btn:last-child { margin-left: auto; }
 }
+/* 横屏手机等矮屏：第一步正文改为可滚动，底栏按钮始终可见 */
+@media (max-height: 520px) {
+  .cr-panel, .cr-root[data-step="1"] .cr-panel { margin: 8px 0 8px 8px; max-height: calc(100% - 16px); }
+  .cr-root[data-step="1"] .cr-body { flex: 1; }
+  .cr-head { padding: 10px 14px 2px; }
+  .cr-head h2 { font-size: 19px; }
+  .cr-sub { margin: 2px 0 8px; font-size: 13px; }
+  .cr-foot { padding: 8px 14px; }
+  .cr-stage { padding: 8px; }
+}
 `

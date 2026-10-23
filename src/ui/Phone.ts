@@ -106,6 +106,7 @@ export class Phone {
     this.root.addEventListener('mousedown', (e) => e.stopPropagation())
     // Tab 不让浏览器移动焦点
     window.addEventListener('keydown', (e) => { if (e.code === 'Tab') e.preventDefault() })
+    document.getElementById('phone-close')?.addEventListener('click', () => this.set(false))
     for (const b of this.root.querySelectorAll<HTMLButtonElement>('.apps button')) {
       b.addEventListener('click', () => this.app(b.dataset.app!))
     }
