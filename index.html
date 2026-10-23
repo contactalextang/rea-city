@@ -8,6 +8,11 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0b1020" />
+  <!-- iPhone 不支持元素全屏，只能“添加到主屏幕”以网页 App 打开；状态栏透明，画面铺到刘海下 -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="REA City" />
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b1020; font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif; }
     #app { position: fixed; inset: 0; }

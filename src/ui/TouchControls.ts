@@ -5,6 +5,11 @@ import type { Input } from '../core/Input'
  * 按钮复用键码写进 Input（setVirtual），Game / Player 原有的 justPressed / down 判断不用改。
  * 非游玩状态（面板 / 手机 / 活动 / 叫车 / 建角色）整层隐藏，并松开所有虚拟键。
  */
+/** 以“添加到主屏幕”的网页 App 方式运行（已无浏览器地址栏，等同全屏） */
+export function isStandalone(): boolean {
+  return (navigator as Navigator & { standalone?: boolean }).standalone === true || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches
+}
+
 export interface TouchHost {
   /** 必须在触摸事件回调里同步调用（浏览器要求用户手势） */
   fullscreen(): void
@@ -81,6 +86,7 @@ export class TouchControls {
     // 顶部小按钮（居中一排）
     const top: [string, string, string | null, number][] = [['phone', '手机', 'Tab', -76], ['quest', '任务', 'KeyM', -24], ['full', '全屏', null, 28]]
     for (const [id, label, code, dx] of top) {
+      if (id === 'full' && isStandalone()) continue
       const b = this.button(id, label, code, 'top')
       b.style.left = `calc(50% + ${dx}px)`
     }

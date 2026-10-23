@@ -27,7 +27,7 @@ import type { AssetId } from '../data/jobs'
 import { Audio } from '../systems/Audio'
 import { Weapon } from '../systems/Weapon'
 import { Hud } from '../ui/Hud'
-import { TouchControls } from '../ui/TouchControls'
+import { TouchControls, isStandalone } from '../ui/TouchControls'
 import { Minimap, fmtDist } from '../ui/Minimap'
 import { Clock } from '../systems/Clock'
 import { DayNight } from '../systems/DayNight'
@@ -251,6 +251,7 @@ export class Game {
 
     window.addEventListener('resize', () => this.fitViewport())
     document.addEventListener('fullscreenchange', () => this.fitViewport())
+    document.addEventListener('webkitfullscreenchange', () => this.fitViewport())
     new ResizeObserver(() => this.fitViewport()).observe(document.documentElement)
     this.exposeDebug()
     this.init().catch((e: unknown) => {
@@ -409,12 +410,23 @@ export class Game {
   }
 
   private toggleFullscreen() {
-    if (document.fullscreenElement) { document.exitFullscreen?.(); return }
-    const req = document.documentElement.requestFullscreen?.({ navigationUI: 'hide' } as FullscreenOptions)
-    req?.catch((err: unknown) => {
-      console.warn('[REA] 全屏请求失败：', err)
-      this.hud.toast('浏览器拒绝全屏，请用浏览器菜单进入全屏', 3)
-    })
+    // iPad Safari 只有 webkit 前缀版；iPhone 完全没有元素全屏 API，只能添加到主屏幕
+    const doc = document as Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void }
+    const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void }
+    if (doc.fullscreenElement ?? doc.webkitFullscreenElement) {
+      if (doc.exitFullscreen) void doc.exitFullscreen(); else doc.webkitExitFullscreen?.()
+      return
+    }
+    if (el.requestFullscreen) {
+      el.requestFullscreen({ navigationUI: 'hide' }).catch((err: unknown) => {
+        console.warn('[REA] 全屏请求失败：', err)
+        this.hud.toast('浏览器拒绝全屏，请用浏览器菜单进入全屏', 3)
+      })
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen()
+    } else {
+      this.hud.toast('iPhone 不支持网页全屏：点 Safari 的「分享」→「添加到主屏幕」，从桌面图标打开即全屏', 6)
+    }
   }
 
   private wireEvents() {
@@ -1128,7 +1140,7 @@ export class Game {
       this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, mood: this.needs.mood, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, music: this.settings.music, fx: this.settings.fx, brightness: this.settings.brightness, work: this.jobs.view(), quest: q })
     }
     const speedKmh = pl.vehicle ? pl.vehicle.speed * 3.6 : null
-    const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
+    const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement || isStandalone() ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
     this.hud.update(dt, pl.health, pl.money, this.law.stars, this.law.flash, speedKmh, this.missionCard(), dbg)
     this.hud.level(`Lv${this.progress.level} ${this.progress.title}`, this.progress.pct)
     this.hud.netWorth(this.wallet.netWorth())
