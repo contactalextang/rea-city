@@ -7,6 +7,7 @@ import { PropMeshes } from './PropMeshes'
 import { loadPropModels } from './PropModels'
 import { RoadMarkings } from './RoadMarkings'
 import { ChunkManager, type ChunkStats } from './ChunkManager'
+import { patchGround } from './StreetShaders'
 import { Landmarks, skylineHidden } from './Landmarks'
 import { Signage, type NamedGraphData } from './Signage'
 import type { WorldSource } from './WorldSource'
@@ -185,7 +186,11 @@ export class SgWorld implements WorldSource {
     tex.minFilter = THREE.LinearMipmapLinearFilter
     tex.magFilter = THREE.LinearFilter
     tex.anisotropy = 4
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({ map: tex }))
+    // P14.3：在 2 m/px 土地利用色上叠世界坐标细节噪声（草地斑驳、泥土色差、近处颗粒），见 StreetShaders.patchGround
+    const groundMat = new THREE.MeshLambertMaterial({ map: tex })
+    groundMat.onBeforeCompile = patchGround
+    groundMat.customProgramCacheKey = () => 'rea-ground-p143'
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(w, h), groundMat)
     ground.rotation.x = -Math.PI / 2
     // 地面压低到 −0.12：给地标水面（−0.05）与路面（0）留出深度间隔
     ground.position.set((minX + maxX) / 2, -0.12, (minZ + maxZ) / 2)

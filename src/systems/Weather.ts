@@ -4,6 +4,7 @@ import type { DayNight } from './DayNight'
 import type { Audio } from './Audio'
 import { rand, clamp, lerp } from '../config'
 import { ROAD_UNIFORMS, ROAD_ROUGH_DRY, ROAD_ROUGH_WET } from '../world/RoadMaterial'
+import { STREET_UNIFORMS } from '../world/StreetShaders'
 
 export type WeatherState = 'clear' | 'cloudy' | 'storm'
 const GLOOM: Record<WeatherState, number> = { clear: 0, cloudy: 0.4, storm: 1 }
@@ -160,10 +161,14 @@ export class Weather {
     // 菲涅尔天光取雾色（DayNight 已按 AgX 反解成 HDR）近似远处路面映出的天空；
     const env = this.scene.environmentIntensity
     const rough = lerp(ROAD_ROUGH_DRY, ROAD_ROUGH_WET, wet)
+    // P14.3：街面着色器（userData.streetWet）按积水场自己做湿斑/积水/水膜，这里只给湿度与反射强度；旧材质仍整片变湿
+    STREET_UNIFORMS.uStreetWet.value = wet
     for (let i = 0; i < this.roads.length; i++) {
       const m = this.roads[i]
-      m.color.copy(this.roadBase[i]).multiplyScalar(1 - 0.45 * wet)
-      m.roughness = rough
+      if (!m.userData.streetWet) {
+        m.color.copy(this.roadBase[i]).multiplyScalar(1 - 0.45 * wet)
+        m.roughness = rough
+      }
       m.envMapIntensity = env * (1 + 0.9 * wet)
     }
     const fog = this.scene.fog as THREE.Fog | null

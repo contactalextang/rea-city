@@ -7,6 +7,7 @@ import type { RoadGraph, P2 } from '../world/RoadGraph'
 import { clampBrightness, loadSettings, type Settings } from './Settings'
 import type { StaticWorld, AABB } from '../world/Colliders'
 import type { WorldSource } from '../world/WorldSource'
+import { setStreetDetail } from '../world/StreetShaders'
 import { SgWorld } from '../world/SgWorld'
 import { GridWorld } from '../world/GridWorld'
 import { PoiMarkers } from '../world/PoiMarkers'
@@ -395,6 +396,7 @@ export class Game {
     this.postfx = q === 'off' ? null : new PostFX(this.renderer, this.scene, this.cam.camera, q)
     this.settings.fx = q
     this.dayNight.hdrSky = this.postfx !== null
+    setStreetDetail(q !== 'off')
     if (persist) { saveSettings(this.settings); this.hud.toast(`画质：${q === 'high' ? '高' : q === 'low' ? '低' : '关（无后期）'}`) }
   }
 

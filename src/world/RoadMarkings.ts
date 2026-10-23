@@ -1,10 +1,12 @@
 import * as THREE from 'three'
 import type { ChunkMark } from './ChunkFormat'
+import { patchMarking } from './StreetShaders'
 
 /**
  * 路面标线：一个全局 InstancedMesh（单位盒 1×0.02×1，白色），按区块维护实例矩阵，
  * 区块增删后 flush() 整体重写。车道虚线 = len×0.15；斑马线 = 横跨 w 的多条 2.4×0.6 白条；停止线 = 0.4×w。
- * 路缘（kerb）暂不绘制。
+ * 路缘（kerb）不在这里画：由 ChunkManager.buildWalkGeometry 从人行道边界生成立面。
+ * P14.3：材质注入 StreetShaders.patchMarking——世界坐标噪声磨损（局部变淡/近处缺损），仍是同一个实例化 draw call。
  */
 const MARK_Y = 0.012
 const ZEBRA_PITCH = 1.1
@@ -20,6 +22,8 @@ export class RoadMarkings {
   private mat = new THREE.MeshBasicMaterial({ color: 0xe8e8e8 })
 
   constructor(capacity = 2048) {
+    this.mat.onBeforeCompile = patchMarking
+    this.mat.customProgramCacheKey = () => 'rea-mark-p143'
     this.mesh = this.make(capacity)
   }
 

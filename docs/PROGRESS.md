@@ -91,6 +91,15 @@
 - [x] P13.5 程序化胶片 LUT（昼/夜两张）+ `?cine=0` 总开关 + 调试钩子
 - [x] P13.V 四时段/暴雨/开车/竞技场截图对比 + 性能 + low/off 回归 + 看板/README/记忆
 
+## Phase 14 — 街景细节（计划 ~/.claude/plans/immutable-squishing-bee.md）
+> 起因：对照 mrdoob「Slop New York」（three.js 官方转发），差距不在后期而在表面内容：程序化外墙/室内映射、檐口等几何细节件、路缘与路面/人行道着色器、像样的街道家具。保持 WebGL + pmndrs，手法移植成 GLSL。截图脚本 `__game.camAbs` 固定世界机位（c77e9f7）。
+- [~] P14.1 程序化外墙着色器（窗格对齐、墙角柱、腰线窗台、凹窗窗框、室内映射夜窗、玻璃反射、风化；HDB/店屋/玻璃塔/普通楼分风格；颜色按建筑 id 确定性）
+- [x] P14.3 街道表面：src/world/StreetShaders.ts（onBeforeCompile 注入沥青色差/补丁/骨料/油污、人行道 30 cm 红灰透水砖或 60 cm 混凝土板 + fwidth 砖缝、标线磨损剥落、地面草/土细节、积水三层遮罩 uStreetWet）；路缘运行时由人行道三角网边界生成（ChunkManager.buildWalkGeometry，临车道 0.15 m 立面 + 路缘顶 + 倒角高光，外缘落地），与人行道同一网格 draw 不增；fx=off 关细节（setStreetDetail）。遗留：路缘不投影、拐角条带重叠、无无障碍坡口、快速路无人行道落差
+- [ ] P14.2 建筑几何细节件（女儿墙/檐口、店屋五脚基、HDB 架空层柱、屋顶水箱/机房、空调外机；仅近处块）
+- [ ] P14.4 街道家具升级（路灯/信号悬臂/巴士站/MRT 口低模，护栏/垃圾桶/消防栓/护柱/花槽，树叶透光）
+- [ ] P14.5（可选）反射与接触阴影
+- [ ] P14.V 固定机位前后对比 + 性能 + fx/角色回归 + 看板/README/记忆
+
 ## 后续
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
 - [x] P12 射击 / 赛车 10 级难度阶梯（计划 ~/.claude/plans/soft-scribbling-garden.md）：src/data/tiers.ts；竞技场 botParams(t) 锚点插值 + dmgMul/utility，天梯按 ELO 定中心级别；赛车 RACE_TIERS（水平加成 + 橡皮筋参数）；各自 tier/tierMax 进存档，在最高级别获胜解锁下一级；奖金/XP ×TIER_REWARD；成就 race_legend/arena_legend
