@@ -323,7 +323,7 @@ export class Game {
     wireMood(this.events, this.needs)
     this.activity = new Activity(() => this.ctx)
     this.activity.onClosed = (spec) => this.afterActivity(spec)
-    // 活动期间 HUD 隐藏：hud.toast / 成就横幅转发到活动提示条（赌场入场税、成就、心情等即时可见）
+    // 活动期间 HUD 隐藏：hud.toast / 成就横幅转发到活动提示条（成就、心情等即时可见）
     this.hud.sink = (text, sec) => {
       if (this.state !== 'activity' || !this.activity.isOpen) return false
       this.activity.toast(text, sec); return true
@@ -681,7 +681,7 @@ export class Game {
     if (this.state === 'panel') { this.panels.hide(); this.interactions.current = null }
     this.phone.set(false)
     if (document.pointerLockElement) document.exitPointerLock()
-    const pending = this.hud.takeToast()   // 打开前刚弹的提示（如“已缴入场税”）转到活动提示条
+    const pending = this.hud.takeToast()   // 打开前刚弹的提示（如成就横幅）转到活动提示条
     this.state = 'activity'
     this.activity.open(spec)
     if (pending && this.activity.isOpen && !this.activity.toastShowing) this.activity.toast(pending.text, pending.seconds)

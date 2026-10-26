@@ -1,11 +1,8 @@
 /**
- * P10.B 赌场（滨海湾金沙）数据：入场税、赌厅限额、五个游戏的赔率表。
+ * P10.B 赌场（滨海湾金沙）数据：赌厅限额、五个游戏的赔率表。
  * 规则逻辑（发牌、补牌、结算）在 src/activities/casino/rules.ts，纯函数，scripts/casino-sim.ts 直接调用。
  * 本文件不依赖 DOM / three，Node 原生可跑。
  */
-
-/** 新加坡公民 / PR 入场税（Casino Entry Levy，S$150 / 24 小时；游戏里按游戏天有效） */
-export const ENTRY_LEVY = 150
 
 export type CasinoGameId = 'blackjack' | 'roulette' | 'sicbo' | 'baccarat' | 'slots'
 export const CASINO_GAMES: { id: CasinoGameId; name: string; desc: string }[] = [

@@ -14,7 +14,6 @@ import { JOB_PARAMS } from '../../src/data/jobs.ts'
 import { XP, xpFor, MAX_LEVEL, unlockLevel } from '../../src/data/progression.ts'
 import { ROLES, type RoleId } from '../../src/data/roles.ts'
 import { MOOD } from '../../src/data/mood.ts'
-import { ENTRY_LEVY } from '../../src/data/casino.ts'
 import { DRINKS } from '../../src/data/dates.ts'
 
 // ---------- 典型玩家假设（真实秒） ----------
@@ -54,12 +53,12 @@ const FUN = {
   clubFrom: 21,
   /** 一晚花的真实秒（≈ 40 游戏分钟：进场、喝两杯、跳一曲 / 玩二十来局快局） */
   sec: 120,
-  /** 量入为出：一晚花费不超过手头现金的这个比例才去（穷的时候不去 MBS 交 $150 入场税） */
+  /** 量入为出：一晚花费不超过手头现金的这个比例才去（穷的时候不出去玩） */
   budgetShare: 0.04,
   /** 夜店：门票平日 $30 / 周末 $40（均值 ≈ $32.9）+ 啤酒 + 新加坡司令；心情 = 两杯酒 2×drink + 一曲舞（85% 准确率 → round(0.85×8)） */
   club: { cost: (30 * 5 + 40 * 2) / 7 + beer + sling, mood: 2 * MOOD.drink + Math.round(0.85 * 8), xp: 0 },
-  /** 赌场：入场税 + 期望输额（20 局 × $20，混合玩法庄家优势约 2.7%）；心情按 45% 胜率 × 20 局，输局扣到 workFloor 为止 → 约 +8 */
-  casino: { cost: ENTRY_LEVY + 20 * 20 * 0.027, mood: Math.round(20 * (0.45 * MOOD.gambleWin + 0.55 * MOOD.gambleLose * 0.5)), xp: 20 * XP.gambleRound },
+  /** 赌场：期望输额（20 局 × $20，混合玩法庄家优势约 2.7%）；心情按 45% 胜率 × 20 局，输局扣到 workFloor 为止 → 约 +8 */
+  casino: { cost: 20 * 20 * 0.027, mood: Math.round(20 * (0.45 * MOOD.gambleWin + 0.55 * MOOD.gambleLose * 0.5)), xp: 20 * XP.gambleRound },
 }
 
 /** 中期目标（任一满足）：产业升到 T3 / 买下该身份对应的房产；金领产业只有一档，以第二级产业「写字楼股份」代替 T3 */

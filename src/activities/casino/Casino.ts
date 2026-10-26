@@ -6,7 +6,7 @@ import type { Poi } from '../../systems/Poi'
 import { spend, earn } from '../../systems/Wallet'
 import { venueOf } from '../../data/venues'
 import { isUnlocked, unlockLevel } from '../../data/progression'
-import { CASINO_GAMES, ENTRY_LEVY, HALLS, hallById, gameName, type CasinoGameId, type HallDef, type HallId } from '../../data/casino'
+import { CASINO_GAMES, HALLS, hallById, gameName, type CasinoGameId, type HallDef, type HallId } from '../../data/casino'
 import { CasinoSfx } from './sfx'
 import { simulate } from './sim'
 import { SLOT_STRIPS } from './rules'
@@ -21,9 +21,6 @@ export const CASINO_POI = 'casino_mbs'
 
 interface GameStat { rounds: number; wagered: number; net: number; best: number }
 export interface CasinoSave {
-  /** 已缴入场税的游戏天（clock.day） */
-  levyDay: number
-  levyPaid: number
   hall: HallId
   stats: Partial<Record<CasinoGameId, GameStat>>
   today: { day: number; net: number }
@@ -38,12 +35,10 @@ const TABLES: Record<CasinoGameId, new (h: CasinoHost, a: ActivityApi) => Table>
 }
 
 /**
- * 赌场插件（滨海湾金沙）：门口面板（入场税 / 五个游戏 / 换筹码选厅）、赌桌活动宿主、统计存档、手机页、测试钩子。
- * 四个身份都按新加坡公民 / PR 处理：每个游戏天首次入场缴 $150 入场税（spend gamble:levy）。
+ * 赌场插件（滨海湾金沙）：门口面板（五个游戏 / 换筹码选厅）、赌桌活动宿主、统计存档、手机页、测试钩子。
+ * 不收入场税，门口按 E 即可直接开玩。
  */
 export class Casino implements CasinoHost {
-  levyDay = 0
-  levyPaid = 0
   hallId: HallId = 'main'
   stats: Partial<Record<CasinoGameId, GameStat>> = {}
   today = { day: 1, net: 0 }
@@ -58,7 +53,6 @@ export class Casino implements CasinoHost {
   }
 
   get ctx() { return this.game.ctx }
-  get paidToday() { return this.levyDay === this.ctx.clock.day }
   get level() { return this.game.progress?.level ?? 1 }
   hallLock(h: HallDef): string | null {
     if (!h.unlock) return null
@@ -75,50 +69,23 @@ export class Casino implements CasinoHost {
     this.hallId = id; return true
   }
 
-  // ---------- 入场 ----------
-  payLevy(): boolean {
-    if (this.paidToday) return true
-    if (!spend(this.ctx, ENTRY_LEVY, 'gamble:levy')) return false
-    this.levyDay = this.ctx.clock.day; this.levyPaid += ENTRY_LEVY
-    this.pushLog(`第 ${this.levyDay} 天 缴入场税 ${money(ENTRY_LEVY)}`)
-    return true
-  }
-
-  private refreshPanel(poi: Poi) {
-    if (this.game.panels.open && this.game.interactions.current?.id === poi.id) this.game.interactions.open(poi)
-  }
-
   poiButtons(poi: Poi): PanelButton[] {
     if (venueOf(poi)?.id !== CASINO_POI) return []
-    const paid = this.paidToday, cash = this.ctx.player.money, hall = this.hall
+    const hall = this.hall
     const out: PanelButton[] = []
-    if (!paid) {
-      const can = cash >= ENTRY_LEVY
-      out.push({
-        label: `入场（缴入场税 ${money(ENTRY_LEVY)}）`,
-        note: can ? '新加坡公民 / PR · 当日有效' : `现金不足 ${money(ENTRY_LEVY)}`,
-        disabled: !can,
-        onClick: () => {
-          if (this.payLevy()) { this.game.hud.toast(`已缴入场税 ${money(ENTRY_LEVY)}，今日内可自由进出`, 2.5); this.refreshPanel(poi) }
-          else this.game.hud.toast('现金不足，付不起入场税')
-        },
-      })
-    }
     for (const g of CASINO_GAMES) {
       out.push({
         label: g.name,
-        note: paid ? `${hall.name} ${money(hall.min)}–${money(hall.max)}` : '需先入场',
-        disabled: !paid,
+        note: `${hall.name} ${money(hall.min)}–${money(hall.max)}`,
         onClick: () => { this.openGame(g.id, true) },
       })
     }
-    out.push({ label: '换筹码 / 选赌厅', note: paid ? `当前：${hall.name}` : '需先入场', disabled: !paid, onClick: () => { this.openCashier(true) } })
+    out.push({ label: '换筹码 / 选赌厅', note: `当前：${hall.name}`, onClick: () => { this.openCashier(true) } })
     return out
   }
 
   // ---------- 赌桌 ----------
   openGame(id: CasinoGameId, fromPanel = false): boolean {
-    if (!this.paidToday) return false
     const Ctor = TABLES[id]; if (!Ctor) return false
     const hall = this.hall
     let table: Table | null = null
@@ -147,7 +114,6 @@ export class Casino implements CasinoHost {
   }
 
   openCashier(fromPanel = false): boolean {
-    if (!this.paidToday) return false
     const spec: ActivitySpec = {
       id: 'casino:cashier', title: '换筹码 · 选赌厅', subtitle: '滨海湾金沙', returnToPanel: fromPanel,
       mount: (root) => {
@@ -223,7 +189,6 @@ export class Casino implements CasinoHost {
     const rounds = all.reduce((a, s) => a + s.rounds, 0), wag = all.reduce((a, s) => a + s.wagered, 0), net = all.reduce((a, s) => a + s.net, 0)
     return {
       lines: [
-        `入场税：今日${this.paidToday ? '已缴' : '未缴'}（${money(ENTRY_LEVY)} / 天）· 累计 ${money(this.levyPaid)}`,
         `当前赌厅：${this.hall.name}（${money(this.hall.min)}–${money(this.hall.max)}）`,
         `终身 ${rounds} 局 · 总下注 ${money(wag)} · 净输赢 ${this.signed(Math.round(net * 100) / 100)}`,
         `今日净输赢 ${this.signed(this.todayNet)}`,
@@ -255,12 +220,10 @@ export class Casino implements CasinoHost {
 
   // ---------- 存档 ----------
   serialize(): CasinoSave {
-    return { levyDay: this.levyDay, levyPaid: this.levyPaid, hall: this.hallId, stats: JSON.parse(JSON.stringify(this.stats)), today: { ...this.today }, log: this.log.slice() }
+    return { hall: this.hallId, stats: JSON.parse(JSON.stringify(this.stats)), today: { ...this.today }, log: this.log.slice() }
   }
   restore(s: unknown) {
     const d = (s ?? {}) as Partial<CasinoSave>
-    this.levyDay = typeof d.levyDay === 'number' ? d.levyDay : 0
-    this.levyPaid = typeof d.levyPaid === 'number' ? d.levyPaid : 0
     this.hallId = d.hall && HALLS.some((h) => h.id === d.hall) ? d.hall : 'main'
     this.stats = d.stats && typeof d.stats === 'object' ? JSON.parse(JSON.stringify(d.stats)) : {}
     this.today = d.today && typeof d.today.day === 'number' ? { day: d.today.day, net: d.today.net ?? 0 } : { day: this.ctx?.clock.day ?? 1, net: 0 }
@@ -272,16 +235,14 @@ export class Casino implements CasinoHost {
   debug() {
     const self = this
     return {
-      get paidToday() { return self.paidToday },
-      get levyDay() { return self.levyDay },
       get hall() { return self.hall.id },
       get stats() { return JSON.parse(JSON.stringify(self.stats)) },
       get todayNet() { return self.todayNet },
       get lossStreak() { return self.lossStreak },
       get log() { return self.log.slice() },
       hallLock: (id: HallId) => self.hallLock(hallById(id)),
-      /** 付税进门（已付则直接 true） */
-      enter: () => self.payLevy(),
+      /** 兼容旧测试：已不收入场税，直接 true */
+      enter: () => true,
       open: (g: CasinoGameId, hall?: HallId) => { if (hall && !self.setHall(hall)) return false; return self.openGame(g) },
       cashier: () => self.openCashier(),
       setHall: (h: HallId) => self.setHall(h),
