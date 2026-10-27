@@ -106,6 +106,7 @@
 - [x] I18N.1–6 抽字+翻译（并行，约 1770 个 key）：1 Game/ui/index.html → en/ui · 2 systems → en/systems · 3 data 表 → en/data · 4 dates/club → en/social · 5 arena/race → en/arena · 6 casino → en/casino
 - [x] I18N.V 验收：check/build 通过；i18n:check 漏网/缺 key/占位符/冲突全 0（另查只有全角标点的字面量）；econ/casino/ride sim 通过；Playwright 英文版开局、HUD、手机 13 个子页、衣柜部件名、赌场五游戏、夜店/约会、竞技场、赛车页面无残留中文，运行时缺 key 警告 0；右上角与手机设置切换语言后重载、设置记住、存档保留；中文版 HUD 与原来一致。
   约定：新界面文字一律 `t('中文')`，英文补到 `src/i18n/en/<模块>.ts`；同一中文 key 只能一个译文（21 点「和」=Push 与百家乐 Tie 用 `lang` 分支）；街景招牌中文不翻（Signage.ts i18n-ignore-file）；调试面板、Error、GLSL 不翻。
+  2026-10-27 已部署 rea.alextang.dev（版本 b66f1c18），线上 ?lang=en 开局英文、右上角切换按钮在、0 报错。
   遗留：触屏英文布局（I1 已缩小按钮字号）未在真机测；`?lang=` 只在随后有设置保存时才写入本地设置；「未使用 key」里约 70 条是 HTML/部件名等动态 key，属正常。
 
 ## 后续
