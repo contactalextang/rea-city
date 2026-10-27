@@ -50,7 +50,7 @@ const PAL = {
 } as const
 const PAL_N = 16
 const PAL_RGB: [number, number, number][] = [
-  [0, 0, 0], [255, 246, 225], [60, 255, 120], [255, 34, 24], [60, 110, 255], [104, 86, 62], [92, 108, 124], [255, 196, 120],
+  [0, 0, 0], [255, 246, 225], [30, 150, 70], [255, 34, 24], [60, 110, 255], [104, 86, 62], [92, 108, 124], [255, 196, 120],
   [255, 150, 40], [120, 18, 12], [118, 118, 112], [130, 80, 20],
 ]
 /** 自发光倍数：emissive 颜色 × 调色板 × DayNight 写入的 emissiveIntensity（夜间 1.5） */
@@ -863,7 +863,7 @@ export class AirfieldMesh {
   private buildLights(glow: Builder) {
     const R = RUNWAY
     const housing = col(0xd9d2a0), blueC = col(0x3a62c8), greenC = col(0x2f9a4c), redC = col(0xb0302a)
-    const lamp = (x: number, z: number, c: THREE.Color, p: number, s = 0.4, h = 0.5) => glow.box(x, -0.12, z, s, h, s, c, 0, palU(p))
+    const lamp = (x: number, z: number, c: THREE.Color, p: number, s = 0.3, h = 0.4) => glow.box(x, -0.12, z, s, h, s, c, 0, palU(p))
     const core = (x: number, z: number, c: THREE.Color, p: number) => glow.box(x, 0.2, z, 0.18, 0.18, 0.18, c, 0, palU(p), true)
     const { edge, blue } = this.lightSpots()
     for (const [x, z] of edge) core(x, z, housing, PAL.white)
