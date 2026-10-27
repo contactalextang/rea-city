@@ -26,6 +26,16 @@ export interface GamePlugin {
   navPath?(): { x: number; z: number }[] | null
   /** 被捕 / 倒下时 */
   onBustOrDeath?(): void
+  /** Phase AIR：F 键（在上下车之前调用）；返回 true = 插件已处理（如登机 / 下飞机） */
+  keyF?(): boolean
+  /** 接管相机（返回 true 时 Game 跳过默认 cam.update，如驾驶飞机） */
+  driveCamera?(dt: number): boolean
+  /** 当前操控模式（'fly' = 驾驶飞机；触屏布局与 HUD 据此切换） */
+  controlMode?(): 'fly' | null
+  /** 发动机声音来源（驾驶飞机时；null = 不接管） */
+  audioMount?(): { speed: number; throttle: number } | null
+  /** HUD 底部提示（排在 POI 交互提示之后；null = 无） */
+  hint?(): string | null
   /** 测试钩子对象，挂到 window.__game.plug[id] */
   debug?(): unknown
 }

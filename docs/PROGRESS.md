@@ -109,6 +109,17 @@
   2026-10-27 已部署 rea.alextang.dev（版本 b66f1c18），线上 ?lang=en 开局英文、右上角切换按钮在、0 报错。
   遗留：触屏英文布局（I1 已缩小按钮字号）未在真机测；`?lang=` 只在随后有设置保存时才写入本地设置；「未使用 key」里约 70 条是 HTML/部件名等动态 key，属正常。
 
+## Phase AIR — 机场与飞机驾驶（计划 ~/.claude/plans/piped-greeting-locket.md）
+> 起因：用户参考 threejsassets「Airfield — Small Airport Kit」（只用免费模型），要求加机场和开飞机。已定：城市南边海上虚构填海岛「滨海南机场」，经堤道接 Marina Coastal Drive 南端断头点；自由飞行与起降 + 四身份飞行工作 + 商店买飞机；不做驾照课。
+> 约定：飞机不进 `game.vehicles`；`Player.mount`（Mount 接口）+ `piloting`/`onFoot`，驾驶时 `worldX/Z/Y` 取飞机；边界体 `StaticBody.tag='bound'`（城市墙、堤道护栏、岛边缘）飞机碰撞跳过；插件钩子 keyF/driveCamera/controlMode/audioMount/hint。
+- [x] AIR.0 基础层：src/world/Airfield.ts（布局常量、patchAirfieldGraph 堤道 2 条单行边 + 陆侧路、4 个 airport POI、常驻碰撞体 'airfield'、AirfieldSurface 地表分类、空域）；SgWorld 南墙开口、海面 8 km、update 带高度（>60 m 区块半径 3）；ChunkManager.update(radius)；PoiType 'airport'；Plugin 新钩子与 Game 调用点；Player.mount；Save.saveSpot；叫车「日常」加机场；en/aviation.ts。验收：叫 Grab 到机场 6.3 km 落在航站楼门口；从城市步行穿过墙口沿堤道上岛；交通车开上堤道与岛；单测 18/18、ride-sim 25398 通过、i18n 0 缺。
+- [ ] AIR.1 资源打包（待用户下载免费 GLB 到 data/assets-eval/threejsassets/airfield/）
+- [ ] AIR.2 机场场景网格 + 跑道着色器 + 小地图叠加
+- [~] AIR.3 飞行物理 ArcadeFlight.ts + flight.test.ts
+- [ ] AIR.4 驾驶接入（Aircraft、aviation 插件、HeightField、Camera.updateAir、触屏、音频）
+- [ ] AIR.5a 经济数据 / AIR.5b 飞行工作
+- [ ] AIR.6 收尾 / AIR.V 终验
+
 ## 后续
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
 - [x] P12 射击 / 赛车 10 级难度阶梯（计划 ~/.claude/plans/soft-scribbling-garden.md）：src/data/tiers.ts；竞技场 botParams(t) 锚点插值 + dmgMul/utility，天梯按 ELO 定中心级别；赛车 RACE_TIERS（水平加成 + 橡皮筋参数）；各自 tier/tierMax 进存档，在最高级别获胜解锁下一级；奖金/XP ×TIER_REWARD；成就 race_legend/arena_legend

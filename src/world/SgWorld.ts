@@ -12,6 +12,7 @@ import { Landmarks, skylineHidden } from './Landmarks'
 import { Signage, type NamedGraphData } from './Signage'
 import type { WorldSource } from './WorldSource'
 import type { Poi } from '../systems/Poi'
+import { addAirfieldColliders, airfieldPois, AirfieldSurface, patchAirfieldGraph, WALL_GAP } from './Airfield'
 
 /**
  * 真实新加坡世界（public/world/sg/ 的烘焙数据）：
@@ -29,7 +30,10 @@ export interface LanduseData {
 }
 
 const SEA_COLOR = 0x2f5d8a
-const SEA_MARGIN = 2000
+// Phase AIR：高空能看很远，海面外扩到 8 km（单个平面，成本可忽略）
+const SEA_MARGIN = 8000
+/** 高于此高度（m）区块加载半径 2 → 3 */
+const HIGH_ALT = 60
 
 async function fetchJson<T>(url: string): Promise<T> {
   const r = await fetch(url).catch((e) => { throw new Error(`SgWorld: 请求失败 ${url}: ${e}`) })
@@ -68,6 +72,10 @@ export class SgWorld implements WorldSource {
   landmarks: Landmarks | null = null
   /** 文字类街景（路名牌 / 楼号 / 招牌 / LOOK RIGHT），?signs=0 关闭 */
   signs: Signage | null = null
+  /** Phase AIR 滨海南机场是否接入（路网补丁成功） */
+  airfield = false
+  /** 地表类型（跑道 / 铺装 / 陆地 / 水面），飞机接地判定用 */
+  surface!: AirfieldSurface
   /** 天际线里因地标替换丢弃的三角数 */
   skylineDropped = 0
   /** 首个 5×5 全部构建完成的时间戳（performance.now），统计首屏用 */
@@ -93,12 +101,14 @@ export class SgWorld implements WorldSource {
       loadImage(u(f.minimap)),
       new THREE.TextureLoader().loadAsync(u(f.ground)).catch((e) => { throw new Error(`SgWorld: 贴图加载失败 ${u(f.ground)}: ${e}`) }),
     ])
+    this.airfield = patchAirfieldGraph(graph)
     this.graph = new RoadGraph(graph)
-    this.pois = pois.pois
+    this.pois = this.airfield ? [...pois.pois, ...airfieldPois()] : pois.pois
     this.landuse = landuse
     this.minimapImg = minimap
     this.groundTex = ground
     this.bounds = { ...this.manifest.bbox }
+    this.surface = new AirfieldSurface(this.bounds, landuse?.water ?? null)
     this.buildSkyline(sky)
     const home = this.pois.find((p) => p.id === 'home_gang')
     if (home) this.spawn = { ...home.door }
@@ -123,6 +133,7 @@ export class SgWorld implements WorldSource {
     if (!signsOff) this.signs = new Signage(this.graph, graph as GraphData & NamedGraphData, this.pois, this.manifest.grid)
     this.chunks = new ChunkManager(this.manifest, this.baseUrl, this.world, this.props, this.marks, this.signs)
     this.addWalls()
+    if (this.airfield) addAirfieldColliders(this.world)
   }
 
   private buildSkyline(buf: ArrayBuffer) {
@@ -165,10 +176,15 @@ export class SgWorld implements WorldSource {
   private addWalls() {
     const { minX, maxX, minZ, maxZ } = this.bounds
     const T = 2
-    this.world.add({ minX: minX - T, maxX: minX, minZ: minZ - T, maxZ: maxZ + T }, 80)
-    this.world.add({ minX: maxX, maxX: maxX + T, minZ: minZ - T, maxZ: maxZ + T }, 80)
-    this.world.add({ minX: minX - T, maxX: maxX + T, minZ: minZ - T, maxZ: minZ }, 80)
-    this.world.add({ minX: minX - T, maxX: maxX + T, minZ: maxZ, maxZ: maxZ + T }, 80)
+    // 隐形边界墙：挡人与车（tag 'bound'，飞机碰撞跳过）；南墙在堤道处留口（不接机场时整段）
+    const bound = (b: { minX: number; maxX: number; minZ: number; maxZ: number }) => this.world.addBody({ ...b, h: 80, tag: 'bound' })
+    bound({ minX: minX - T, maxX: minX, minZ: minZ - T, maxZ: maxZ + T })
+    bound({ minX: maxX, maxX: maxX + T, minZ: minZ - T, maxZ: maxZ + T })
+    bound({ minX: minX - T, maxX: maxX + T, minZ: minZ - T, maxZ: minZ })
+    if (this.airfield) {
+      bound({ minX: minX - T, maxX: WALL_GAP.x0, minZ: maxZ, maxZ: maxZ + T })
+      bound({ minX: WALL_GAP.x1, maxX: maxX + T, minZ: maxZ, maxZ: maxZ + T })
+    } else bound({ minX: minX - T, maxX: maxX + T, minZ: maxZ, maxZ: maxZ + T })
   }
 
   attach(scene: THREE.Scene) {
@@ -208,8 +224,8 @@ export class SgWorld implements WorldSource {
     this.landmarks.attach(scene)
   }
 
-  update(px: number, pz: number, dt: number) {
-    this.chunks.update(px, pz)
+  update(px: number, pz: number, dt: number, py = 0) {
+    this.chunks.update(px, pz, py > HIGH_ALT ? 3 : undefined)
     this.props.update(dt)
     this.landmarks?.update(dt)
     if (!this.firstLoadedAt && this.chunks.idle && this.chunks.stats.loaded > 0) this.firstLoadedAt = performance.now()

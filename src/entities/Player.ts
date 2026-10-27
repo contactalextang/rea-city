@@ -16,6 +16,13 @@ const HAND_BONES = ['Fist.R', 'FistR', 'Hand.R', 'HandR', 'WristR', 'Wrist.R', '
 /** 速度阈值：低于 WALK_MIN 视为静止，高于 RUN_MIN 播 Run */
 const WALK_MIN = 0.3, RUN_MIN = 5
 
+/** 玩家乘坐的非车辆载具（Phase AIR 飞机）：由插件驱动，Player 只读位置与水平速度 */
+export interface Mount {
+  x: number; y: number; z: number; vx: number; vz: number; yaw: number
+  /** 存档落点（空中存档 → 读档落在机库门口）；缺省用当前位置 */
+  saveSpot?(): { x: number; z: number; yaw: number }
+}
+
 /** 玩家：步行控制、上下车、血量与金钱 */
 export class Player implements Body {
   x = 0; z = 0; y = 0; vy = 0; yaw = 0; vx = 0; vz = 0
@@ -24,6 +31,8 @@ export class Player implements Body {
   health = 100
   money = 0
   vehicle: Vehicle | null = null
+  /** 正在驾驶的飞机（不在 game.vehicles 里；与 vehicle 互斥） */
+  mount: Mount | null = null
   group = new THREE.Group()
   private legs: THREE.Mesh
   private phase = 0
@@ -97,10 +106,16 @@ export class Player implements Body {
   onShoot() { this.shootT = 0.3 }
 
   get inVehicle() { return this.vehicle !== null }
-  get worldX() { return this.vehicle ? this.vehicle.x : this.x }
-  get worldZ() { return this.vehicle ? this.vehicle.z : this.z }
-  get worldVX() { return this.vehicle ? this.vehicle.vx : this.vx }
-  get worldVZ() { return this.vehicle ? this.vehicle.vz : this.vz }
+  /** 正在开飞机 */
+  get piloting() { return this.mount !== null }
+  /** 步行（不在车里也不在飞机里） */
+  get onFoot() { return !this.vehicle && !this.mount }
+  get worldX() { return this.vehicle ? this.vehicle.x : this.mount ? this.mount.x : this.x }
+  get worldZ() { return this.vehicle ? this.vehicle.z : this.mount ? this.mount.z : this.z }
+  get worldVX() { return this.vehicle ? this.vehicle.vx : this.mount ? this.mount.vx : this.vx }
+  get worldVZ() { return this.vehicle ? this.vehicle.vz : this.mount ? this.mount.vz : this.vz }
+  /** 世界高度（飞机在空中时 > 0） */
+  get worldY() { return this.mount ? this.mount.y : this.y }
 
   place(x: number, z: number, yaw: number) {
     this.x = x; this.z = z; this.yaw = yaw; this.vx = this.vz = 0; this.y = 0; this.vy = 0
@@ -111,6 +126,7 @@ export class Player implements Body {
     const live = input.locked || input.lookActive   // 鼠标 / 触屏控制视角时，移动方向实时跟随相机
     this.hurtTimer = Math.max(0, this.hurtTimer - dt)
     this.running = false
+    if (this.mount) return   // 飞行输入由 aviation 插件读取
     if (this.vehicle) {
       const c = this.vehicle.controls
       if (enabled) {
@@ -209,6 +225,21 @@ export class Player implements Body {
     this.group.visible = true
   }
 
+  /** 登机：角色隐藏，位置跟随飞机（worldX/Z） */
+  board(m: Mount) {
+    this.mount = m
+    this.vx = this.vz = 0
+    this.group.visible = false
+  }
+
+  /** 下飞机：站到 (x, z)，朝向 yaw */
+  leaveMount(x: number, z: number, yaw: number) {
+    if (!this.mount) return
+    this.mount = null
+    this.place(x, z, yaw)
+    this.group.visible = true
+  }
+
   damage(amount: number) {
     if (amount <= 0) return
     this.health = Math.max(0, this.health - amount)
@@ -216,7 +247,7 @@ export class Player implements Body {
   }
 
   sync() {
-    if (this.vehicle) return
+    if (this.vehicle || this.mount) return
     this.group.position.set(this.x, this.y, this.z)
     this.group.rotation.y = this.yaw
     if (this.char) return
@@ -237,7 +268,7 @@ export class Player implements Body {
    */
   animate(dt: number) {
     const c = this.char
-    if (!c || this.vehicle) return
+    if (!c || this.vehicle || this.mount) return
     this.shootT = Math.max(0, this.shootT - dt)
     const speed = Math.hypot(this.vx, this.vz)
     if (this.health <= 0) {

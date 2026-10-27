@@ -4,8 +4,8 @@ import { TARGET_CSS } from '../world/Marker'
 
 const MINOR = new Set<PoiType>(['bus', 'taxi'])
 /** P10 娱乐场馆：小地图上画大点 */
-const VENUE = new Set<PoiType>(['casino', 'club', 'race', 'arena'])
-const NAMED = new Set<PoiType>(['mrt', 'home', 'office', 'police', 'hospital', 'landmark', 'site', 'casino', 'club', 'race', 'arena'])
+const VENUE = new Set<PoiType>(['casino', 'club', 'race', 'arena', 'airport'])
+const NAMED = new Set<PoiType>(['mrt', 'home', 'office', 'police', 'hospital', 'landmark', 'site', 'casino', 'club', 'race', 'arena', 'airport'])
 /** 已拥有产业的金圈颜色（与品红目标 TARGET_CSS、黄色任务点 #ffd33d 区分：空心粗环 + 深色描边） */
 export const BIZ_RING_CSS = '#ffb300'
 /** 插件导航折线（赛道线）颜色：青色，和品红目标 / 金色产业区分 */

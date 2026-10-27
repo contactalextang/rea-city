@@ -47,7 +47,7 @@ export class Interactions {
 
   update() {
     const pl = this.ctx.player
-    this.near = pl.inVehicle ? null : this.ctx.pois.nearest(pl.x, pl.z, INTERACT_DIST)
+    this.near = !pl.onFoot ? null : this.ctx.pois.nearest(pl.x, pl.z, INTERACT_DIST)
   }
 
   get hint() { return this.near ? t('按 E 进入 {name}', { name: this.near.name }) : null }
@@ -87,6 +87,7 @@ export class Interactions {
       case 'police': return this.info(poi, [t('新加坡警察部队。'), t('交通罚单与扣分记录在这里查询；扣满 24 分吊销驾照一天。'), t('当前扣分 {d}/24 · 累计罚款 ${f}', { d: this.ctx.law.demerits, f: this.ctx.law.fines })])
       case 'hospital': return this.info(poi, [t('倒下后会被送到这里醒来。'), t('血量会恢复，但账户里会扣掉一笔医药费。')])
       case 'casino': case 'club': case 'race': case 'arena': return this.venuePanel(poi)
+      case 'airport': return this.info(poi, [t('滨海南机场 24 小时开放。'), this.status()])
       default: return this.info(poi, [t('这里只是看看。')])
     }
   }

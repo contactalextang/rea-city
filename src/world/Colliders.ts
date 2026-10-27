@@ -9,6 +9,8 @@ export interface StaticBody extends AABB {
   h: number
   /** 所属区块 key，按区块卸载时用 */
   chunk?: string
+  /** 'bound' = 边界体（城市墙、堤道护栏、岛边缘）：挡人与车，飞机碰撞跳过 */
+  tag?: 'bound'
 }
 
 export class StaticWorld {

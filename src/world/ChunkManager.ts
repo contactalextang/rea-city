@@ -116,13 +116,14 @@ export class ChunkManager {
   /** 目标集合里的块是否全部构建完成 */
   get idle() { return this.wanted.every((k) => this.built.has(k)) && this.decoded.size === 0 }
 
-  update(px: number, pz: number) {
+  /** radius：加载半径（块），默认 LOAD_RADIUS；高空飞行时调大（卸载半径随之 +1） */
+  update(px: number, pz: number, radius = LOAD_RADIUS) {
     const [ci, cj] = chunkIndexOf(px, pz, this.manifest.grid)
-    const center = `${ci}_${cj}`
+    const center = `${ci}_${cj}_${radius}`
     if (center !== this.lastCenter) {
       this.lastCenter = center
-      this.recomputeWanted(ci, cj)
-      this.unloadFar(ci, cj)
+      this.recomputeWanted(ci, cj, radius)
+      this.unloadFar(ci, cj, radius + UNLOAD_RADIUS - LOAD_RADIUS)
       this.signs?.setCenter(ci, cj)
     }
     // 1. 发起一次 fetch（按距离排序的待取列表里第一个未取的）
@@ -151,10 +152,10 @@ export class ChunkManager {
     this.signs?.flush()
   }
 
-  private recomputeWanted(ci: number, cj: number) {
+  private recomputeWanted(ci: number, cj: number, R: number) {
     const { cols, rows } = this.manifest.grid
     const list: { key: string; d: number }[] = []
-    for (let j = cj - LOAD_RADIUS; j <= cj + LOAD_RADIUS; j++) for (let i = ci - LOAD_RADIUS; i <= ci + LOAD_RADIUS; i++) {
+    for (let j = cj - R; j <= cj + R; j++) for (let i = ci - R; i <= ci + R; i++) {
       if (i < 0 || j < 0 || i >= cols || j >= rows) continue
       const key = `${i}_${j}`
       if (!this.files.has(key)) continue
@@ -164,10 +165,10 @@ export class ChunkManager {
     this.wanted = list.map((l) => l.key)
   }
 
-  private unloadFar(ci: number, cj: number) {
+  private unloadFar(ci: number, cj: number, R: number) {
     const far = (key: string) => {
       const [i, j] = key.split('_').map(Number)
-      return Math.abs(i - ci) > UNLOAD_RADIUS || Math.abs(j - cj) > UNLOAD_RADIUS
+      return Math.abs(i - ci) > R || Math.abs(j - cj) > R
     }
     for (const key of [...this.built.keys()]) if (far(key)) this.unload(key)
     for (const key of [...this.decoded.keys()]) if (far(key)) this.decoded.delete(key)

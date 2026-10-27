@@ -9,6 +9,8 @@ import { t } from '../i18n'
 export type PoiType = 'hawker' | 'mrt' | 'bus' | 'taxi' | 'home' | 'office' | 'site' | 'police' | 'hospital' | 'shop' | 'landmark'
   /** P10 娱乐场馆（数据见 data/venues.ts） */
   | 'casino' | 'club' | 'race' | 'arena'
+  /** Phase AIR 滨海南机场（航站楼 / 机库 / 货运 / 塔台，见 world/Airfield.ts） */
+  | 'airport'
 
 export interface Poi {
   id: string
@@ -26,14 +28,14 @@ export interface Poi {
 export const POI_COLOR: Record<PoiType, number> = {
   hawker: 0xff8c2e, mrt: 0x2ecc71, bus: 0x27ae60, taxi: 0xf2c516, home: 0x3ea6ff, office: 0x9b7bff,
   site: 0xffb000, police: 0x4169e1, hospital: 0xff4b4b, shop: 0xff69b4, landmark: 0xffffff,
-  casino: 0xffcf40, club: 0xd94dff, race: 0xff3b30, arena: 0x00c2b8,
+  casino: 0xffcf40, club: 0xd94dff, race: 0xff3b30, arena: 0x00c2b8, airport: 0x5ad1ff,
 }
 /** CSS 颜色串（小地图 / 手机地图用） */
 export const poiCss = (t: PoiType) => '#' + POI_COLOR[t].toString(16).padStart(6, '0')
 export const POI_LABEL: Record<PoiType, string> = {
   hawker: t('小贩中心'), mrt: t('地铁站'), bus: t('巴士站'), taxi: t('的士站'), home: t('住家'), office: t('办公楼'),
   site: t('工地'), police: t('警署'), hospital: t('医院'), shop: t('商店'), landmark: t('地标'),
-  casino: t('赌场'), club: t('夜店'), race: t('赛车'), arena: t('射击俱乐部'),
+  casino: t('赌场'), club: t('夜店'), race: t('赛车'), arena: t('射击俱乐部'), airport: t('机场'),
 }
 
 export class PoiRegistry {

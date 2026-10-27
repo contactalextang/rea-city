@@ -49,7 +49,7 @@ export function save(ctx: Ctx, extra: SaveExtra = {}): SaveData | null {
   const pl = ctx.player, law = ctx.law
   const data: SaveData = {
     v: 1, role: ctx.role.id, world: ctx.settings.world, money: pl.money, day: ctx.clock.day, hour: ctx.clock.hour,
-    x: pl.worldX, z: pl.worldZ, yaw: pl.vehicle ? pl.vehicle.yaw : pl.yaw, inVehicle: false,
+    ...(pl.mount?.saveSpot?.() ?? { x: pl.worldX, z: pl.worldZ, yaw: pl.vehicle ? pl.vehicle.yaw : pl.yaw }), inVehicle: false,
     needs: { hunger: ctx.needs.hunger, energy: ctx.needs.energy, mood: Math.round(ctx.needs.mood * 10) / 10 },
     law: { demerits: law.demerits, fines: law.fines, arrests: law.arrests, licenseSuspendedUntilDay: law.licenseSuspendedUntilDay },
     jobs: extra.jobs, quests: extra.quests, weather: extra.weather,

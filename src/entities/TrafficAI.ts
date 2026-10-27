@@ -58,7 +58,7 @@ export function obstacleAhead(v: Vehicle, ctx: Ctx, peds: Pedestrians, range: nu
     if (l < lateral * 0.8) best = Math.min(best, f - 2.0)
   }
   const pl = ctx.player
-  if (!pl.inVehicle) {
+  if (pl.onFoot) {
     const dx = pl.x - v.x, dz = pl.z - v.z
     const f = dx * fx + dz * fz
     const l = Math.abs(dx * fz - dz * fx)

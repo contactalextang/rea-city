@@ -42,6 +42,7 @@ import { Progress } from '../systems/Progress'
 import { Wallet, setWageMul, charge, serializeLedger, restoreLedger } from '../systems/Wallet'
 import { Activity, type ActivitySpec } from '../ui/Activity'
 import { VENUES, sgVenuePois, venueOf, venueOpen, hoursText } from '../data/venues'
+import { AIRPORT_POI } from '../world/Airfield'
 import { Assets } from '../systems/Assets'
 import { Business } from '../systems/Business'
 import { ACHIEVEMENTS } from '../data/progression'
@@ -791,7 +792,7 @@ export class Game {
     this.ctx.time = this.time
     // 世界流式加载（区块随玩家位置增删）与 POI 名牌远近开关
     const wx = this.player.worldX, wz = this.player.worldZ
-    this.source.update(wx, wz, dt)
+    this.source.update(wx, wz, dt, this.player.worldY)
     this.poiMarkers.update(wx, wz)
     this.ctx.pursuitLevel = this.law.chase ? this.law.pursuitLevel : 0
     this.signals.update(dt)
@@ -849,11 +850,11 @@ export class Game {
 
     // 玩家输入与上下车
     const gun = this.role.systems.gun
-    this.player.aiming = control && gun && (input.locked || this.forceAim) && !this.player.inVehicle
+    this.player.aiming = control && gun && (input.locked || this.forceAim) && this.player.onFoot
     this.player.update(dt, input, this.cam.yaw, this.world, control)
     this.weapon.update(dt)
-    if (control && gun && (input.mouseDown(0) || input.down('ControlLeft')) && this.weapon.ready) this.shoot()
-    if (control && input.justPressed('KeyF') && !this.jobs.keyF(this.ctx)) this.toggleVehicle()
+    if (control && gun && !this.player.piloting && (input.mouseDown(0) || input.down('ControlLeft')) && this.weapon.ready) this.shoot()
+    if (control && input.justPressed('KeyF') && !this.plugins.some((pl) => pl.keyF?.()) && !this.player.piloting && !this.jobs.keyF(this.ctx)) this.toggleVehicle()
     this.interactions.update()
     if (control && input.justPressed('KeyH') && this.player.vehicle) this.audio.horn(true, this.player.vehicle.kind === 'bus')
     if (control && input.justPressed('KeyE') && this.interactions.near) { this.openPanel(this.interactions.near); return }
@@ -880,7 +881,7 @@ export class Game {
 
     if (playing) {
       if (this.player.health <= 0) this.enterState('dead')
-      else if (this.law.policeStars > 0) {
+      else if (this.law.policeStars > 0 && !this.player.piloting) {
         const pl = this.player
         const near = this.vehicles.some((v) => v.active && v.driver === 'police' && !v.wrecked && v.absSpeed < 8 && Math.hypot(v.x - pl.worldX, v.z - pl.worldZ) < (pl.inVehicle ? 6.5 : 3.4))
         if (!pl.inVehicle && near) this.enterState('busted')
@@ -904,7 +905,7 @@ export class Game {
     const target = this.player.vehicle ?? this.player
     const moving = this.player.inVehicle ? Math.abs(this.player.vehicle!.speed) > 1 : Math.hypot(this.player.vx, this.player.vz) > 0.5
     if (this.camShot) { this.cam.camera.position.fromArray(this.camShot, 0); this.cam.camera.lookAt(this.camShot[3], this.camShot[4], this.camShot[5]) }
-    else this.cam.update(dt, this.player.inVehicle ? 'car' : 'foot', target, this.player.vehicle?.speed ?? 0, this.time, moving, this.state === 'play' && (this.input.locked || this.forceAim), this.player.vehicle?.halfLen ?? 2.3)
+    else if (!this.plugins.some((pl) => pl.driveCamera?.(dt))) this.cam.update(dt, this.player.inVehicle ? 'car' : 'foot', target, this.player.vehicle?.speed ?? 0, this.time, moving, this.state === 'play' && (this.input.locked || this.forceAim), this.player.vehicle?.halfLen ?? 2.3)
     this.player.sync()
     for (const v of this.vehicles) if (v.active) v.sync(this.time)
     this.jobs.sync(this.time); this.quests.sync(this.time, this.jobs.targetPoint !== null)
@@ -1097,7 +1098,7 @@ export class Game {
     }
     // 步行玩家 vs 车
     const pl = this.player
-    if (!pl.inVehicle) {
+    if (pl.onFoot) {
       for (const v of V) {
         if (!v.active) continue
         const dx = v.x - pl.x, dz = v.z - pl.z
@@ -1129,13 +1130,14 @@ export class Game {
 
   private updateHud(dt: number) {
     const pl = this.player
-    let hint: string | null = null
+    let hint: string | null = null, ph: string | null
     if (this.state === 'play') {
       if (this.phone.open) hint = null
       else if (!this.input.locked && this.time - this.unlockHintAt < 4) hint = this.input.touch ? t('左侧拖动移动 · 右侧拖动转视角') : t('点击画面锁定鼠标，转动视角（Esc 解锁）')
       else if (this.jobs.canBoardTaxi) hint = this.input.touch ? t('点「上车」上客') : t('按 F 上客')
       else if (this.interactions.hint) hint = this.interactions.hint
-      else if (!pl.inVehicle && pl.findNearbyVehicle(this.vehicles)) hint = t('按 F 上车')
+      else if ((ph = this.pluginHint())) hint = ph
+      else if (pl.onFoot && pl.findNearbyVehicle(this.vehicles)) hint = t('按 F 上车')
       else if (pl.vehicle?.wrecked) hint = t('车已报废，按 F 下车')
       else if (this.bustTimer > 0.5) hint = t('快开走！警察要把你拖下车了')
     }
@@ -1166,7 +1168,9 @@ export class Game {
     this.hud.level(`Lv${this.progress.level} ${this.progress.title}`, this.progress.pct)
     this.hud.netWorth(this.wallet.netWorth())
     this.hud.mood(this.needs.mood, this.needs.moodMul)
-    this.audio.update(this.time, pl.inVehicle, pl.vehicle?.speed ?? 0, pl.vehicle?.controls.throttle ?? 0, this.law.policeStars, policeDist)
+    let mnt: { speed: number; throttle: number } | null = null
+    for (const p of this.plugins) mnt = p.audioMount?.() ?? mnt
+    this.audio.update(this.time, pl.inVehicle || !!mnt, mnt ? mnt.speed : pl.vehicle?.speed ?? 0, mnt ? mnt.throttle : pl.vehicle?.controls.throttle ?? 0, this.law.policeStars, policeDist)
     this.audio.ambient(this.ctx, dt)
   }
 
@@ -1229,6 +1233,7 @@ export class Game {
     const j = this.jobs.active
     const why = canRide({ state: this.state === 'panel' ? 'play' : this.state, chase: this.law.chase, stars: this.law.stars, job: j && !j.passive ? j.title : null, distM })
     if (why) return why
+    if (this.player.piloting) return t('先降落并下飞机')
     if (this.plugins.some((pl) => pl.hudCard?.())) return t('先结束当前活动')
     return null
   }
@@ -1355,6 +1360,8 @@ export class Game {
     if (office) daily.push(row(office, t('公司 · {name}', { name: office.label }), t('最近的办公楼')))
     const hawker = fromPoi(this.pois.nearest(px, pz, Infinity, ['hawker']))
     if (hawker) daily.push(row(hawker, t('吃饭 · {name}', { name: hawker.label }), t('最近的小贩中心')))
+    const airport = fromPoi(this.pois.byId(AIRPORT_POI))
+    if (airport) daily.push(row(airport, t('机场 · {name}', { name: airport.label }), t('24 小时开放')))
     const venues: AppItem[] = []
     for (const v of VENUES) {
       const d = fromPoi(this.pois.byId(v.id)); if (!d) continue
@@ -1381,6 +1388,12 @@ export class Game {
       ],
       sections,
     }
+  }
+
+  /** 插件 HUD 提示（第一个非空） */
+  private pluginHint(): string | null {
+    for (const pl of this.plugins) { const h = pl.hint?.(); if (h) return h }
+    return null
   }
 
   private pluginTarget() {

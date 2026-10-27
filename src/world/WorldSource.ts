@@ -20,7 +20,8 @@ export interface WorldSource {
   spawn: { x: number; z: number; yaw: number }
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number }
   attach(scene: THREE.Scene): void
-  update(px: number, pz: number, dt: number): void
+  /** py：玩家高度（飞机在空中时 > 0；sg 世界据此扩大区块加载半径） */
+  update(px: number, pz: number, dt: number, py?: number): void
   minimapBase(): HTMLCanvasElement | HTMLImageElement
   readonly ready: Promise<void>
   /** 流式加载统计（loaded = 常驻块数，pending = 目标集合里未完成的块数） */
