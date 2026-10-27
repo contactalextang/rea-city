@@ -25,6 +25,7 @@
     "geo:check": "node scripts/geo/check-clearance.ts",
     "char:build": "node scripts/char/build.ts",
     "props:build": "node scripts/props/build.ts",
+    "airfield:build": "node scripts/airfield/build.ts",
     "lut:build": "node scripts/lut/build.ts",
     "deploy:cf": "npm run build && wrangler deploy",
     "i18n:check": "node scripts/i18n-check.ts"
@@ -47,6 +48,7 @@
     "@types/three": "^0.186.0",
     "csv-parse": "^7.0.3",
     "earcut": "^3.2.4",
+    "meshoptimizer": "1.1.1",
     "pngjs": "^7.0.0",
     "polygon-clipping": "^0.15.7",
     "typescript": "^7.0.2",
