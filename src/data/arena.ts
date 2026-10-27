@@ -1,4 +1,5 @@
 import { clampTier, tierLabel } from './tiers'
+import { t } from '../i18n'
 
 /**
  * P10.D 射击竞技（类 CS2 5v5 爆破）数据：武器 / 装备 / 经济 / 模式 / 难度 / 段位。
@@ -58,52 +59,52 @@ export interface WeaponDef {
 const rpmOf = (r: number) => r
 export const WEAPONS: Record<string, WeaponDef> = {
   knife: {
-    id: 'knife', name: '军刀', kind: 'knife', slot: 'knife', price: 0, damage: 40, armorPen: 0.85, hsMul: 1, rpm: rpmOf(150), auto: true, mag: 0, reserve: 0, reload: 0,
+    id: 'knife', name: t('军刀'), kind: 'knife', slot: 'knife', price: 0, damage: 40, armorPen: 0.85, hsMul: 1, rpm: rpmOf(150), auto: true, mag: 0, reserve: 0, reload: 0,
     speed: 250 * U, rangeMod: 1, spread: 0, moveSpread: 0, airSpread: 0, bloom: 0, bloomMax: 0, recoilUp: 0, recoilSway: 0, recoilBias: 0, killReward: 1500,
     sound: { pitch: 900, decay: 0.08, vol: 0.25 }, color: 0x9aa3ad,
   },
   glock: {
-    id: 'glock', name: 'G18 手枪', kind: 'pistol', slot: 'secondary', price: 200, side: 'T', damage: 30, armorPen: 0.47, hsMul: 4, rpm: 400, auto: false, mag: 20, reserve: 120, reload: 2.27,
+    id: 'glock', name: t('G18 手枪'), kind: 'pistol', slot: 'secondary', price: 200, side: 'T', damage: 30, armorPen: 0.47, hsMul: 4, rpm: 400, auto: false, mag: 20, reserve: 120, reload: 2.27,
     speed: 240 * U, rangeMod: 0.85, spread: 0.0065, moveSpread: 0.03, airSpread: 0.12, bloom: 0.01, bloomMax: 0.035, recoilUp: 2.2, recoilSway: 0.6, recoilBias: 0.2, killReward: 300,
     sound: { pitch: 520, decay: 0.12, vol: 0.55 }, color: 0x2b2b2b,
   },
   usp: {
-    id: 'usp', name: 'USP-S 消音', kind: 'pistol', slot: 'secondary', price: 200, side: 'CT', damage: 35, armorPen: 0.505, hsMul: 4, rpm: 352, auto: false, mag: 12, reserve: 24, reload: 2.2,
+    id: 'usp', name: t('USP-S 消音'), kind: 'pistol', slot: 'secondary', price: 200, side: 'CT', damage: 35, armorPen: 0.505, hsMul: 4, rpm: 352, auto: false, mag: 12, reserve: 24, reload: 2.2,
     speed: 240 * U, rangeMod: 0.91, spread: 0.0045, moveSpread: 0.03, airSpread: 0.12, bloom: 0.012, bloomMax: 0.04, recoilUp: 2.4, recoilSway: 0.5, recoilBias: -0.2, killReward: 300,
     sound: { pitch: 1400, decay: 0.07, vol: 0.28 }, color: 0x33363b,
   },
   deagle: {
-    id: 'deagle', name: '沙漠之鹰', kind: 'pistol', slot: 'secondary', price: 700, damage: 53, armorPen: 0.932, hsMul: 3.9, rpm: 267, auto: false, mag: 7, reserve: 35, reload: 2.2,
+    id: 'deagle', name: t('沙漠之鹰'), kind: 'pistol', slot: 'secondary', price: 700, damage: 53, armorPen: 0.932, hsMul: 3.9, rpm: 267, auto: false, mag: 7, reserve: 35, reload: 2.2,
     speed: 230 * U, rangeMod: 0.85, spread: 0.004, moveSpread: 0.08, airSpread: 0.2, bloom: 0.035, bloomMax: 0.07, recoilUp: 5, recoilSway: 1.2, recoilBias: 0.3, killReward: 300,
     sound: { pitch: 260, decay: 0.22, vol: 0.85, crack: 1 }, color: 0x8c8f94,
   },
   mac10: {
-    id: 'mac10', name: 'MAC-10 冲锋枪', kind: 'smg', slot: 'primary', price: 1050, side: 'T', damage: 29, armorPen: 0.575, hsMul: 4, rpm: 800, auto: true, mag: 30, reserve: 100, reload: 2.6,
+    id: 'mac10', name: t('MAC-10 冲锋枪'), kind: 'smg', slot: 'primary', price: 1050, side: 'T', damage: 29, armorPen: 0.575, hsMul: 4, rpm: 800, auto: true, mag: 30, reserve: 100, reload: 2.6,
     speed: 240 * U, rangeMod: 0.8, spread: 0.009, moveSpread: 0.028, airSpread: 0.13, bloom: 0.004, bloomMax: 0.03, recoilUp: 4.5, recoilSway: 1.6, recoilBias: 0.4, killReward: 600,
     sound: { pitch: 620, decay: 0.08, vol: 0.5 }, color: 0x2a2a2a,
   },
   mp9: {
-    id: 'mp9', name: 'MP9 冲锋枪', kind: 'smg', slot: 'primary', price: 1250, side: 'CT', damage: 26, armorPen: 0.6, hsMul: 4, rpm: 857, auto: true, mag: 30, reserve: 120, reload: 2.1,
+    id: 'mp9', name: t('MP9 冲锋枪'), kind: 'smg', slot: 'primary', price: 1250, side: 'CT', damage: 26, armorPen: 0.6, hsMul: 4, rpm: 857, auto: true, mag: 30, reserve: 120, reload: 2.1,
     speed: 240 * U, rangeMod: 0.87, spread: 0.008, moveSpread: 0.025, airSpread: 0.13, bloom: 0.004, bloomMax: 0.028, recoilUp: 4, recoilSway: 1.4, recoilBias: -0.3, killReward: 600,
     sound: { pitch: 700, decay: 0.07, vol: 0.45 }, color: 0x2e3238,
   },
   nova: {
-    id: 'nova', name: 'Nova 霰弹枪', kind: 'shotgun', slot: 'primary', price: 1050, damage: 26, armorPen: 0.5, hsMul: 4, rpm: 68, auto: false, mag: 8, reserve: 32, reload: 2.8,
+    id: 'nova', name: t('Nova 霰弹枪'), kind: 'shotgun', slot: 'primary', price: 1050, damage: 26, armorPen: 0.5, hsMul: 4, rpm: 68, auto: false, mag: 8, reserve: 32, reload: 2.8,
     speed: 220 * U, rangeMod: 0.7, spread: 0.045, moveSpread: 0.02, airSpread: 0.1, bloom: 0, bloomMax: 0, recoilUp: 4, recoilSway: 0.5, recoilBias: 0, pellets: 9, killReward: 900,
     sound: { pitch: 180, decay: 0.3, vol: 0.95 }, color: 0x4a3a2a,
   },
   ak47: {
-    id: 'ak47', name: 'AK-47 步枪', kind: 'rifle', slot: 'primary', price: 2700, side: 'T', damage: 36, armorPen: 0.775, hsMul: 4, rpm: 600, auto: true, mag: 30, reserve: 90, reload: 2.5,
+    id: 'ak47', name: t('AK-47 步枪'), kind: 'rifle', slot: 'primary', price: 2700, side: 'T', damage: 36, armorPen: 0.775, hsMul: 4, rpm: 600, auto: true, mag: 30, reserve: 90, reload: 2.5,
     speed: 215 * U, rangeMod: 0.98, spread: 0.0042, moveSpread: 0.1, airSpread: 0.25, bloom: 0.006, bloomMax: 0.035, recoilUp: 6.5, recoilSway: 2.6, recoilBias: 0.3, killReward: 300,
     sound: { pitch: 300, decay: 0.16, vol: 0.8, crack: 0.6 }, color: 0x5a3b22,
   },
   m4a4: {
-    id: 'm4a4', name: 'M4A4 步枪', kind: 'rifle', slot: 'primary', price: 3100, side: 'CT', damage: 33, armorPen: 0.7, hsMul: 4, rpm: 666, auto: true, mag: 30, reserve: 90, reload: 3.1,
+    id: 'm4a4', name: t('M4A4 步枪'), kind: 'rifle', slot: 'primary', price: 3100, side: 'CT', damage: 33, armorPen: 0.7, hsMul: 4, rpm: 666, auto: true, mag: 30, reserve: 90, reload: 3.1,
     speed: 225 * U, rangeMod: 0.97, spread: 0.0035, moveSpread: 0.09, airSpread: 0.25, bloom: 0.005, bloomMax: 0.03, recoilUp: 5.2, recoilSway: 2.0, recoilBias: -0.3, killReward: 300,
     sound: { pitch: 380, decay: 0.13, vol: 0.7, crack: 0.5 }, color: 0x25282c,
   },
   awp: {
-    id: 'awp', name: 'AWP 狙击枪', kind: 'sniper', slot: 'primary', price: 4750, damage: 115, armorPen: 0.975, hsMul: 4, rpm: 41, auto: false, mag: 5, reserve: 30, reload: 3.7,
+    id: 'awp', name: t('AWP 狙击枪'), kind: 'sniper', slot: 'primary', price: 4750, damage: 115, armorPen: 0.975, hsMul: 4, rpm: 41, auto: false, mag: 5, reserve: 30, reload: 3.7,
     speed: 200 * U, rangeMod: 0.99, spread: 0.0012, moveSpread: 0.16, airSpread: 0.4, bloom: 0, bloomMax: 0, recoilUp: 3, recoilSway: 0.3, recoilBias: 0, killReward: 100,
     scope: [40, 15], sound: { pitch: 150, decay: 0.45, vol: 1.0, crack: 1.2 }, color: 0x3f5a3a,
   },
@@ -113,22 +114,22 @@ export const AWP_NOSCOPE_SPREAD = 0.09
 
 export interface EquipDef { id: string; name: string; price: number; side?: Side; kind: 'armor' | 'helmet' | 'kit' | 'he' | 'smoke' | 'flash' }
 export const EQUIP: Record<string, EquipDef> = {
-  vest: { id: 'vest', name: '防弹衣', price: 650, kind: 'armor' },
-  vesthelm: { id: 'vesthelm', name: '防弹衣+头盔', price: 1000, kind: 'helmet' },
-  kit: { id: 'kit', name: '拆弹器', price: 400, side: 'CT', kind: 'kit' },
-  he: { id: 'he', name: '高爆手雷', price: 300, kind: 'he' },
-  smoke: { id: 'smoke', name: '烟雾弹', price: 300, kind: 'smoke' },
-  flash: { id: 'flash', name: '闪光弹', price: 200, kind: 'flash' },
+  vest: { id: 'vest', name: t('防弹衣'), price: 650, kind: 'armor' },
+  vesthelm: { id: 'vesthelm', name: t('防弹衣+头盔'), price: 1000, kind: 'helmet' },
+  kit: { id: 'kit', name: t('拆弹器'), price: 400, side: 'CT', kind: 'kit' },
+  he: { id: 'he', name: t('高爆手雷'), price: 300, kind: 'he' },
+  smoke: { id: 'smoke', name: t('烟雾弹'), price: 300, kind: 'smoke' },
+  flash: { id: 'flash', name: t('闪光弹'), price: 200, kind: 'flash' },
 }
-export const GRENADE_NAMES: Record<string, string> = { he: '高爆手雷', smoke: '烟雾弹', flash: '闪光弹' }
+export const GRENADE_NAMES: Record<string, string> = { he: t('高爆手雷'), smoke: t('烟雾弹'), flash: t('闪光弹') }
 
 /** 购买菜单分组（数字键：组号 → 组内序号） */
 export const BUY_MENU: { title: string; items: string[] }[] = [
-  { title: '手枪', items: ['glock', 'usp', 'deagle'] },
-  { title: '冲锋/霰弹', items: ['mac10', 'mp9', 'nova'] },
-  { title: '步枪', items: ['ak47', 'm4a4', 'awp'] },
-  { title: '装备', items: ['vest', 'vesthelm', 'kit'] },
-  { title: '投掷物', items: ['he', 'smoke', 'flash'] },
+  { title: t('手枪'), items: ['glock', 'usp', 'deagle'] },
+  { title: t('冲锋/霰弹'), items: ['mac10', 'mp9', 'nova'] },
+  { title: t('步枪'), items: ['ak47', 'm4a4', 'awp'] },
+  { title: t('装备'), items: ['vest', 'vesthelm', 'kit'] },
+  { title: t('投掷物'), items: ['he', 'smoke', 'flash'] },
 ]
 
 export const ECON = {
@@ -230,21 +231,21 @@ export interface ModeDef {
   desc: string
 }
 export const MODES: Record<ArenaModeId, ModeDef> = {
-  casual: { id: 'casual', name: '5v5 爆破（休闲）', fee: 50, prize: 150, perKill: 10, perMvp: 20, desc: '先赢 7 回合 · 难度可选（赢一局解锁下一级）' },
-  ranked: { id: 'ranked', name: '5v5 天梯', fee: 200, prize: 600, perKill: 30, perMvp: 60, unlock: 'arena_ranked', desc: '影响段位 · Bot 随段位变强' },
-  pro: { id: 'pro', name: '职业联赛', fee: 1000, prize: 3000, perKill: 120, perMvp: 250, unlock: 'arena_pro', desc: 'T8–T10 Bot · 高额奖金' },
-  duel: { id: 'duel', name: '1v1 单挑', fee: 100, prize: 250, perKill: 0, perMvp: 0, desc: '先赢 5 回合 · 无炸弹 · 难度可选' },
-  dm: { id: 'dm', name: '死斗热身', fee: 0, prize: 0, perKill: 0, perMvp: 0, desc: '免费 · 5 分钟 · 随买随用' },
+  casual: { id: 'casual', name: t('5v5 爆破（休闲）'), fee: 50, prize: 150, perKill: 10, perMvp: 20, desc: t('先赢 7 回合 · 难度可选（赢一局解锁下一级）') },
+  ranked: { id: 'ranked', name: t('5v5 天梯'), fee: 200, prize: 600, perKill: 30, perMvp: 60, unlock: 'arena_ranked', desc: t('影响段位 · Bot 随段位变强') },
+  pro: { id: 'pro', name: t('职业联赛'), fee: 1000, prize: 3000, perKill: 120, perMvp: 250, unlock: 'arena_pro', desc: t('T8–T10 Bot · 高额奖金') },
+  duel: { id: 'duel', name: t('1v1 单挑'), fee: 100, prize: 250, perKill: 0, perMvp: 0, desc: t('先赢 5 回合 · 无炸弹 · 难度可选') },
+  dm: { id: 'dm', name: t('死斗热身'), fee: 0, prize: 0, perKill: 0, perMvp: 0, desc: t('免费 · 5 分钟 · 随买随用') },
 }
 
 /** 段位：ELO → 名称 */
 export const RANKS: { name: string; min: number }[] = [
-  { name: '青铜 I', min: -Infinity }, { name: '青铜 II', min: 800 }, { name: '青铜 III', min: 900 },
-  { name: '白银 I', min: 1000 }, { name: '白银 II', min: 1100 }, { name: '白银 III', min: 1200 },
-  { name: '黄金 I', min: 1300 }, { name: '黄金 II', min: 1400 }, { name: '黄金 III', min: 1500 },
-  { name: '铂金 I', min: 1600 }, { name: '铂金 II', min: 1700 }, { name: '铂金 III', min: 1800 },
-  { name: '钻石 I', min: 1900 }, { name: '钻石 II', min: 2000 }, { name: '钻石 III', min: 2100 },
-  { name: '大师', min: 2200 }, { name: '传奇', min: 2500 },
+  { name: t('青铜 I'), min: -Infinity }, { name: t('青铜 II'), min: 800 }, { name: t('青铜 III'), min: 900 },
+  { name: t('白银 I'), min: 1000 }, { name: t('白银 II'), min: 1100 }, { name: t('白银 III'), min: 1200 },
+  { name: t('黄金 I'), min: 1300 }, { name: t('黄金 II'), min: 1400 }, { name: t('黄金 III'), min: 1500 },
+  { name: t('铂金 I'), min: 1600 }, { name: t('铂金 II'), min: 1700 }, { name: t('铂金 III'), min: 1800 },
+  { name: t('钻石 I'), min: 1900 }, { name: t('钻石 II'), min: 2000 }, { name: t('钻石 III'), min: 2100 },
+  { name: t('大师'), min: 2200 }, { name: t('传奇'), min: 2500 },
 ]
 export const ELO_START = 1000
 export function rankOf(elo: number): string {
@@ -264,8 +265,8 @@ export function rankedDifficulty(elo: number): Difficulty[] {
 export const HIT_MUL = { head: 0, chest: 1, stomach: 1.25, legs: 0.75 }
 export type HitGroup = keyof typeof HIT_MUL
 
-export const BOT_NAMES_T = ['阿强', '老黑', 'Ah Beng', 'Rizal', 'Kumar', '大头', 'Jun', 'Wei', 'Siva', 'Ahmad']
-export const BOT_NAMES_CT = ['Marcus', '志明', 'Hafiz', 'Daniel', 'Ravi', 'Kenji', 'Leon', 'Ivan', 'Arjun', 'Tan']
+export const BOT_NAMES_T = [t('阿强'), t('老黑'), 'Ah Beng', 'Rizal', 'Kumar', t('大头'), 'Jun', 'Wei', 'Siva', 'Ahmad']
+export const BOT_NAMES_CT = ['Marcus', t('志明'), 'Hafiz', 'Daniel', 'Ravi', 'Kenji', 'Leon', 'Ivan', 'Arjun', 'Tan']
 
 /**
  * 确定性后坐力图案（度）：返回第 i 发的累计偏移 [yaw 右正, pitch 上正]。

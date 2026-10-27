@@ -3,6 +3,7 @@ import type { AssetId } from '../data/jobs'
 import { INVEST_AMOUNTS } from '../data/jobs'
 import type { AppView } from '../core/Context'
 import type { FxQuality } from '../core/Settings'
+import { t } from '../i18n'
 
 /** 手机抽屉（Tab）：状态、工作、地图、设置、存读档；游戏不暂停但屏蔽移动输入 */
 export interface PhoneHost {
@@ -85,7 +86,7 @@ export function renderAppView(root: HTMLElement, v: AppView) {
     }
   }
   if (v.log?.length) {
-    root.appendChild(el('div', 'sect', '日志'))
+    root.appendChild(el('div', 'sect', t('日志')))
     const box = el('div', 'log')
     for (const l of v.log) box.appendChild(el('div', '', l))
     root.appendChild(box)
@@ -168,12 +169,12 @@ export class Phone {
   private app(name: string) {
     switch (name) {
       case 'work': this.showSub(this.sub === 'work' ? null : 'work'); break
-      case 'char': if (!this.host.wardrobe()) this.host.toast('方块角色模式（?chars=box）不支持换装'); break
+      case 'char': if (!this.host.wardrobe()) this.host.toast(t('方块角色模式（?chars=box）不支持换装')); break
       case 'map': this.showSub(this.sub === 'map' ? null : 'map'); break
       case 'settings': this.showSub(this.sub === 'settings' ? null : 'settings'); break
       case 'save': this.host.save(); break
       case 'load': this.host.load(); break
-      case 'restart': if (confirm('清除存档并重新开始？')) this.host.restart(); break
+      case 'restart': if (confirm(t('清除存档并重新开始？'))) this.host.restart(); break
       default: if (this.subs.has(name)) this.showSub(this.sub === name ? null : name)
     }
   }
@@ -207,27 +208,27 @@ export class Phone {
     this.workSig = sig
     const root = $('phone-work'); root.innerHTML = ''
     const stat = el('div', 'stat')
-    stat.textContent = `今日收入 $${fmt(w.todayIncome)}` + (w.taxiTrips ? ` · 的士 ${w.taxiTrips} 单 · 评分 ${w.taxiRating!.toFixed(1)}` : '')
+    stat.textContent = t('今日收入 ${n}', { n: fmt(w.todayIncome) }) + (w.taxiTrips ? t(' · 的士 {trips} 单 · 评分 {rating}', { trips: w.taxiTrips, rating: w.taxiRating!.toFixed(1) }) : '')
     root.appendChild(stat)
-    if (st.quest) root.appendChild(el('div', 'quest', `任务「${st.quest.title}」：${st.quest.step}`))
+    if (st.quest) root.appendChild(el('div', 'quest', t('任务「{title}」：{step}', { title: st.quest.title, step: st.quest.step })))
     for (const j of w.jobs) {
       const card = el('div', `job${j.active ? ' active' : ''}${j.reason ? ' off' : ''}`)
       const head = el('div', 'jt'); head.appendChild(el('span', '', j.title))
       if (!j.passive) {
-        const btn = el('button', j.active ? 'stop' : '', j.active ? '下班' : '开始') as HTMLButtonElement
+        const btn = el('button', j.active ? 'stop' : '', j.active ? t('下班') : t('开始')) as HTMLButtonElement
         if (j.reason && !j.active) btn.disabled = true
         btn.addEventListener('click', () => { if (j.active) this.host.stopJob(); else this.host.startJob(j.id) })
         head.appendChild(btn)
       }
       card.appendChild(head)
       card.appendChild(el('div', 'jd', j.desc))
-      const line = j.active ? '进行中' : j.reason ?? j.status
+      const line = j.active ? t('进行中') : j.reason ?? j.status
       if (line) card.appendChild(el('div', 'js', line))
       root.appendChild(card)
     }
     if (w.invest) {
       const box = el('div', 'invest')
-      box.appendChild(el('div', 'stat', `投资持仓 $${fmt(w.invest.total)} · 现金 $${fmt(st.money)} · 每天 07:00 结算`))
+      box.appendChild(el('div', 'stat', t('投资持仓 ${total} · 现金 ${cash} · 每天 07:00 结算', { total: fmt(w.invest.total), cash: fmt(st.money) })))
       for (const a of w.invest.assets) {
         const row = el('div', 'asset')
         const an = el('div', 'an')
@@ -236,13 +237,13 @@ export class Phone {
         if (a.change) { const c = el('span', `chg${a.change < 0 ? ' neg' : ''}`, `${a.change > 0 ? '+' : ''}${fmt(a.change)}`); val.appendChild(c) }
         an.appendChild(name); an.appendChild(val); row.appendChild(an)
         for (const amt of INVEST_AMOUNTS) {
-          const b = el('button', '', `买 $${amt}`) as HTMLButtonElement
+          const b = el('button', '', t('买 ${n}', { n: amt })) as HTMLButtonElement
           b.dataset.buy = `${a.id}:${amt}`
           b.disabled = st.money < amt
           b.addEventListener('click', () => this.host.buy(a.id, amt))
           row.appendChild(b)
         }
-        const sell = el('button', '', '全部卖出') as HTMLButtonElement
+        const sell = el('button', '', t('全部卖出')) as HTMLButtonElement
         sell.dataset.sell = a.id
         sell.disabled = a.value <= 0
         sell.addEventListener('click', () => this.host.sell(a.id))
@@ -259,8 +260,8 @@ export class Phone {
     if (!this.open) return
     $('phone-time').textContent = st.timeText
     $('phone-money').textContent = `$${fmt(st.money)}`
-    $('phone-role').textContent = `身份：${st.roleTitle}`
-    $('phone-law').textContent = st.lawText || '无违规记录'
+    $('phone-role').textContent = t('身份：{role}', { role: st.roleTitle })
+    $('phone-law').textContent = st.lawText || t('无违规记录')
     const bar = (id: string, v: number, low = 20) => {
       const el = $(id)
       el.querySelector('b')!.textContent = `${Math.round(v)}`

@@ -3,6 +3,7 @@ import type { RoadEdge } from '../world/RoadGraph'
 import type { LawStrictness } from '../core/Settings'
 import { charge } from './Wallet'
 import { lineClear } from '../entities/PoliceAI'
+import { t } from '../i18n'
 
 export type CrimeKind = 'shoot' | 'carjack' | 'hitPed' | 'hitPolice' | 'wreck' | 'shootVehicle' | 'hitVehicle'
 export type TrafficKind = 'speeding' | 'redLight' | 'collision' | 'hitPedTraffic'
@@ -48,9 +49,9 @@ export const LAW_TUNING: Record<LawStrictness, LawTuning> = {
 export const lawTuning = (ctx: Pick<Ctx, 'settings'>): LawTuning => LAW_TUNING[ctx.settings.lawStrictness] ?? LAW_TUNING.casual
 
 const TICKETS: Record<Exclude<TrafficKind, 'hitPedTraffic'>, { fine: number; points: number; label: string }> = {
-  speeding: { fine: 150, points: 4, label: '超速' },
-  redLight: { fine: 200, points: 12, label: '闯红灯' },   // points 实际取 LawTuning.redLightPoints
-  collision: { fine: 300, points: 6, label: '碰撞' },
+  speeding: { fine: 150, points: 4, label: t('超速') },
+  redLight: { fine: 200, points: 12, label: t('闯红灯') },   // points 实际取 LawTuning.redLightPoints
+  collision: { fine: 300, points: 6, label: t('碰撞') },
 }
 /**
  * 酒驾（新加坡：初犯罚款 S$2,000–10,000、吊销驾照；游戏里取下限）：醉意超标开车被 40 m 内、无遮挡的警车看到 →
@@ -58,7 +59,7 @@ const TICKETS: Record<Exclude<TrafficKind, 'hitPedTraffic'>, { fine: number; poi
  */
 export const DRUNK_DRIVING = { fine: 2000, points: 12, spotDist: 40, minSpeed: 3, cooldown: 60 }
 
-const CRIME_LABEL: Partial<Record<CrimeKind, string>> = { carjack: '抢车', wreck: '毁车', shoot: '开枪', shootVehicle: '开枪' }
+const CRIME_LABEL: Partial<Record<CrimeKind, string>> = { carjack: t('抢车'), wreck: t('毁车'), shoot: t('开枪'), shootVehicle: t('开枪') }
 
 /**
  * 执法系统（取代 Wanted）：
@@ -140,18 +141,18 @@ export class Law {
 
   /** 交通型事件（被抓到即生效） */
   traffic(kind: TrafficKind, ctx: Ctx, label?: string) {
-    const t = ctx.time
+    const now = ctx.time
     if (kind === 'hitPedTraffic') {
-      this.raise(2, t)
-      this.toastFn('撞人了！警方出动', 3)
+      this.raise(2, now)
+      this.toastFn(t('撞人了！警方出动'), 3)
       return
     }
     const def = TICKETS[kind]
     const points = kind === 'redLight' ? lawTuning(ctx).redLightPoints : def.points
     this.fines += def.fine; this.demerits += points
     charge(ctx, def.fine, 'fine')
-    this.raise(kind === 'redLight' && this.policeDist(ctx) < 80 ? 2 : 1, t)
-    this.toastFn(`罚单 $${def.fine} · ${label ?? def.label} +${points} 分`, 3)
+    this.raise(kind === 'redLight' && this.policeDist(ctx) < 80 ? 2 : 1, now)
+    this.toastFn(t('罚单 ${fine} · {label} +{points} 分', { fine: def.fine, label: label ?? def.label, points }), 3)
     this.checkDemerits(ctx)
   }
 
@@ -159,7 +160,7 @@ export class Law {
     if (this.demerits < DEMERIT_LIMIT) return
     this.licenseSuspendedUntilDay = ctx.clock.day + 1
     this.demerits = 0
-    this.toastFn(`扣满 ${DEMERIT_LIMIT} 分，驾照吊销至第 ${this.licenseSuspendedUntilDay} 天`, 4)
+    this.toastFn(t('扣满 {limit} 分，驾照吊销至第 {day} 天', { limit: DEMERIT_LIMIT, day: this.licenseSuspendedUntilDay }), 4)
   }
 
   /** 醉意超标（夜店插件提供） */
@@ -175,7 +176,7 @@ export class Law {
     this.lastCrime = ctx.time
     this.chase = true
     this.flash = 1
-    this.toastFn(`酒驾被警察拦查！罚款 $${d.fine.toLocaleString()} · +${d.points} 分 · 通缉 1 星`, 4)
+    this.toastFn(t('酒驾被警察拦查！罚款 ${fine} · +{points} 分 · 通缉 1 星', { fine: d.fine.toLocaleString(), points: d.points }), 4)
     this.checkDemerits(ctx)
   }
 

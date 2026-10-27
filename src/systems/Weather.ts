@@ -3,12 +3,13 @@ import type { Ctx } from '../core/Context'
 import type { DayNight } from './DayNight'
 import type { Audio } from './Audio'
 import { rand, clamp, lerp } from '../config'
+import { t } from '../i18n'
 import { ROAD_UNIFORMS, ROAD_ROUGH_DRY, ROAD_ROUGH_WET } from '../world/RoadMaterial'
 import { STREET_UNIFORMS } from '../world/StreetShaders'
 
 export type WeatherState = 'clear' | 'cloudy' | 'storm'
 const GLOOM: Record<WeatherState, number> = { clear: 0, cloudy: 0.4, storm: 1 }
-export const WEATHER_LABEL: Record<WeatherState, string> = { clear: '晴', cloudy: '多云', storm: '雷雨' }
+export const WEATHER_LABEL: Record<WeatherState, string> = { clear: t('晴'), cloudy: t('多云'), storm: t('雷雨') }
 export const isWeatherState = (s: unknown): s is WeatherState => s === 'clear' || s === 'cloudy' || s === 'storm'
 /** 存档里的天气：状态 + 自然剩余时长 + 手动锁定剩余（游戏小时） */
 export interface WeatherSave { state: WeatherState; remainHours: number; lockHours: number }

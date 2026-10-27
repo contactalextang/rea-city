@@ -6,6 +6,7 @@ import { Relations, type RelSave } from './Relations'
 import { Club, DRUNK_LIMIT, type ClubSave } from './Club'
 import { liveDance, GOOD_WIN, PERFECT_WIN } from './Dance'
 import { BEAT, CLUB_BPM, SONG_LEN } from './ClubMusic'
+import { t } from '../../i18n'
 
 interface ClubPluginSave { v: 1; club: ClubSave; rel: RelSave }
 
@@ -18,7 +19,7 @@ export class ClubPlugin implements GamePlugin {
   readonly id = 'club'
   readonly rel: Relations
   readonly club: Club
-  readonly app = { name: 'contacts', title: '联系人', view: () => this.rel.view() }
+  readonly app = { name: 'contacts', title: t('联系人'), view: () => this.rel.view() }
 
   constructor(private game: Game) {
     this.rel = new Relations(game)

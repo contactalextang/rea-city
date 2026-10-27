@@ -46,7 +46,7 @@ import { Assets } from '../systems/Assets'
 import { Business } from '../systems/Business'
 import { ACHIEVEMENTS } from '../data/progression'
 import { saveSettings } from './Settings'
-import { lang, isLang, type Lang } from '../i18n'
+import { t, lang, isLang, type Lang } from '../i18n'
 import { PostFX } from './PostFX'
 import { cine } from './Cine'
 import type { FxQuality } from './Settings'
@@ -56,6 +56,8 @@ import { installActivities } from '../activities'
 import { identitySpec } from '../characters/presets'
 import { Creator, loadCreatorResult, saveCreatorResult, type CreatorResult } from '../ui/Creator'
 import { quote as rideQuote, canRide, routeDistance, grabSurge, RIDE_LABEL, type RideKind, type RideQuote } from '../systems/Ride'
+/** 场馆短名：中文名是「中文 English」取第一段；英文名本身就是完整英文，不切 */
+const venueShort = (name: string) => lang === 'zh' ? name.split(' ')[0] : name
 
 /** creator：开局建角色（世界暂停，只渲染建角色界面） */
 /** activity：全屏小游戏（Activity 宿主）；arena：射击竞技场（P10.D 切换渲染场景）——两者都暂停城市世界 */
@@ -235,9 +237,9 @@ export class Game {
     this.panels.onClose = () => this.closePanel()
     this.law.setToast((s, sec) => this.hud.toast(s, sec))
     this.phone = new Phone({
-      setTimeSpeed: (v) => { this.settings.timeSpeed = v; this.clock.speed = v; saveSettings(this.settings); this.hud.toast(`时间流速 ${v}×`) },
-      setShadows: (on) => { this.settings.shadows = on; this.dayNight.setShadows(on); saveSettings(this.settings); this.hud.toast(on ? '阴影已开启' : '阴影已关闭') },
-      setMusic: (on) => { this.settings.music = on; this.audio.setMusic(on); saveSettings(this.settings); this.hud.toast(on ? '音乐已开启' : '音乐已关闭') },
+      setTimeSpeed: (v) => { this.settings.timeSpeed = v; this.clock.speed = v; saveSettings(this.settings); this.hud.toast(t('时间流速 {v}×', { v })) },
+      setShadows: (on) => { this.settings.shadows = on; this.dayNight.setShadows(on); saveSettings(this.settings); this.hud.toast(on ? t('阴影已开启') : t('阴影已关闭')) },
+      setMusic: (on) => { this.settings.music = on; this.audio.setMusic(on); saveSettings(this.settings); this.hud.toast(on ? t('音乐已开启') : t('音乐已关闭')) },
       setFx: (q) => this.setFx(q),
       setBrightness: (v) => { this.settings.brightness = clampBrightness(v); saveSettings(this.settings) },
       save: () => this.saveGame(true),
@@ -254,7 +256,7 @@ export class Game {
 
     // 世界数据源：默认真实新加坡（异步加载烘焙数据），?world=grid 为方格城回归基线
     this.source = this.settings.world === 'sg' ? new SgWorld() : new GridWorld()
-    this.hud.showOverlay('REA CITY', this.source.kind === 'sg' ? '加载新加坡…' : '生成城市…', '', false, '')
+    this.hud.showOverlay('REA CITY', this.source.kind === 'sg' ? t('加载新加坡…') : t('生成城市…'), '', false, '')
     this.hud.attribution('')
 
     window.addEventListener('resize', () => this.fitViewport())
@@ -264,7 +266,7 @@ export class Game {
     this.exposeDebug()
     this.init().catch((e: unknown) => {
       console.error('[REA] 世界加载失败：', e)
-      this.hud.showOverlay('加载失败', String((e as Error)?.message ?? e), 'red', false, '刷新页面重试，或加 ?world=grid 进入方格城')
+      this.hud.showOverlay(t('加载失败'), String((e as Error)?.message ?? e), 'red', false, t('刷新页面重试，或加 ?world=grid 进入方格城'))
     })
   }
 
@@ -344,11 +346,11 @@ export class Game {
     this.interactions.addProvider((p) => this.jobs.poiButtons(p))
     this.interactions.addProvider((p) => this.assets.poiButtons(p))
     this.interactions.addProvider((p) => this.business.poiButtons(p))
-    this.phone.registerView('progress', '成长', () => this.progress.view())
-    this.phone.registerView('shop', '商店', () => this.assets.view())
-    this.phone.registerView('biz', '生意', () => this.business.view())
-    this.phone.registerView('wallet', '钱包', () => this.wallet.view())
-    this.phone.registerView('ride', '出行', () => this.rideView())
+    this.phone.registerView('progress', t('成长'), () => this.progress.view())
+    this.phone.registerView('shop', t('商店'), () => this.assets.view())
+    this.phone.registerView('biz', t('生意'), () => this.business.view())
+    this.phone.registerView('wallet', t('钱包'), () => this.wallet.view())
+    this.phone.registerView('ride', t('出行'), () => this.rideView())
     installActivities(this)
     // 升级装备：防弹衣减伤（所有玩家受伤都经 Player.damage）
     const rawDamage = this.player.damage.bind(this.player)
@@ -392,7 +394,7 @@ export class Game {
     this.cam.camera.position.set(this.cam.orbitCenter.x, this.cam.orbitHeight, this.cam.orbitCenter.z + this.cam.orbitRadius)
     this.readyAt = performance.now()
     this.ready = true
-    this.hud.showOverlay('REA CITY', sg ? '新加坡 · 牛车水 / 莱佛士坊 / 滨海湾 / 中峇鲁' : '程序生成的开放城市 · 偷车、飙车、躲警察、做任务', '', true, '按任意键或点击开始')
+    this.hud.showOverlay('REA CITY', sg ? t('新加坡 · 牛车水 / 莱佛士坊 / 滨海湾 / 中峇鲁') : t('程序生成的开放城市 · 偷车、飙车、躲警察、做任务'), '', true, t('按任意键或点击开始'))
     this.hud.attribution((src.attribution ?? []).join('\n'))
   }
 
@@ -414,7 +416,7 @@ export class Game {
     this.settings.fx = q
     this.dayNight.hdrSky = this.postfx !== null
     setStreetDetail(q !== 'off')
-    if (persist) { saveSettings(this.settings); this.hud.toast(`画质：${q === 'high' ? '高' : q === 'low' ? '低' : '关（无后期）'}`) }
+    if (persist) { saveSettings(this.settings); this.hud.toast(t('画质：{q}', { q: q === 'high' ? t('高') : q === 'low' ? t('低') : t('关（无后期）') })) }
   }
 
   /** 切换界面语言：存设置（已开玩则顺便存档）后重载页面，所有文字按新语言重建 */
@@ -438,12 +440,12 @@ export class Game {
     if (el.requestFullscreen) {
       el.requestFullscreen({ navigationUI: 'hide' }).catch((err: unknown) => {
         console.warn('[REA] 全屏请求失败：', err)
-        this.hud.toast('浏览器拒绝全屏，请用浏览器菜单进入全屏', 3)
+        this.hud.toast(t('浏览器拒绝全屏，请用浏览器菜单进入全屏'), 3)
       })
     } else if (el.webkitRequestFullscreen) {
       el.webkitRequestFullscreen()
     } else {
-      this.hud.toast('iPhone 不支持网页全屏：点 Safari 的「分享」→「添加到主屏幕」，从桌面图标打开即全屏', 6)
+      this.hud.toast(t('iPhone 不支持网页全屏：点 Safari 的「分享」→「添加到主屏幕」，从桌面图标打开即全屏'), 6)
     }
   }
 
@@ -478,8 +480,8 @@ export class Game {
     this.events.on('vehicleWrecked', ({ byPlayer }) => { if (byPlayer) this.law.crime('wreck', 0.5, this.ctx) })
     this.events.on('carjack', ({ hadDriver }) => { if (hadDriver) this.law.crime('carjack', 0.5, this.ctx) })
     // 成长：升级 / 成就提示；的士小费升级（网约车 App）按倍率补发小费
-    this.events.on('levelUp', ({ level }) => { this.hud.toast(`升级！Lv${level} ${this.progress.title}`, 3) })
-    this.events.on('achievement', ({ id }) => { const a = ACHIEVEMENTS.find((x) => x.id === id); this.hud.achievement(`成就解锁 ★ ${a?.name ?? id}`) })
+    this.events.on('levelUp', ({ level }) => { this.hud.toast(t('升级！Lv{level} {title}', { level, title: this.progress.title }), 3) })
+    this.events.on('achievement', ({ id }) => { const a = ACHIEVEMENTS.find((x) => x.id === id); this.hud.achievement(t('成就解锁 ★ {name}', { name: a?.name ?? id })) })
     this.events.on('jobDone', ({ job, amount, base }) => {
       const mul = this.assets.effects().taxiTipMul
       // 按标价算补发小费（taxiTip 属 job 类，earn 会再乘一次心情倍率）
@@ -564,7 +566,7 @@ export class Game {
     this.audio.unlock()
     this.cam.snap(this.player.yaw)
     this.cam.camera.position.set(this.player.x - Math.sin(this.player.yaw) * 6, 3, this.player.z - Math.cos(this.player.yaw) * 6)
-    this.hud.toast('E 进入地点 · Tab 手机 · F 上车 · 黄色标记接任务 · 手机赛车/竞技场/赌场/联系人页可导航到娱乐场馆', 6)
+    this.hud.toast(t('E 进入地点 · Tab 手机 · F 上车 · 黄色标记接任务 · 手机赛车/竞技场/赌场/联系人页可导航到娱乐场馆'), 6)
   }
 
   /**
@@ -585,7 +587,7 @@ export class Game {
     ui.dispose()
     this.creatorUi = null
     this.input.endFrame()   // 确认用的 Enter 不再传给游戏（否则会触发全屏）
-    if (!r) { this.state = 'intro'; this.hud.showOverlay('REA CITY', '', '', true, '按任意键或点击开始'); return }
+    if (!r) { this.state = 'intro'; this.hud.showOverlay('REA CITY', '', '', true, t('按任意键或点击开始')); return }
     saveCreatorResult(r)
     this.creatorSaved = r
     this.playerName = r.name
@@ -596,7 +598,7 @@ export class Game {
     if (r.role !== this.role.id) {
       this.settings.role = r.role
       saveSettings(this.settings)
-      this.hud.showOverlay('REA CITY', `以${ROLES[r.role].title}身份进入新加坡…`, '', false, '')
+      this.hud.showOverlay('REA CITY', t('以{role}身份进入新加坡…', { role: ROLES[r.role].title }), '', false, '')
       location.replace(url)
       return
     }
@@ -627,7 +629,7 @@ export class Game {
         this.playerName = r.name
         this.creatorSaved = { role: this.role.id, spec: r.spec, name: r.name }
         saveCreatorResult(this.creatorSaved)
-        this.hud.toast('换装完成', 2)
+        this.hud.toast(t('换装完成'), 2)
       }
       this.state = 'play'
       this.unlockHintAt = this.time
@@ -745,20 +747,20 @@ export class Game {
 
   saveGame(announce: boolean) {
     const ok = Save.save(this.ctx, { jobs: this.jobs.serialize(), quests: this.quests.serialize(), weather: this.weather.serialize(), progress: this.progress.serialize(), assets: this.assets.serialize(), biz: this.business.serialize(), wallet: serializeLedger(), plugins: this.pluginSnapshot() })
-    if (announce) this.hud.toast(ok ? '已存档' : '存档失败（浏览器禁止本地存储）')
+    if (announce) this.hud.toast(ok ? t('已存档') : t('存档失败（浏览器禁止本地存储）'))
     return ok !== null
   }
   loadGame() {
     const d = Save.load()
-    if (!d) { this.hud.toast('没有存档'); return false }
-    if (d.role !== this.role.id) { this.hud.toast(`存档身份是 ${ROLES[d.role].title}，与当前不同`); return false }
+    if (!d) { this.hud.toast(t('没有存档')); return false }
+    if (d.role !== this.role.id) { this.hud.toast(t('存档身份是 {role}，与当前不同', { role: ROLES[d.role].title })); return false }
     this.jobs.stop()
     Save.apply(this.ctx, d)
     this.jobs.restore(d.jobs); this.quests.init(d.quests); this.weather.restore(d.weather)
     this.restorePhase8(d)
     this.law.reset()
     this.cam.snap(this.player.yaw)
-    this.hud.toast(`已读档 · 第${d.day}天 ${this.clock.hhmm}`)
+    this.hud.toast(t('已读档 · 第{day}天 {time}', { day: d.day, time: this.clock.hhmm }))
     return true
   }
 
@@ -773,7 +775,7 @@ export class Game {
   /** 精力归零：昏倒，次日 07:00 在家（主住所）门口醒来 */
   private faint() {
     if (this.player.vehicle) this.player.exit(this.world)
-    this.hud.toast('体力透支，你昏倒了…', 4)
+    this.hud.toast(t('体力透支，你昏倒了…'), 4)
     this.clock.set(7, this.clock.day + 1)
     this.needs.sync()
     this.needs.set(this.needs.hunger, 60)
@@ -798,7 +800,7 @@ export class Game {
     this.weather.update(dt, this.ctx)
     this.dayNight.update(dt, this.ctx)
     this.clockHudTimer += dt
-    if (this.clockHudTimer >= 1) { this.clockHudTimer = 0; this.hud.clock(`第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`) }
+    if (this.clockHudTimer >= 1) { this.clockHudTimer = 0; this.hud.clock(t('第{day}天 {time} · {weather}', { day: this.clock.day, time: this.clock.hhmm, weather: WEATHER_LABEL[this.weather.state] })) }
     const input = this.input
     // 购买 / 重生后的自动存档（每步至多一次）
     if (this.saveDue && this.state !== 'intro' && this.state !== 'creator') { this.saveDue = false; this.saveGame(false) }
@@ -855,7 +857,7 @@ export class Game {
     this.interactions.update()
     if (control && input.justPressed('KeyH') && this.player.vehicle) this.audio.horn(true, this.player.vehicle.kind === 'bus')
     if (control && input.justPressed('KeyE') && this.interactions.near) { this.openPanel(this.interactions.near); return }
-    if (playing && input.justPressed('KeyM')) this.hud.toast(this.quests.active ? `任务「${this.quests.active.title}」：${this.quests.stepLabel()}` : `任务 ${this.quests.completed}/${this.quests.defs.length} · 黄色标记接任务 · Tab 手机开工`, 3)
+    if (playing && input.justPressed('KeyM')) this.hud.toast(this.quests.active ? t('任务「{title}」：{step}', { title: this.quests.active.title, step: this.quests.stepLabel() }) : t('任务 {done}/{total} · 黄色标记接任务 · Tab 手机开工', { done: this.quests.completed, total: this.quests.defs.length }), 3)
     if (input.justPressed('Enter')) this.toggleFullscreen()
 
     // AI → 物理
@@ -890,11 +892,11 @@ export class Game {
       } else this.bustTimer = 0
       if (this.quests.allDone && !this.progress.storyShown) {
         this.progress.storyShown = true; this.saveDue = true; this.state = 'won'; this.stateTimer = 0
-        this.hud.showOverlay('故事线完成 · 帝国目标已解锁', `${this.role.title}线故事任务全部完成 · 账户 $${this.player.money.toLocaleString()} · 打开手机「生意」经营你的产业帝国`, 'gold', false, '按任意键继续')
+        this.hud.showOverlay(t('故事线完成 · 帝国目标已解锁'), t('{role}线故事任务全部完成 · 账户 ${money} · 打开手机「生意」经营你的产业帝国', { role: this.role.title, money: this.player.money.toLocaleString() }), 'gold', false, t('按任意键继续'))
       } else if (this.state === 'play' && !this.progress.empireShown && this.quests.empireDone()) {
         this.progress.empireShown = true; this.saveDue = true
         this.state = 'won'; this.stateTimer = 0
-        this.hud.showOverlay('帝国落成', this.empireSummary(), 'gold', false, '按任意键继续')
+        this.hud.showOverlay(t('帝国落成'), this.empireSummary(), 'gold', false, t('按任意键继续'))
       }
     }
 
@@ -946,17 +948,17 @@ export class Game {
   private empireSummary() {
     const st = this.progress.stats, usd = (n: number) => `$${Math.round(n).toLocaleString()}`
     return [
-      `Lv${this.progress.level} ${this.progress.title} · 净资产 ${usd(this.wallet.netWorth())} · 产业 ${this.business.list().length} 个`,
-      `累计收入 ${usd(st.earned)} · 产业收入 ${usd(st.bizIncome)} · 累计花费 ${usd(st.spent)} · 净资产峰值 ${usd(st.peakNetWorth)}`,
-      `第 ${st.daysPlayed} 天 · 里程 ${st.distanceKm.toFixed(1)} km · 的士 ${st.trips} 趟 · 被捕 ${st.arrests} 次 · 成就 ${this.progress.achievements.size}/${ACHIEVEMENTS.length}`,
+      t('Lv{level} {title} · 净资产 {nw} · 产业 {n} 个', { level: this.progress.level, title: this.progress.title, nw: usd(this.wallet.netWorth()), n: this.business.list().length }),
+      t('累计收入 {earned} · 产业收入 {biz} · 累计花费 {spent} · 净资产峰值 {peak}', { earned: usd(st.earned), biz: usd(st.bizIncome), spent: usd(st.spent), peak: usd(st.peakNetWorth) }),
+      t('第 {days} 天 · 里程 {km} km · 的士 {trips} 趟 · 被捕 {arrests} 次 · 成就 {ach}/{achTotal}', { days: st.daysPlayed, km: st.distanceKm.toFixed(1), trips: st.trips, arrests: st.arrests, ach: this.progress.achievements.size, achTotal: ACHIEVEMENTS.length }),
     ].join('\n')
   }
 
   private enterState(s: State) {
     this.state = s; this.stateTimer = 0
     this.jobs.onPlayerDown(); this.quests.onPlayerDown()
-    if (s === 'dead') this.hud.showOverlay('WASTED', '你倒下了，正在送往医院…', 'red', false, '')
-    else this.hud.showOverlay('BUSTED', '被捕了，罚金 10%…', 'red', false, '')
+    if (s === 'dead') this.hud.showOverlay('WASTED', t('你倒下了，正在送往医院…'), 'red', false, '')
+    else this.hud.showOverlay('BUSTED', t('被捕了，罚金 10%…'), 'red', false, '')
   }
 
   private respawn() {
@@ -979,7 +981,7 @@ export class Game {
     this.cam.snap(this.player.yaw)
     this.state = 'play'
     this.hud.hideOverlay()
-    this.hud.toast(busted ? `交了罚金，被释放${ownHome ? ' · 回到主住所' : ''}` : ownHome ? '在主住所醒来' : '在医院醒来', 2)
+    this.hud.toast(busted ? t('交了罚金，被释放') + (ownHome ? t(' · 回到主住所') : '') : ownHome ? t('在主住所醒来') : t('在医院醒来'), 2)
     this.saveDue = true
   }
 
@@ -1130,20 +1132,20 @@ export class Game {
     let hint: string | null = null
     if (this.state === 'play') {
       if (this.phone.open) hint = null
-      else if (!this.input.locked && this.time - this.unlockHintAt < 4) hint = this.input.touch ? '左侧拖动移动 · 右侧拖动转视角' : '点击画面锁定鼠标，转动视角（Esc 解锁）'
-      else if (this.jobs.canBoardTaxi) hint = this.input.touch ? '点「上车」上客' : '按 F 上客'
+      else if (!this.input.locked && this.time - this.unlockHintAt < 4) hint = this.input.touch ? t('左侧拖动移动 · 右侧拖动转视角') : t('点击画面锁定鼠标，转动视角（Esc 解锁）')
+      else if (this.jobs.canBoardTaxi) hint = this.input.touch ? t('点「上车」上客') : t('按 F 上客')
       else if (this.interactions.hint) hint = this.interactions.hint
-      else if (!pl.inVehicle && pl.findNearbyVehicle(this.vehicles)) hint = '按 F 上车'
-      else if (pl.vehicle?.wrecked) hint = '车已报废，按 F 下车'
-      else if (this.bustTimer > 0.5) hint = '快开走！警察要把你拖下车了'
+      else if (!pl.inVehicle && pl.findNearbyVehicle(this.vehicles)) hint = t('按 F 上车')
+      else if (pl.vehicle?.wrecked) hint = t('车已报废，按 F 下车')
+      else if (this.bustTimer > 0.5) hint = t('快开走！警察要把你拖下车了')
     }
     this.hud.hint(hint)
     this.hud.aiming(this.state === 'play' && (this.input.locked || this.forceAim))
     const law = this.law
     const lawParts: string[] = []
-    if (law.licenseSuspended(this.clock.day)) lawParts.push(`驾照吊销至第${law.licenseSuspendedUntilDay}天`)
-    if (law.demerits > 0) lawParts.push(`扣分 ${law.demerits}/24`)
-    if (law.fines > 0) lawParts.push(`罚款 $${law.fines.toLocaleString()}`)
+    if (law.licenseSuspended(this.clock.day)) lawParts.push(t('驾照吊销至第{day}天', { day: law.licenseSuspendedUntilDay }))
+    if (law.demerits > 0) lawParts.push(t('扣分 {n}/24', { n: law.demerits }))
+    if (law.fines > 0) lawParts.push(t('罚款 ${n}', { n: law.fines.toLocaleString() }))
     this.hud.law(lawParts.join(' · '))
     const police: P2[] = []
     let policeDist = Infinity
@@ -1156,10 +1158,10 @@ export class Game {
     if (this.phone.open && this.phoneTimer >= 0.25) {
       this.phoneTimer = 0
       const q = this.quests.active ? { title: this.quests.active.title, step: this.quests.stepLabel() } : null
-      this.phone.update({ timeText: `第${this.clock.day}天 ${this.clock.hhmm} · ${WEATHER_LABEL[this.weather.state]}`, money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, mood: this.needs.mood, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, music: this.settings.music, fx: this.settings.fx, brightness: this.settings.brightness, work: this.jobs.view(), quest: q })
+      this.phone.update({ timeText: t('第{day}天 {time} · {weather}', { day: this.clock.day, time: this.clock.hhmm, weather: WEATHER_LABEL[this.weather.state] }), money: pl.money, roleTitle: this.role.title, lawText: lawParts.join(' · '), hunger: this.needs.hunger, energy: this.needs.energy, mood: this.needs.mood, timeSpeed: this.settings.timeSpeed, shadows: this.settings.shadows, music: this.settings.music, fx: this.settings.fx, brightness: this.settings.brightness, work: this.jobs.view(), quest: q })
     }
     const speedKmh = pl.vehicle ? pl.vehicle.speed * 3.6 : null
-    const dbg = `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement || isStandalone() ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
+    const dbg = /* i18n-ignore：调试信息 */ `${this.fps.toFixed(0)} fps · peds ${this.peds.activeCount} · cars ${this.vehicles.filter((v) => v.active).length} · draw ${this.renderer.info.render.calls}\n视口 ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio.toFixed(2)} · 窗口 ${window.outerWidth}×${window.outerHeight} · 屏幕 ${screen.width}×${screen.height}${document.fullscreenElement || isStandalone() ? ' · 全屏' : ''}${this.input.locked ? ' · 鼠标锁定' : ''}`
     this.hud.update(dt, pl.health, pl.money, this.law.stars, this.law.flash, speedKmh, this.missionCard(), dbg)
     this.hud.level(`Lv${this.progress.level} ${this.progress.title}`, this.progress.pct)
     this.hud.netWorth(this.wallet.netWorth())
@@ -1174,7 +1176,7 @@ export class Game {
     const p = this.pois.byId(poiId)
     if (!p) return
     this.venueNav = { x: p.door.x, z: p.door.z }
-    this.hud.toast(`导航到 ${p.name}`, 2)
+    this.hud.toast(t('导航到 {name}', { name: p.name }), 2)
   }
   /** 手机娱乐页顶部的场馆卡：营业时间、距离、导航按钮（场馆不存在 → 空数组） */
   venueSections(poiId: string): AppSection[] {
@@ -1184,12 +1186,12 @@ export class Game {
     const nav = !!this.venueNav && this.venueNav.x === p.door.x && this.venueNav.z === p.door.z
     const dest = this.rideDest(poiId)!
     const ride = this.rideActions(dest)
-    const status = [venueOpen(v, this.clock.hour) ? '' : '现在打烊', ride.reason].filter(Boolean).join(' · ')
+    const status = [venueOpen(v, this.clock.hour) ? '' : t('现在打烊'), ride.reason].filter(Boolean).join(' · ')
     return [{
-      title: '场馆',
+      title: t('场馆'),
       items: [{
-        title: p.name, desc: `${hoursText(v)} · 距离 ${fmtDist(d, ' ')}`, status: status || undefined,
-        actions: [{ label: nav ? '导航中' : '导航', onClick: () => this.navTo(poiId) }, ...ride.actions],
+        title: p.name, desc: t('{hours} · 距离 {dist}', { hours: hoursText(v), dist: fmtDist(d, ' ') }), status: status || undefined,
+        actions: [{ label: nav ? t('导航中') : t('导航'), onClick: () => this.navTo(poiId) }, ...ride.actions],
       }],
     }]
   }
@@ -1227,7 +1229,7 @@ export class Game {
     const j = this.jobs.active
     const why = canRide({ state: this.state === 'panel' ? 'play' : this.state, chase: this.law.chase, stars: this.law.stars, job: j && !j.passive ? j.title : null, distM })
     if (why) return why
-    if (this.plugins.some((pl) => pl.hudCard?.())) return '先结束当前活动'
+    if (this.plugins.some((pl) => pl.hudCard?.())) return t('先结束当前活动')
     return null
   }
   /** 手机页里一行目的地的 Taxi / Grab 按钮与禁用原因 */
@@ -1241,7 +1243,7 @@ export class Game {
       disabled: !!block || q.fare > this.player.money,
       onClick: () => { this.rideTo(dest, q.kind) },
     }))
-    return { actions, reason: block ?? (poor ? '余额不足' : null), quotes }
+    return { actions, reason: block ?? (poor ? t('余额不足') : null), quotes }
   }
 
   /**
@@ -1255,18 +1257,18 @@ export class Game {
     const why = this.rideBlock(distM)
     if (why) { this.hud.toast(why, 2.5); return false }
     const q = rideQuote(kind, distM, this.clock.hour, this.weather.state === 'storm')
-    if (!this.wallet.spend(q.fare, `transport:${kind}`)) { this.hud.toast(`余额不足：${RIDE_LABEL[kind]} 要 $${q.fare.toFixed(2)}`, 2.5); return false }
+    if (!this.wallet.spend(q.fare, `transport:${kind}`)) { this.hud.toast(t('余额不足：{ride} 要 ${fare}', { ride: RIDE_LABEL[kind], fare: q.fare.toFixed(2) }), 2.5); return false }
     if (this.state === 'panel') this.closePanel()
     this.phone.set(false)
     if (this.player.vehicle) this.player.exit(this.world)
     const poi = dest.poiId ? this.pois.byId(dest.poiId) : null
     const v = venueOf(poi)
     const arrive = (this.clock.hour + q.minutes / 60) % 24
-    const closed = v && !venueOpen(v, arrive) ? `${v.name.split(' ')[0]}现在打烊（${hoursText(v)}）` : null
+    const closed = v && !venueOpen(v, arrive) ? t('{name}现在打烊（{hours}）', { name: venueShort(v.name), hours: hoursText(v) }) : null
     this.ride = { q, dest, phase: 'in', t: 0, drunk: this.law.drunk, closed }
     this.state = 'ride'
     this.venueNav = null
-    this.showRideFade(`乘车中… ${RIDE_LABEL[kind]} · ${q.minutes} 分钟 · $${q.fare.toFixed(2)}`, `前往 ${dest.label} · ${(q.distM / 1000).toFixed(1)} km${q.surge > 1 ? ` · 加价 ×${q.surge}` : ''}`)
+    this.showRideFade(t('乘车中… {ride} · {min} 分钟 · ${fare}', { ride: RIDE_LABEL[kind], min: q.minutes, fare: q.fare.toFixed(2) }), t('前往 {dest} · {km} km', { dest: dest.label, km: (q.distM / 1000).toFixed(1) }) + (q.surge > 1 ? t(' · 加价 ×{x}', { x: q.surge }) : ''))
     return true
   }
   private showRideFade(title: string | null, sub = '') {
@@ -1310,8 +1312,8 @@ export class Game {
     this.input.endFrame()
     this.events.emit('rideTaken', { kind: r.q.kind, fare: r.q.fare, distM: r.q.distM, dest: r.dest.poiId ?? r.dest.label })
     this.saveDue = true
-    const msg = [`到达 ${r.dest.label}`]
-    if (r.drunk) msg.push('安全到达，没有酒驾')
+    const msg = [t('到达 {dest}', { dest: r.dest.label })]
+    if (r.drunk) msg.push(t('安全到达，没有酒驾'))
     if (r.closed) msg.push(r.closed)
     this.hud.toast(msg.join(' · '), r.closed || r.drunk ? 4 : 2.5)
   }
@@ -1319,12 +1321,12 @@ export class Game {
   /** 导航到任意点（出行页的任务目标等） */
   private navPoint(x: number, z: number, label: string) {
     this.venueNav = { x, z }
-    this.hud.toast(`导航到 ${label}`, 2)
+    this.hud.toast(t('导航到 {name}', { name: label }), 2)
   }
 
   /** 手机「出行」页：家 / 最近的公司 / 最近的小贩中心 / 娱乐场馆 / 当前目标，每行距离、两种车价、时长 */
   private rideView(): AppView {
-    if (!this.ready) return { empty: '加载中…' }
+    if (!this.ready) return { empty: t('加载中…') }
     const px = this.player.worldX, pz = this.player.worldZ
     const rain = this.weather.state === 'storm'
     const surge = grabSurge(this.clock.hour, rain)
@@ -1335,9 +1337,9 @@ export class Game {
       const navOn = !!this.venueNav && Math.abs(this.venueNav.x - dest.x) < 0.01 && Math.abs(this.venueNav.z - dest.z) < 0.01
       return {
         title, value: fmtDist(r.quotes[0].distM, ' '),
-        desc: `Taxi 约 ${tq.minutes} 分 · Grab 约 ${gq.minutes} 分`,
+        desc: t('Taxi 约 {a} 分 · Grab 约 {b} 分', { a: tq.minutes, b: gq.minutes }),
         status: [extra, block ? null : r.reason].filter(Boolean).join(' · ') || undefined,
-        actions: [{ label: navOn ? '导航中' : '导航', onClick: () => dest.poiId ? this.navTo(dest.poiId) : this.navPoint(dest.x, dest.z, dest.label) }, ...r.actions],
+        actions: [{ label: navOn ? t('导航中') : t('导航'), onClick: () => dest.poiId ? this.navTo(dest.poiId) : this.navPoint(dest.x, dest.z, dest.label) }, ...r.actions],
       }
     }
     const fromPoi = (p: Poi | null | undefined) => p ? this.rideDest(p.id) : null
@@ -1346,36 +1348,36 @@ export class Game {
     const homes: AppItem[] = []
     for (const id of new Set(homeIds)) {
       const d = fromPoi(this.pois.byId(id)); if (!d) continue
-      homes.push(row(d, `${id === this.assets.primaryHome ? '主住所' : '住家'} · ${d.label}`))
+      homes.push(row(d, `${id === this.assets.primaryHome ? t('主住所') : t('住家')} · ${d.label}`))
     }
     const daily: AppItem[] = []
     const office = fromPoi(this.pois.nearest(px, pz, Infinity, ['office']))
-    if (office) daily.push(row(office, `公司 · ${office.label}`, '最近的办公楼'))
+    if (office) daily.push(row(office, t('公司 · {name}', { name: office.label }), t('最近的办公楼')))
     const hawker = fromPoi(this.pois.nearest(px, pz, Infinity, ['hawker']))
-    if (hawker) daily.push(row(hawker, `吃饭 · ${hawker.label}`, '最近的小贩中心'))
+    if (hawker) daily.push(row(hawker, t('吃饭 · {name}', { name: hawker.label }), t('最近的小贩中心')))
     const venues: AppItem[] = []
     for (const v of VENUES) {
       const d = fromPoi(this.pois.byId(v.id)); if (!d) continue
-      venues.push(row(d, d.label.split(' ')[0], `${venueOpen(v, this.clock.hour) ? '营业中' : '现在打烊'} · ${hoursText(v)}`))
+      venues.push(row(d, venueShort(d.label), `${venueOpen(v, this.clock.hour) ? t('营业中') : t('现在打烊')} · ${hoursText(v)}`))
     }
-    const sections: AppSection[] = [{ title: '家', items: homes }, { title: '日常', items: daily }, { title: '娱乐场馆', items: venues }]
+    const sections: AppSection[] = [{ title: t('家'), items: homes }, { title: t('日常'), items: daily }, { title: t('娱乐场馆'), items: venues }]
     // 当前工作 / 任务目标：最近的 POI 门口（60 m 内），否则目标点本身（在楼里就挪到最近的人行道）
     const tgt = this.jobs.targetPoint ?? this.quests.targetPoint
     if (tgt) {
       const near = this.pois.nearest(tgt.x, tgt.z, 60)
       let d: RideDest | null = fromPoi(near)
-      if (d) d.label = `${d.label}（目标）`
+      if (d) d.label = t('{name}（目标）', { name: d.label })
       else {
         let x = tgt.x, z = tgt.z
         if (this.world.contains(x, z)) { const l = this.graph.nearestLane(x, z); const s = this.graph.sidewalkPoint(l.edge, l.t, { x: 0, z: 0 }); x = s.x; z = s.z }
-        d = { x, z, yaw: 0, label: '任务目标' }
+        d = { x, z, yaw: 0, label: t('任务目标') }
       }
-      sections.unshift({ title: '当前目标', items: [row(d, d.label)] })
+      sections.unshift({ title: t('当前目标'), items: [row(d, d.label)] })
     }
     return {
       lines: [
-        block ? `叫不了车：${block}` : '叫车直达门口（黑屏跳过车程），车费按路网路程计。',
-        `Taxi 打表${isTaxiPeak(this.clock.hour) ? '（高峰 ×1.25）' : ''} · Grab ${surge > 1 ? `加价 ×${surge}` : '无加价'}${rain ? ' · 雨天' : ''}`,
+        block ? t('叫不了车：{why}', { why: block }) : t('叫车直达门口（黑屏跳过车程），车费按路网路程计。'),
+        t('Taxi 打表') + (isTaxiPeak(this.clock.hour) ? t('（高峰 ×1.25）') : '') + ' · Grab ' + (surge > 1 ? t('加价 ×{x}', { x: surge }) : t('无加价')) + (rain ? t(' · 雨天') : ''),
       ],
       sections,
     }
@@ -1395,7 +1397,7 @@ export class Game {
   private missionCard() {
     for (const pl of this.plugins) { const c = pl.hudCard?.(); if (c) return c }
     const job = this.jobs.hudCard(), quest = this.quests.hudCard()
-    if (job) return { ...job, sub: quest && this.quests.active ? `任务：${quest.desc}` : undefined }
+    if (job) return { ...job, sub: quest && this.quests.active ? t('任务：{desc}', { desc: quest.desc }) : undefined }
     return quest
   }
 

@@ -1,5 +1,6 @@
 import type { RoadEdge, RoadNode } from '../world/RoadGraph'
 import { taxiFare, isTaxiPeak } from './Jobs'
+import { t } from '../i18n'
 
 /**
  * P11.B 叫车（手机 Taxi / Grab，付费黑屏直达）：纯逻辑，便于单测（scripts/test/ride-sim.ts）。
@@ -112,10 +113,10 @@ export interface RideState {
 }
 /** 返回 null = 可以叫车，否则拒绝原因 */
 export function canRide(s: RideState): string | null {
-  if (s.chase || s.stars > 0) return '被通缉中，司机不敢接单'
-  if (s.state !== 'play') return '现在不能叫车'
-  if (s.job) return `正在进行「${s.job}」，先收工`
-  if (s.distM !== undefined && s.distM < RIDE.minDist) return '目的地就在附近，走过去吧'
+  if (s.chase || s.stars > 0) return t('被通缉中，司机不敢接单')
+  if (s.state !== 'play') return t('现在不能叫车')
+  if (s.job) return t('正在进行「{job}」，先收工', { job: s.job })
+  if (s.distM !== undefined && s.distM < RIDE.minDist) return t('目的地就在附近，走过去吧')
   return null
 }
 

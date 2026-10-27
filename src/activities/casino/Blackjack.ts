@@ -2,9 +2,13 @@ import type { Input } from '../../core/Input'
 import { BJ } from '../../data/casino'
 import { Shoe, BlackjackRound, bjTotal, bjBasic, type Card, type BjAction } from './rules'
 import { Table, DealQueue, VW, money } from './table'
+import { t, lang } from '../../i18n'
 
-const ACT_TXT: Record<BjAction, string> = { hit: '要牌', stand: '停牌', double: '加倍', split: '分牌' }
-const RES_TXT = { blackjack: '黑杰克 3:2', win: '赢', push: '和', lose: '输', bust: '爆牌' } as const
+/** 21 点的「和」英文是 Push（百家乐的「和」是 Tie，同一 key 不能两译） */
+const PUSH = lang === 'en' ? 'Push' : '和' // i18n-ignore
+const PUSH_ROUND = lang === 'en' ? 'Push' : '和局' // i18n-ignore
+const ACT_TXT: Record<BjAction, string> = { hit: t('要牌'), stand: t('停牌'), double: t('加倍'), split: t('分牌') }
+const RES_TXT = { blackjack: t('黑杰克 3:2'), win: t('赢'), push: PUSH, lose: t('输'), bust: t('爆牌') }
 const SHOE_X = 950, SHOE_Y = 70
 
 /** 21 点（6 副牌、S17、3:2、加倍 / 分牌 / 保险） */
@@ -30,7 +34,7 @@ export class BlackjackTable extends Table {
     if (this.inRound) return
     const stake = this.commitBets(); if (!stake) return
     this.shoe.checkCut()
-    if (this.shoe.shuffled) this.notice('洗牌（6 副牌）', 1.2)
+    if (this.shoe.shuffled) this.notice(t('洗牌（6 副牌）'), 1.2)
     if (this.pendingStack) { this.shoe.stack(this.pendingStack); this.pendingStack = null }
     const r = new BlackjackRound(this.shoe, stake)
     this.round = r; this.settled = false; this.dq.reset(); this.holeAt = -1; this.dealerWait = 0.4
@@ -43,12 +47,12 @@ export class BlackjackTable extends Table {
   private act(a: BjAction) {
     const r = this.round; if (!r || !r.legal(a) || this.dq.busy(this.t)) return
     const extra = r.extraStake(a)
-    if (extra > 0 && !this.host.stake(this.game, extra)) { this.notice('现金不足', 1.4); return }
+    if (extra > 0 && !this.host.stake(this.game, extra)) { this.notice(t('现金不足'), 1.4); return }
     r.act(a); this.actionsUsed.add(a)
   }
   private insure(take: boolean) {
     const r = this.round; if (!r || r.phase !== 'insurance' || this.dq.busy(this.t)) return
-    if (take && !this.host.stake(this.game, r.baseBet / 2)) { this.notice('现金不足', 1.4); return }
+    if (take && !this.host.stake(this.game, r.baseBet / 2)) { this.notice(t('现金不足'), 1.4); return }
     r.insurance(take); if (take) this.actionsUsed.add('insurance')
   }
 
@@ -64,9 +68,9 @@ export class BlackjackTable extends Table {
     const r = this.round!; this.settled = true
     const res = r.hands.map((h) => RES_TXT[h.result!])
     const net = r.totalReturn - r.totalStake
-    const lead = r.hands.length > 1 ? res.join(' / ') + ' · ' : r.hands[0].result === 'blackjack' ? '黑杰克！' : r.hands[0].result === 'bust' ? '爆牌 · ' : ''
-    const ins = r.insuranceBet > 0 ? (r.insuranceRet > 0 ? '（保险赔 2:1）' : '（保险输）') : ''
-    this.finishRound(r.totalStake, r.totalReturn, `${lead}${net > 0 ? `赢 ${money(net)}` : net < 0 ? `输 ${money(-net)}` : '和局'}${ins}`)
+    const lead = r.hands.length > 1 ? res.join(' / ') + ' · ' : r.hands[0].result === 'blackjack' ? t('黑杰克！') : r.hands[0].result === 'bust' ? t('爆牌 · ') : ''
+    const ins = r.insuranceBet > 0 ? (r.insuranceRet > 0 ? t('（保险赔 2:1）') : t('（保险输）')) : ''
+    this.finishRound(r.totalStake, r.totalReturn, `${lead}${net > 0 ? t('赢 {n}', { n: money(net) }) : net < 0 ? t('输 {n}', { n: money(-net) }) : PUSH_ROUND}${ins}`)
   }
 
   protected tick(dt: number) {
@@ -97,12 +101,12 @@ export class BlackjackTable extends Table {
     const r = this.round
     // 桌面印字
     this.text('BLACKJACK PAYS 3 TO 2', VW / 2, 228, 20, 'rgba(255,215,0,.75)', 'center', 800)
-    this.text('庄家软 17 停 · 保险赔 2:1 · 6 副牌', VW / 2, 252, 13, 'rgba(255,255,255,.6)', 'center', 500)
+    this.text(t('庄家软 17 停 · 保险赔 2:1 · 6 副牌'), VW / 2, 252, 13, 'rgba(255,255,255,.6)', 'center', 500)
     // 牌鞋
     const g = this.g
     g.fillStyle = '#2b1d10'; this.rr(SHOE_X - 10, SHOE_Y - 14, 92, 112, 10); g.fill()
     this.drawCard(SHOE_X, SHOE_Y, null)
-    this.text(`剩 ${this.shoe.remaining}`, SHOE_X + 36, SHOE_Y + 110, 11, 'rgba(255,255,255,.6)')
+    this.text(t('剩 {n}', { n: this.shoe.remaining }), SHOE_X + 36, SHOE_Y + 110, 11, 'rgba(255,255,255,.6)')
     // 庄家
     if (r) {
       const n = r.dealer.length, x0 = VW / 2 - (n * 40 + 24) / 2
@@ -123,9 +127,9 @@ export class BlackjackTable extends Table {
       const show = this.holeAt >= 0 ? r.dealer : [r.dealer[0]]
       if (this.dq.at(r.dealer[0], this.t) >= 1) {
         const tt = bjTotal(show)
-        this.text(`庄家 ${tt.total}${tt.soft && tt.total < 21 ? '（软）' : ''}`, VW / 2, 70, 16, '#fff')
+        this.text(t('庄家 {n}', { n: tt.total }) + (tt.soft && tt.total < 21 ? t('（软）') : ''), VW / 2, 70, 16, '#fff')
       }
-    } else this.text('庄家', VW / 2, 70, 16, 'rgba(255,255,255,.6)')
+    } else this.text(t('庄家'), VW / 2, 70, 16, 'rgba(255,255,255,.6)')
     // 玩家手牌
     if (r) {
       const n = r.hands.length
@@ -137,39 +141,39 @@ export class BlackjackTable extends Table {
         h.cards.forEach((c, j) => this.cardAt(c, x0 + j * 28, 306 - j * 4))
         const tt = bjTotal(h.cards)
         if (h.cards.every((c) => this.dq.at(c, this.t) >= 1)) {
-          const lbl = tt.total > 21 ? `${tt.total} 爆` : `${tt.total}${tt.soft && tt.total < 21 ? '（软）' : ''}`
+          const lbl = tt.total > 21 ? t('{n} 爆', { n: tt.total }) : `${tt.total}${tt.soft && tt.total < 21 ? t('（软）') : ''}`
           const res = h.result && this.settled ? ` · ${RES_TXT[h.result]}` : ''
           const col = res ? (h.result === 'win' || h.result === 'blackjack' ? '#ffd33d' : h.result === 'push' ? '#ddd' : '#ff6b6b') : tt.total > 21 ? '#ff6b6b' : '#fff'
           this.text(lbl + res, cx, 280, 16, col, 'center', 800)
         }
         if (this.inRound) {
           this.drawStack(cx, 440, h.bet, 15)
-          if (h.doubled) this.text('加倍', cx + 40, 440, 12, '#ffd33d')
+          if (h.doubled) this.text(t('加倍'), cx + 40, 440, 12, '#ffd33d')
         }
       })
-      if (r.insuranceBet > 0) { this.text('保险', 200, 200, 12, '#ccc'); this.drawStack(200, 230, r.insuranceBet, 13) }
+      if (r.insuranceBet > 0) { this.text(t('保险'), 200, 200, 12, '#ccc'); this.drawStack(200, 230, r.insuranceBet, 13) }
     }
     // 下注圈（下注阶段）
     const betting = !this.inRound
     if (betting) {
       g.strokeStyle = this.hovered('bet:main') ? '#ffd33d' : 'rgba(255,255,255,.6)'; g.lineWidth = 3
       g.beginPath(); g.arc(VW / 2, 470, 44, 0, Math.PI * 2); g.stroke()
-      if (!r || this.settled) this.text(this.betTotal ? '' : '点击下注', VW / 2, 470, 13, 'rgba(255,255,255,.7)')
+      if (!r || this.settled) this.text(this.betTotal ? '' : t('点击下注'), VW / 2, 470, 13, 'rgba(255,255,255,.7)')
       this.drawStack(VW / 2, 474, this.betTotal, 18)
       this.region('bet:main', VW / 2 - 46, 424, 92, 92, true, () => this.place('main'))
     }
     // 按钮
     const bx = 640, by = 540, bw = 100, bh = 52
     if (betting) {
-      this.button('btn:clear', bx, by, bw, bh, '清除', this.betTotal > 0, () => this.clearBets(), '#adb5bd')
-      this.button('btn:rebet', bx + 110, by, bw, bh, '重复', this.betTotal === 0 && Object.keys(this.lastBets).length > 0, () => this.rebet(), '#adb5bd')
-      this.button('btn:deal', bx + 220, by, 200, bh, '发牌', this.betTotal > 0, () => this.deal(), '#ffd33d', 'Space')
-      this.status = this.betTotal ? `下注 ${money(this.betTotal)} · 最低 ${money(this.hall.min)}` : '选筹码 → 点下注圈 → 发牌'
+      this.button('btn:clear', bx, by, bw, bh, t('清除'), this.betTotal > 0, () => this.clearBets(), '#adb5bd')
+      this.button('btn:rebet', bx + 110, by, bw, bh, t('重复'), this.betTotal === 0 && Object.keys(this.lastBets).length > 0, () => this.rebet(), '#adb5bd')
+      this.button('btn:deal', bx + 220, by, 200, bh, t('发牌'), this.betTotal > 0, () => this.deal(), '#ffd33d', 'Space')
+      this.status = this.betTotal ? t('下注 {n} · 最低 {min}', { n: money(this.betTotal), min: money(this.hall.min) }) : t('选筹码 → 点下注圈 → 发牌')
     } else if (r && r.phase === 'insurance') {
       const busy = this.dq.busy(this.t)
-      this.button('btn:insure', bx, by, 190, bh, `买保险 ${money(r.baseBet / 2)}`, !busy && this.cash >= r.baseBet / 2, () => this.insure(true), '#74c0fc', 'I')
-      this.button('btn:noinsure', bx + 200, by, 190, bh, '不买', !busy, () => this.insure(false), '#adb5bd', 'N')
-      this.status = '庄家明牌 A：要买保险吗？（保险赔 2:1，基本策略建议不买）'
+      this.button('btn:insure', bx, by, 190, bh, t('买保险 {n}', { n: money(r.baseBet / 2) }), !busy && this.cash >= r.baseBet / 2, () => this.insure(true), '#74c0fc', 'I')
+      this.button('btn:noinsure', bx + 200, by, 190, bh, t('不买'), !busy, () => this.insure(false), '#adb5bd', 'N')
+      this.status = t('庄家明牌 A：要买保险吗？（保险赔 2:1，基本策略建议不买）')
     } else if (r && r.phase === 'player') {
       const busy = this.dq.busy(this.t), extra = r.hand.bet
       const acts: [BjAction, string, string][] = [['hit', '#ffd33d', 'H'], ['stand', '#ff922b', 'S'], ['double', '#69db7c', 'D'], ['split', '#74c0fc', 'P']]
@@ -178,8 +182,8 @@ export class BlackjackTable extends Table {
         const ok = !busy && r.legal(a) && (!needCash || this.cash >= extra)
         this.button(`btn:${a}`, bx + i * 110 - 60, by, bw, bh, ACT_TXT[a], ok, () => this.act(a), col, key)
       })
-      this.status = `建议（基本策略）：${ACT_TXT[bjBasic(r)]}${r.hands.length > 1 ? ` · 第 ${r.active + 1}/${r.hands.length} 手` : ''}`
-    } else this.status = '庄家补牌…'
+      this.status = t('建议（基本策略）：{a}', { a: ACT_TXT[bjBasic(r)] }) + (r.hands.length > 1 ? t(' · 第 {i}/{n} 手', { i: r.active + 1, n: r.hands.length }) : '')
+    } else this.status = t('庄家补牌…')
     this.chipRack(betting)
   }
 

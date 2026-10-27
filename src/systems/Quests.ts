@@ -6,6 +6,8 @@ import { Marker, TARGET_COLOR } from '../world/Marker'
 import { QUESTS, type QuestDef, type StepDef, type PoiRef } from '../data/quests'
 import { bizType } from '../data/business'
 import { SHOP, shopItem, canRoleBuy } from '../data/shop'
+import { t } from '../i18n'
+import { tierName } from './Business'
 
 export interface QuestsSave {
   done: string[]
@@ -13,10 +15,12 @@ export interface QuestsSave {
 }
 
 const STEP_LABEL: Record<StepDef['kind'], string> = {
-  goto: '前往粉色标记', drive: '开车到粉色标记', deliver: '把金色轿车开到粉色标记', earn: '赚钱', wreck: '撞毁车辆',
-  eat: '吃一顿', sleep: '回家睡觉', clockIn: '去办公楼打卡', rentTaxi: '去的士站租车', job: '完成工作', invest: '投资',
-  buy: '买下指定物品', ownBiz: '拥有产业', bizIncome: '产业入账', netWorth: '净资产达标', level: '升级',
+  goto: t('前往粉色标记'), drive: t('开车到粉色标记'), deliver: t('把金色轿车开到粉色标记'), earn: t('赚钱'), wreck: t('撞毁车辆'),
+  eat: t('吃一顿'), sleep: t('回家睡觉'), clockIn: t('去办公楼打卡'), rentTaxi: t('去的士站租车'), job: t('完成工作'), invest: t('投资'),
+  buy: t('买下指定物品'), ownBiz: t('拥有产业'), bizIncome: t('产业入账'), netWorth: t('净资产达标'), level: t('升级'),
 }
+/** 步骤进度后缀：（a/b） */
+const paren = (s: string) => t('（{s}）', { s })
 
 /**
  * 帝国线步骤的数据源（Game 在 Business / Assets / Progress / Wallet 建好后调 setSources 注入）。
@@ -91,8 +95,8 @@ export class Quests {
     })
     ev.on('vehicleWrecked', ({ v, byPlayer }) => {
       const s = this.current
-      if (s?.kind === 'deliver' && v === this.missionCar) { this.fail('车报废了'); return }
-      if (s?.kind === 'wreck' && byPlayer && v !== this.missionCar) { this.bump(1, s.count); if (this.active) this.toast(`撞毁 ${this.progress}/${s.count}`) }
+      if (s?.kind === 'deliver' && v === this.missionCar) { this.fail(t('车报废了')); return }
+      if (s?.kind === 'wreck' && byPlayer && v !== this.missionCar) { this.bump(1, s.count); if (this.active) this.toast(t('撞毁 {a}/{b}', { a: this.progress, b: s.count })) }
     })
     this.refreshGivers()
     // 调试：headless 测试可直接拿到实例（__game.quests 是包装对象）
@@ -178,7 +182,7 @@ export class Quests {
     if (this.active) this.end('fail')
     this.active = q; this.step = 0; this.progress = 0; this.result = 'none'
     this.timer = q.timeLimit ?? 0; this.resolved = {}
-    this.toast(`${q.title}：${q.intro}`, 4)
+    this.toast(t('{title}：{intro}', { title: q.title, intro: q.intro }), 4)
     this.enterStep()
     this.refreshGivers()
   }
@@ -308,7 +312,7 @@ export class Quests {
     const q = this.active; if (!q) return
     this.step++; this.progress = 0
     if (this.step >= q.steps.length) { this.finish(); return }
-    this.toast(`下一步：${this.stepLabel()}`, 3)
+    this.toast(t('下一步：{step}', { step: this.stepLabel() }), 3)
     this.enterStep()
   }
   private finish() {
@@ -316,7 +320,7 @@ export class Quests {
     this.done.add(q.id)
     this.ctx.player.money = Math.round((this.ctx.player.money + q.reward) * 100) / 100
     const last = q.tier === 'empire' && this.empireDone()
-    this.toast(last ? `帝国建成！「${q.title}」+${usd(q.reward)} · 手机「成长」看你的终身战绩` : `任务完成「${q.title}」+${usd(q.reward)}`, last ? 6 : 3)
+    this.toast(last ? t('帝国建成！「{title}」+{reward} · 手机「成长」看你的终身战绩', { title: q.title, reward: usd(q.reward) }) : t('任务完成「{title}」+{reward}', { title: q.title, reward: usd(q.reward) }), last ? 6 : 3)
     this.ctx.events.emit('questDone', { id: q.id, reward: q.reward })
     this.end('win')
     const next = q.next ? this.byId(q.next) : null
@@ -324,7 +328,7 @@ export class Quests {
   }
   fail(reason: string) {
     if (!this.active) return
-    this.toast(`任务失败：${reason}`, 3)
+    this.toast(t('任务失败：{reason}', { reason }), 3)
     this.end('fail')
   }
   private end(r: 'win' | 'fail') {
@@ -334,7 +338,7 @@ export class Quests {
     if (this.missionCar.active && this.ctx.player.vehicle !== this.missionCar) this.missionCar.deactivate()
     this.refreshGivers()
   }
-  onPlayerDown() { if (this.active?.timeLimit) this.fail('你倒下了') }
+  onPlayerDown() { if (this.active?.timeLimit) this.fail(t('你倒下了')) }
 
   update(dt: number) {
     const ctx = this.ctx, pl = ctx.player
@@ -351,7 +355,7 @@ export class Quests {
       return
     }
     const q = this.active
-    if (q.timeLimit) { this.timer -= dt; if (this.timer <= 0) { this.fail('超时'); return } }
+    if (q.timeLimit) { this.timer -= dt; if (this.timer <= 0) { this.fail(t('超时')); return } }
     const s = this.current; if (!s) return
     const key = (k: string) => `${this.step}:${k}`
     this.eventTimer -= dt
@@ -373,16 +377,16 @@ export class Quests {
   stepLabel() {
     const s = this.current; if (!s) return ''
     let l = s.label ?? STEP_LABEL[s.kind]
-    if (s.kind === 'earn') l += `（$${this.progress}/$${s.amount}）`
-    else if (s.kind === 'wreck') l += `（${this.progress}/${s.count}）`
-    else if (s.kind === 'job' && (s.count ?? 1) > 1) l += `（${this.progress}/${s.count}）`
-    else if (s.kind === 'invest') l += `（$${this.progress}/$${s.amount}）`
-    else if (s.kind === 'bizIncome') l += `（${usd(this.progress)}/${usd(s.amount)}）`
+    if (s.kind === 'earn') l += paren(`$${this.progress}/$${s.amount}`)
+    else if (s.kind === 'wreck') l += paren(`${this.progress}/${s.count}`)
+    else if (s.kind === 'job' && (s.count ?? 1) > 1) l += paren(`${this.progress}/${s.count}`)
+    else if (s.kind === 'invest') l += paren(`$${this.progress}/$${s.amount}`)
+    else if (s.kind === 'bizIncome') l += paren(`${usd(this.progress)}/${usd(s.amount)}`)
     else if (s.kind === 'ownBiz' || s.kind === 'netWorth' || s.kind === 'level') {
       const v = this.pollValue(s)
-      if (s.kind === 'ownBiz') l += `（${v ?? '—'}/${this.bizNeed(s)}${s.tier ? ` · 需 ${bizType(s.type ?? '')?.unit ? `${s.tier} ${bizType(s.type ?? '')!.unit}` : `T${s.tier}`}` : ''}）`
-      else if (s.kind === 'netWorth') l += `（${v === null ? '—' : usd(v)}/${usd(s.amount)}）`
-      else l += `（Lv${v ?? '—'}/Lv${s.level}）`
+      if (s.kind === 'ownBiz') l += paren(`${v ?? '—'}/${this.bizNeed(s)}${s.tier ? ' · ' + t('需 {x}', { x: tierName(bizType(s.type ?? '') ?? {}, s.tier) }) : ''}`)
+      else if (s.kind === 'netWorth') l += paren(`${v === null ? '—' : usd(v)}/${usd(s.amount)}`)
+      else l += paren(`Lv${v ?? '—'}/Lv${s.level}`)
     }
     return l
   }
@@ -396,8 +400,8 @@ export class Quests {
   get carPoint(): P2 | null { return this.missionCar.active && this.ctx.player.vehicle !== this.missionCar ? { x: this.missionCar.x, z: this.missionCar.z } : null }
 
   hudCard(): { title: string; desc: string; timer: string } | null {
-    if (!this.active) return this.resultTimer > 0 ? { title: this.result === 'win' ? '任务完成' : '任务失败', desc: '', timer: '' } : null
-    return { title: `${this.active.title}（${this.step + 1}/${this.active.steps.length}）`, desc: this.stepLabel(), timer: this.active.timeLimit ? `${Math.ceil(this.timer)}s` : '' }
+    if (!this.active) return this.resultTimer > 0 ? { title: this.result === 'win' ? t('任务完成') : t('任务失败'), desc: '', timer: '' } : null
+    return { title: this.active.title + paren(`${this.step + 1}/${this.active.steps.length}`), desc: this.stepLabel(), timer: this.active.timeLimit ? `${Math.ceil(this.timer)}s` : '' }
   }
   /** hideTarget：有工作目标在进行时隐藏任务光柱（只藏模型，targetPoint 不受影响），避免同时出现两根品红光柱 */
   sync(t: number, hideTarget = false) {

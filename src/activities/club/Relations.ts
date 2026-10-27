@@ -11,6 +11,7 @@ import {
 import { Companion } from './Companion'
 import { CLUB_ID } from './Club'
 import { el, btn, drawPortrait, injectStyle, fmt$ } from './ui'
+import { t } from '../../i18n'
 
 /**
  * P10.E 恋爱关系系统：8 位具名 NPC 的好感 / 阶段 / 短信 / 邀约 / 约会 / 同伴跟随。
@@ -92,17 +93,17 @@ export class Relations {
     const r = this.get(id), before = r.aff
     r.aff = clamp(Math.round((r.aff + delta) * 10) / 10, 0, 100)
     const npc = npcById(id)!
-    const down = (to: Stage, why: string) => { r.stage = to; this.toast(`${npc.name}：${why}（${STAGE_LABEL[to]}）`, 3) }
-    if (r.stage === 'lover' && r.aff < 60) down('dating', '我们是不是该冷静一下')
-    else if (r.stage === 'dating' && r.aff < 35) down('contact', '我觉得我们还是做朋友吧')
-    else if (r.stage === 'contact' && r.aff < 5) down('stranger', '已把你从联系人里删除')
+    const down = (to: Stage, why: string) => { r.stage = to; this.toast(t('{name}：{why}（{stage}）', { name: npc.name, why, stage: STAGE_LABEL[to] }), 3) }
+    if (r.stage === 'lover' && r.aff < 60) down('dating', t('我们是不是该冷静一下'))
+    else if (r.stage === 'dating' && r.aff < 35) down('contact', t('我觉得我们还是做朋友吧'))
+    else if (r.stage === 'contact' && r.aff < 5) down('stranger', t('已把你从联系人里删除'))
     return r1(r.aff - before)
   }
   /** 有一次联系：更新最近联系日；恋人每日首次联系心情 +5 */
   touch(id: string) {
     const r = this.get(id)
     r.lastContact = this.day
-    if (r.stage === 'lover' && r.moodDay !== this.day) { r.moodDay = this.day; this.ctx.needs.addMood(5); this.toast(`和恋人 ${npcById(id)!.name} 联系 · 心情 +5`) }
+    if (r.stage === 'lover' && r.moodDay !== this.day) { r.moodDay = this.day; this.ctx.needs.addMood(5); this.toast(t('和恋人 {name} 联系 · 心情 +5', { name: npcById(id)!.name })) }
   }
   private pushSms(id: string, from: 'npc' | 'me', text: string) {
     const r = this.get(id)
@@ -175,65 +176,65 @@ export class Relations {
     if (first) { r.met = true; if (r.aff < 5) r.aff = Math.round(rand(4, 9)) }
     if (opts.bonus) { this.affect(npc.id, opts.bonus); }
     say = text ? (r.sms.length && r.sms[r.sms.length - 1].from === 'npc' ? r.sms[r.sms.length - 1].text : pick(TEXT_PROMPTS).line) : first ? npc.intro : pick(npc.greet)
-    if (opts.bonus && !text) say = `${say}\n（刚才看你跳舞，${npc.name} 显然被吸引了）`
-    if (!text && this.isBirthday(npc) && r.stage !== 'stranger') say += '\n今天是我生日哦～'
+    if (opts.bonus && !text) say = say + '\n' + t('（刚才看你跳舞，{name} 显然被吸引了）', { name: npc.name })
+    if (!text && this.isBirthday(npc) && r.stage !== 'stranger') say += '\n' + t('今天是我生日哦～')
     if (!text) this.touch(npc.id)
     phase = 'react'
 
-    const where = src === 'club' ? '克拉码头夜店' : src === 'casino' ? '金沙赌场' : src === 'text' ? '短信' : ''
+    const where = src === 'club' ? t('克拉码头夜店') : src === 'casino' ? t('金沙赌场') : src === 'text' ? t('短信') : ''
     const render = () => {
       const root = api.root
       root.innerHTML = ''
       const wrap = el('div', 'club-wrap')
       const side = el('div', 'club-side')
       sideCv = el('canvas'); drawPortrait(sideCv, npc, mood)
-      side.append(sideCv, el('div', 'nm', npc.name), el('div', 'meta', `${npc.alias} · ${npc.age} 岁 · ${npc.origin}\n${npc.job}`))
+      side.append(sideCv, el('div', 'nm', npc.name), el('div', 'meta', t('{alias} · {age} 岁 · {origin}\n{job}', { alias: npc.alias, age: npc.age, origin: npc.origin, job: npc.job })))
       const bar = el('div', 'club-bar'), fill = el('i'); fill.style.width = `${Math.round(r.aff)}%`; bar.append(fill)
-      side.append(bar, el('div', 'meta', `好感 ${Math.round(r.aff)} · ${STAGE_LABEL[r.stage]}${r.stage !== 'stranger' ? '' : ''}`))
-      if (r.met && r.stage !== 'stranger') side.append(el('div', 'meta', `性格：${npc.persona}`))
+      side.append(bar, el('div', 'meta', t('好感 {n} · {stage}', { n: Math.round(r.aff), stage: STAGE_LABEL[r.stage] })))
+      if (r.met && r.stage !== 'stranger') side.append(el('div', 'meta', t('性格：{p}', { p: npc.persona })))
       const main = el('div', 'club-main')
       if (mine) main.append(el('div', 'club-me', mine))
       const sb = el('div', 'club-say'); sb.append(el('span', 'who', npc.name), document.createTextNode(say)); sb.style.whiteSpace = 'pre-line'
       main.append(sb)
-      if (delta !== null) { const d = el('div', `club-delta ${delta >= 0 ? 'up' : 'down'}`, `好感 ${fmtDelta(delta)}`); main.append(d) }
+      if (delta !== null) { const d = el('div', `club-delta ${delta >= 0 ? 'up' : 'down'}`, t('好感 {d}', { d: fmtDelta(delta) })); main.append(d) }
       const box = el('div', 'club-opts')
       if (phase === 'prompt') {
         const p = prompts[pi % prompts.length]
         sb.lastChild!.textContent = p.line
         shuffle([...p.options]).forEach((o, i) => box.append(btn(o.text, () => choose(o), { id: `opt${i}` })))
       } else if (phase === 'react') {
-        box.append(btn(done < rounds ? '继续' : '……', () => { if (done < rounds) { phase = 'prompt'; mine = ''; delta = null } else phase = 'menu'; render() }, { id: 'next' }))
+        box.append(btn(done < rounds ? t('继续') : '……', () => { if (done < rounds) { phase = 'prompt'; mine = ''; delta = null } else phase = 'menu'; render() }, { id: 'next' }))
       } else if (phase === 'menu') this.menu(npc, src, box, {
         drinks: () => { phase = 'drinks'; render() },
         gifts: () => { phase = 'gifts'; render() },
         invite: () => { phase = 'invite'; render() },
         more: () => { rounds = done + (text ? 1 : 2); phase = 'prompt'; mine = ''; delta = null; api.skipTime(1 / 6); render() },
         number: () => {
-          if (r.aff >= 20) { r.stage = 'contact'; say = `好啊，这是我的号码。${npc.gender === 'f' ? '记得' : '别忘了'}找我。`; delta = null; this.pushSms(npc.id, 'npc', `嗨，我是${npc.name} :)`); api.toast(`已添加联系人：${npc.name}`) }
-          else { say = '呃……我们才刚认识，下次吧。'; delta = this.affect(npc.id, -2) }
-          mine = '方便留个联系方式吗？'; render()
+          if (r.aff >= 20) { r.stage = 'contact'; say = npc.gender === 'f' ? t('好啊，这是我的号码。记得找我。') : t('好啊，这是我的号码。别忘了找我。'); delta = null; this.pushSms(npc.id, 'npc', t('嗨，我是{name} :)', { name: npc.name })); api.toast(t('已添加联系人：{name}', { name: npc.name })) }
+          else { say = t('呃……我们才刚认识，下次吧。'); delta = this.affect(npc.id, -2) }
+          mine = t('方便留个联系方式吗？'); render()
         },
         close: () => api.close(),
       })
       else if (phase === 'drinks') {
         for (const d of DRINKS.filter((x) => !x.vipOnly || this.vipTonight())) {
           const fav = d.id === npc.drink
-          box.append(btn(`请 TA 喝 ${d.name}${fav ? '（TA 的最爱）' : ''}`, () => {
-            if (!spend(this.ctx, d.price, 'date:drink')) { api.toast('钱不够'); return }
-            mine = `请你喝一杯 ${d.name}？`
+          box.append(btn(t('请 TA 喝 {drink}', { drink: d.name }) + (fav ? t('（TA 的最爱）') : ''), () => {
+            if (!spend(this.ctx, d.price, 'date:drink')) { api.toast(t('钱不够')); return }
+            mine = t('请你喝一杯 {drink}？', { drink: d.name })
             const base = fav ? 6 : d.units === 0 && npc.drink !== 'mocktail' ? 1 : npc.drink === 'mocktail' && d.units > 0 ? -3 : 3
             delta = this.affect(npc.id, base * (this.vipTonight() ? 1.25 : 1))
-            say = fav ? '你怎么知道我最喜欢这个！' : base < 0 ? '谢谢……不过我不喝酒的。' : '谢啦，干杯！'
+            say = fav ? t('你怎么知道我最喜欢这个！') : base < 0 ? t('谢谢……不过我不喝酒的。') : t('谢啦，干杯！')
             mood = delta > 0 ? 1 : -0.5
             phase = 'menu'; render()
           }, { note: fmt$(d.price), id: `drink_${d.id}` }))
         }
-        box.append(btn('算了', () => { phase = 'menu'; render() }, { id: 'back' }))
+        box.append(btn(t('算了'), () => { phase = 'menu'; render() }, { id: 'back' }))
       } else if (phase === 'gifts') {
         for (const g of GIFTS.filter((x) => (this.inv[x.id] ?? 0) > 0)) {
-          box.append(btn(`送出 ${g.name} ×1`, () => { const res = this.giveGift(npc, g.id); mine = `送你的，${g.name}。`; say = res.line; delta = res.delta; mood = res.delta > 0 ? 1 : -1; phase = 'menu'; render() }, { note: `库存 ${this.inv[g.id]}`, id: `gift_${g.id}` }))
+          box.append(btn(t('送出 {gift} ×1', { gift: g.name }), () => { const res = this.giveGift(npc, g.id); mine = t('送你的，{gift}。', { gift: g.name }); say = res.line; delta = res.delta; mood = res.delta > 0 ? 1 : -1; phase = 'menu'; render() }, { note: t('库存 {n}', { n: this.inv[g.id] }), id: `gift_${g.id}` }))
         }
-        box.append(btn('算了', () => { phase = 'menu'; render() }, { id: 'back' }))
+        box.append(btn(t('算了'), () => { phase = 'menu'; render() }, { id: 'back' }))
       } else if (phase === 'invite') {
         this.inviteUi(npc, box, (msg) => { say = msg.line; mine = msg.mine; delta = null; phase = 'menu'; render() }, () => { phase = 'menu'; render() })
       }
@@ -256,7 +257,7 @@ export class Relations {
       render()
     }
     return {
-      id: text ? 'club_text' : 'club_talk', title: text ? `短信 · ${npc.name}` : npc.name, subtitle: text ? STAGE_LABEL[r.stage] : `${npc.job}${where ? ' · ' + where : ''}`,
+      id: text ? 'club_text' : 'club_talk', title: text ? t('短信 · {name}', { name: npc.name }) : npc.name, subtitle: text ? STAGE_LABEL[r.stage] : `${npc.job}${where ? ' · ' + where : ''}`,
       returnToPanel: opts.returnToPanel ?? !text,
       mount: (_root, a) => { api = a; injectStyle(); render() },
     }
@@ -265,12 +266,12 @@ export class Relations {
   /** 对话末尾的操作菜单 */
   private menu(npc: NpcDef, src: TalkSource, box: HTMLElement, h: { drinks(): void; gifts(): void; invite(): void; more(): void; number(): void; close(): void }) {
     const r = this.get(npc.id)
-    if ((src === 'club' || src === 'casino')) box.append(btn('请 TA 喝一杯', h.drinks, { note: `TA 爱喝：${DRINKS.find((d) => d.id === npc.drink)?.name ?? ''}`, id: 'm_drink' }))
-    if (src !== 'text' && Object.values(this.inv).some((n) => n > 0)) box.append(btn('送礼物', h.gifts, { id: 'm_gift' }))
-    if (r.stage === 'stranger') box.append(btn('要联系方式', h.number, { note: r.aff >= 20 ? '时机不错' : '好感还不够', id: 'm_number' }))
-    else box.append(btn('约 TA 出来', h.invite, { note: this.appt ? '已有约会' : r.inviteDay === this.day ? '今天约过了' : '', disabled: !!this.appt || r.inviteDay === this.day, id: 'm_invite' }))
-    box.append(btn('再聊一会儿', h.more, { note: src === 'text' ? '' : '约 10 分钟', id: 'm_more' }))
-    box.append(btn(src === 'text' ? '放下手机' : '告辞', h.close, { id: 'm_close' }))
+    if ((src === 'club' || src === 'casino')) box.append(btn(t('请 TA 喝一杯'), h.drinks, { note: t('TA 爱喝：{drink}', { drink: DRINKS.find((d) => d.id === npc.drink)?.name ?? '' }), id: 'm_drink' }))
+    if (src !== 'text' && Object.values(this.inv).some((n) => n > 0)) box.append(btn(t('送礼物'), h.gifts, { id: 'm_gift' }))
+    if (r.stage === 'stranger') box.append(btn(t('要联系方式'), h.number, { note: r.aff >= 20 ? t('时机不错') : t('好感还不够'), id: 'm_number' }))
+    else box.append(btn(t('约 TA 出来'), h.invite, { note: this.appt ? t('已有约会') : r.inviteDay === this.day ? t('今天约过了') : '', disabled: !!this.appt || r.inviteDay === this.day, id: 'm_invite' }))
+    box.append(btn(t('再聊一会儿'), h.more, { note: src === 'text' ? '' : t('约 10 分钟'), id: 'm_more' }))
+    box.append(btn(src === 'text' ? t('放下手机') : t('告辞'), h.close, { id: 'm_close' }))
   }
 
   /** 送礼：喜欢 ×2、讨厌扣分、生日 ×2.5、同日多份递减 */
@@ -287,8 +288,8 @@ export class Relations {
     r.giftCount++
     const delta = this.affect(npc.id, d)
     this.touch(npc.id)
-    const line = hate ? '呃……谢谢，不过这不太是我的风格。' : bday ? `你记得我生日！${g.name}……我好开心。` : love ? `${g.name}！你怎么知道我最想要这个！` : '谢谢你，好用心。'
-    if (delivered) { this.pushSms(npc.id, 'me', `[快递] 送你一份 ${g.name}`); this.pushSms(npc.id, 'npc', line) }
+    const line = hate ? t('呃……谢谢，不过这不太是我的风格。') : bday ? t('你记得我生日！{gift}……我好开心。', { gift: g.name }) : love ? t('{gift}！你怎么知道我最想要这个！', { gift: g.name }) : t('谢谢你，好用心。')
+    if (delivered) { this.pushSms(npc.id, 'me', t('[快递] 送你一份 {gift}', { gift: g.name })); this.pushSms(npc.id, 'npc', line) }
     return { delta, line }
   }
 
@@ -316,16 +317,16 @@ export class Relations {
     const liked = npc.places.includes(placeId)
     const p = r.stage === 'lover' ? 0.97 : clamp((r.aff - 15) / 45 + (liked ? 0.15 : 0), 0.12, 0.95)
     const pl = datePlaceById(placeId)!
-    const when = `${Math.floor(at / 24) + 1 === this.day ? '今天' : '明天'} ${hhmm(at)}`
+    const when = Math.floor(at / 24) + 1 === this.day ? t('今天 {time}', { time: hhmm(at) }) : t('明天 {time}', { time: hhmm(at) })
     this.touch(npc.id)
-    this.pushSms(npc.id, 'me', `${when} 一起去${pl.name}？`)
+    this.pushSms(npc.id, 'me', t('{when} 一起去{place}？', { when, place: pl.name }))
     if (!force && Math.random() > p) {
-      const line = pick(['这次不太方便，下次吧。', '那天我有事……抱歉。', '嗯……让我想想，先不了。'])
+      const line = pick([t('这次不太方便，下次吧。'), t('那天我有事……抱歉。'), t('嗯……让我想想，先不了。')])
       this.pushSms(npc.id, 'npc', line)
       return { ok: false, line }
     }
     this.appt = { npc: npc.id, place: placeId, at }
-    const line = `${liked ? '好呀！我最喜欢' + pl.name + '了。' : '好啊。'}${when}见，别迟到哦。`
+    const line = (liked ? t('好呀！我最喜欢{place}了。', { place: pl.name }) : t('好啊。')) + t('{when}见，别迟到哦。', { when })
     this.pushSms(npc.id, 'npc', line)
     return { ok: true, line }
   }
@@ -334,19 +335,19 @@ export class Relations {
     const draw = () => {
       box.innerHTML = ''
       if (!place) {
-        box.append(el('div', 'club-note', '去哪里？'))
+        box.append(el('div', 'club-note', t('去哪里？')))
         for (const p of DATE_PLACES) {
           const poi = this.resolvePlace(p.id)
-          box.append(btn(`${p.name}${npc.places.includes(p.id) ? '  ♥' : ''}`, () => { place = p.id; draw() }, { note: poi ? '' : '此世界没有', disabled: !poi || !this.inviteTimes(p.id).length, id: `pl_${p.id}` }))
+          box.append(btn(`${p.name}${npc.places.includes(p.id) ? '  ♥' : ''}`, () => { place = p.id; draw() }, { note: poi ? '' : t('此世界没有'), disabled: !poi || !this.inviteTimes(p.id).length, id: `pl_${p.id}` }))
         }
       } else {
-        box.append(el('div', 'club-note', `${datePlaceById(place)!.name} · 什么时候？`))
-        this.inviteTimes(place).forEach((at, i) => box.append(btn(`${Math.floor(at / 24) + 1 === this.day ? '今天' : '明天'} ${hhmm(at)}`, () => {
+        box.append(el('div', 'club-note', t('{place} · 什么时候？', { place: datePlaceById(place)!.name })))
+        this.inviteTimes(place).forEach((at, i) => box.append(btn(Math.floor(at / 24) + 1 === this.day ? t('今天 {time}', { time: hhmm(at) }) : t('明天 {time}', { time: hhmm(at) }), () => {
           const res = this.invite(npc, place!, at)
-          done({ line: res.line, mine: `${hhmm(at)} 一起去${datePlaceById(place!)!.name}？` })
+          done({ line: res.line, mine: t('{when} 一起去{place}？', { when: hhmm(at), place: datePlaceById(place!)!.name }) })
         }, { id: `t_${i}` })))
       }
-      box.append(btn('算了', back, { id: 'back' }))
+      box.append(btn(t('算了'), back, { id: 'back' }))
     }
     draw()
   }
@@ -367,19 +368,19 @@ export class Relations {
     const r = this.get(npc.id)
     let api: ActivityApi
     let step: 'act' | 'talk' | 'react' | 'end' | 'done' = 'act'
-    let say = `${pick(npc.greet)}${npc.places.includes(place.id) ? `\n${place.name}！我一直想来。` : ''}`
+    let say = pick(npc.greet) + (npc.places.includes(place.id) ? '\n' + t('{place}！我一直想来。', { place: place.name }) : '')
     let mine = '', delta: number | null = null, mood = 0.5
     const prompts = shuffle([...shuffle([...npc.prompts]).slice(0, 1), ...shuffle([...PROMPTS]).slice(0, 2)])
     let talked = 0
     let spent = 0
     let home = false
     const total = () => Math.round(r.aff)
-    if (this.early === this.appt!.at) { this.early = -1; this.affect(npc.id, 2); say = `你来得好早，我很开心。\n${say}` }
+    if (this.early === this.appt!.at) { this.early = -1; this.affect(npc.id, 2); say = t('你来得好早，我很开心。') + '\n' + say }
     const finish = () => {
       if (step === 'done') return
       step = 'done'
       r.dates++
-      if (r.stage === 'contact' && r.aff >= 45) { r.stage = 'dating'; api.toast(`${npc.name} 和你开始约会了！`, 3) }
+      if (r.stage === 'contact' && r.aff >= 45) { r.stage = 'dating'; api.toast(t('{name} 和你开始约会了！', { name: npc.name }), 3) }
       this.touch(npc.id)
       this.ctx.events.emit('dated', { npc: npc.id, stage: r.stage === 'lover' ? 'lover' : r.stage })
       this.appt = null
@@ -393,23 +394,23 @@ export class Relations {
       const wrap = el('div', 'club-wrap'), side = el('div', 'club-side')
       const cv = el('canvas'); drawPortrait(cv, npc, mood)
       const bar = el('div', 'club-bar'), fill = el('i'); fill.style.width = `${Math.round(r.aff)}%`; bar.append(fill)
-      side.append(cv, el('div', 'nm', npc.name), el('div', 'meta', `${place.name} · 第 ${r.dates + 1} 次约会`), bar, el('div', 'meta', `好感 ${total()} · ${STAGE_LABEL[r.stage]}`))
+      side.append(cv, el('div', 'nm', npc.name), el('div', 'meta', t('{place} · 第 {n} 次约会', { place: place.name, n: r.dates + 1 })), bar, el('div', 'meta', t('好感 {n} · {stage}', { n: total(), stage: STAGE_LABEL[r.stage] })))
       const main = el('div', 'club-main')
       if (mine) main.append(el('div', 'club-me', mine))
       const sb = el('div', 'club-say'); sb.style.whiteSpace = 'pre-line'; sb.append(el('span', 'who', npc.name), document.createTextNode(say)); main.append(sb)
-      if (delta !== null) main.append(el('div', `club-delta ${delta >= 0 ? 'up' : 'down'}`, `好感 ${fmtDelta(delta)}`))
+      if (delta !== null) main.append(el('div', `club-delta ${delta >= 0 ? 'up' : 'down'}`, t('好感 {d}', { d: fmtDelta(delta) })))
       const box = el('div', 'club-opts')
       if (step === 'act') {
-        box.append(el('div', 'club-note', '先做点什么？'))
+        box.append(el('div', 'club-note', t('先做点什么？')))
         place.acts.forEach((a, i) => box.append(btn(a.label, () => {
-          if (a.cost > 0 && !spend(this.ctx, a.cost, `date:${place.id}`)) { api.toast('钱不够'); return }
+          if (a.cost > 0 && !spend(this.ctx, a.cost, `date:${place.id}`)) { api.toast(t('钱不够')); return }
           spent += a.cost
           delta = this.affect(npc.id, a.aff + (npc.places.includes(place.id) ? 3 : 0) + (r.stage === 'lover' ? 1 : 0))
           mine = a.label; say = a.line; mood = 1
           step = 'react'; api.skipTime(0.5); render()
-        }, { note: a.cost ? fmt$(a.cost) : '免费', disabled: a.cost > this.ctx.player.money, id: `act${i}` })))
+        }, { note: a.cost ? fmt$(a.cost) : t('免费'), disabled: a.cost > this.ctx.player.money, id: `act${i}` })))
       } else if (step === 'react') {
-        box.append(btn('继续', () => { step = talked < 2 ? 'talk' : 'end'; mine = ''; delta = null; render() }, { id: 'next' }))
+        box.append(btn(t('继续'), () => { step = talked < 2 ? 'talk' : 'end'; mine = ''; delta = null; render() }, { id: 'next' }))
       } else if (step === 'talk') {
         const p = prompts[talked % prompts.length]
         sb.lastChild!.textContent = p.line
@@ -421,26 +422,26 @@ export class Relations {
           talked++; step = 'react'; render()
         }, { id: `opt${i}` })))
       } else if (step === 'end') {
-        say = r.stage === 'lover' ? '今天好开心。接下来呢？' : '时间过得好快……'
-        box.append(el('div', 'club-note', '约会快结束了'))
+        say = r.stage === 'lover' ? t('今天好开心。接下来呢？') : t('时间过得好快……')
+        box.append(el('div', 'club-note', t('约会快结束了')))
         const close = (line: string, me: string, d: number) => { mine = me; say = line; delta = d ? this.affect(npc.id, d) : null; mood = (delta ?? 0) >= 0 ? 1 : -0.5; finish(); render() }
-        box.append(btn('牵着手散散步', () => r.aff >= 50 ? close('（TA 轻轻握住了你的手）', '要不要走走？', 3) : close('呃……我们慢慢来好吗？', '（伸出手）', -2), { id: 'e_hand' }))
-        box.append(btn('拥抱道别', () => r.aff >= 65 ? close('（一个温暖的拥抱）下次见。', '今天谢谢你。', 3) : close('（TA 有点僵硬地拍了拍你的背）', '抱一下？', -2), { id: 'e_hug' }))
-        if (r.stage === 'dating' && r.aff >= 60) box.append(btn('表白', () => {
-          if (r.aff >= 80 && r.dates >= 2) { r.stage = 'lover'; close('……我也喜欢你。那我们，就在一起吧。', '我喜欢你，做我的恋人好吗？', 5); api.toast(`${npc.name} 成为了你的恋人`, 3) }
-          else close('我很开心……但我还没准备好。', '我喜欢你。', -5)
-        }, { note: r.aff >= 80 && r.dates >= 2 ? '气氛正好' : '再等等？', id: 'e_confess' }))
-        if (r.stage === 'lover') box.append(btn('一起回家', () => { home = true; close('嗯，我们回家吧。', '今晚去我家？', 2) }, { note: '睡觉时额外心情', id: 'e_home' }))
-        box.append(btn('礼貌道别', () => close('今天很开心，路上小心。', '那……下次见。', 1), { id: 'e_bye' }))
+        box.append(btn(t('牵着手散散步'), () => r.aff >= 50 ? close(t('（TA 轻轻握住了你的手）'), t('要不要走走？'), 3) : close(t('呃……我们慢慢来好吗？'), t('（伸出手）'), -2), { id: 'e_hand' }))
+        box.append(btn(t('拥抱道别'), () => r.aff >= 65 ? close(t('（一个温暖的拥抱）下次见。'), t('今天谢谢你。'), 3) : close(t('（TA 有点僵硬地拍了拍你的背）'), t('抱一下？'), -2), { id: 'e_hug' }))
+        if (r.stage === 'dating' && r.aff >= 60) box.append(btn(t('表白'), () => {
+          if (r.aff >= 80 && r.dates >= 2) { r.stage = 'lover'; close(t('……我也喜欢你。那我们，就在一起吧。'), t('我喜欢你，做我的恋人好吗？'), 5); api.toast(t('{name} 成为了你的恋人', { name: npc.name }), 3) }
+          else close(t('我很开心……但我还没准备好。'), t('我喜欢你。'), -5)
+        }, { note: r.aff >= 80 && r.dates >= 2 ? t('气氛正好') : t('再等等？'), id: 'e_confess' }))
+        if (r.stage === 'lover') box.append(btn(t('一起回家'), () => { home = true; close(t('嗯，我们回家吧。'), t('今晚去我家？'), 2) }, { note: t('睡觉时额外心情'), id: 'e_home' }))
+        box.append(btn(t('礼貌道别'), () => close(t('今天很开心，路上小心。'), t('那……下次见。'), 1), { id: 'e_bye' }))
       } else {
-        box.append(el('div', 'club-note', `约会结束 · 花费 ${fmt$(spent)} · 好感 ${total()} · ${STAGE_LABEL[r.stage]}${home ? ' · TA 跟你回家了' : ''}`))
-        box.append(btn('结束约会', () => api.close(), { id: 'd_close' }))
+        box.append(el('div', 'club-note', t('约会结束 · 花费 {cost} · 好感 {n} · {stage}', { cost: fmt$(spent), n: total(), stage: STAGE_LABEL[r.stage] }) + (home ? t(' · TA 跟你回家了') : '')))
+        box.append(btn(t('结束约会'), () => api.close(), { id: 'd_close' }))
       }
       main.append(box)
       wrap.append(side, main); root.append(wrap)
     }
     return {
-      id: 'club_date', title: `约会 · ${npc.name}`, subtitle: place.name, returnToPanel: false, closable: true,
+      id: 'club_date', title: t('约会 · {name}', { name: npc.name }), subtitle: place.name, returnToPanel: false, closable: true,
       mount: (_root, a) => { api = a; injectStyle(); render() },
       onClose: () => { if (step !== 'done' && step !== 'act') finish() },
     }
@@ -466,12 +467,12 @@ export class Relations {
     if (!npc) return
     this.ctx.needs.addMood(8)
     this.affect(npc.id, 2)
-    this.pushSms(npc.id, 'npc', '早安。昨晚聊到好晚，今天也要加油哦。')
-    this.toast(`和 ${npc.name} 在家度过了温馨的一晚 · 心情 +8`, 3)
+    this.pushSms(npc.id, 'npc', t('早安。昨晚聊到好晚，今天也要加油哦。'))
+    this.toast(t('和 {name} 在家度过了温馨的一晚 · 心情 +8', { name: npc.name }), 3)
   }
 
   onBustOrDeath() {
-    if (this.overnight) { const id = this.overnight; this.overnight = null; this.affect(id, -3); this.pushSms(id, 'npc', '你没事吧？我先回家了。') }
+    if (this.overnight) { const id = this.overnight; this.overnight = null; this.affect(id, -3); this.pushSms(id, 'npc', t('你没事吧？我先回家了。')) }
     if (this.companion && !this.appt) this.dismissCompanion()
   }
 
@@ -497,7 +498,7 @@ export class Relations {
     }
     if (this.overnight && now > this.overnightUntil) {
       const npc = npcById(this.overnight); this.overnight = null
-      if (npc) this.pushSms(npc.id, 'npc', '我先回家啦，今天谢谢你。')
+      if (npc) this.pushSms(npc.id, 'npc', t('我先回家啦，今天谢谢你。'))
       this.dismissCompanion()
     }
     const c = this.companion
@@ -514,8 +515,8 @@ export class Relations {
     this.appt = null
     this.dismissCompanion()
     const d = this.affect(npc.id, -12)
-    this.pushSms(npc.id, 'npc', pick(['我等了你一个多小时……', '你放我鸽子了。', '算了，不用解释了。']))
-    this.toast(`你放了 ${npc.name} 鸽子 · 好感 ${fmtDelta(d)}`, 3.5)
+    this.pushSms(npc.id, 'npc', pick([t('我等了你一个多小时……'), t('你放我鸽子了。'), t('算了，不用解释了。')]))
+    this.toast(t('你放了 {name} 鸽子 · 好感 {d}', { name: npc.name, d: fmtDelta(d) }), 3.5)
   }
 
   private newDay(day: number) {
@@ -523,11 +524,11 @@ export class Relations {
       const r = this.rel[npc.id]; if (!r || r.stage === 'stranger') continue
       // 昨天是生日却没送礼（约会中 / 恋人）
       if ((day - 1) % 30 === npc.bday && (r.stage === 'dating' || r.stage === 'lover') && r.bdayGift !== day - 1) {
-        this.affect(npc.id, -4); this.pushSms(npc.id, 'npc', '昨天是我生日……算了。')
+        this.affect(npc.id, -4); this.pushSms(npc.id, 'npc', t('昨天是我生日……算了。'))
       }
       const gap = day - r.lastContact
       if (gap > 2) this.affect(npc.id, r.stage === 'lover' ? -3 : r.stage === 'dating' ? -2 : -1)
-      if (day % 30 === npc.bday) this.pushSms(npc.id, 'npc', '今天是我生日哦～')
+      if (day % 30 === npc.bday) this.pushSms(npc.id, 'npc', t('今天是我生日哦～'))
     }
   }
 
@@ -543,7 +544,7 @@ export class Relations {
       if (Math.random() < 0.02 + (r.aff / 100) * 0.09) {
         r.smsCount++
         this.pushSms(npc.id, 'npc', pick(npc.sms))
-        if (this.game.state === 'play') this.toast(`短信 · ${npc.name}：${r.sms[r.sms.length - 1].text}`, 3)
+        if (this.game.state === 'play') this.toast(t('短信 · {name}：{text}', { name: npc.name, text: r.sms[r.sms.length - 1].text }), 3)
       }
     }
   }
@@ -556,16 +557,16 @@ export class Relations {
     const st = this.apptState()
     if (st && st.poi?.id === poi.id) {
       const can = st.phase === 'now'
-      out.push({ label: `和 ${st.npc.name} 约会`, note: can ? st.place!.name : `约在 ${hhmm(this.appt!.at)}`, disabled: !can, anyHour: true, onClick: () => { const s = this.dateSpec(); if (s) this.game.openActivity(s) } })
+      out.push({ label: t('和 {name} 约会', { name: st.npc.name }), note: can ? st.place!.name : t('约在 {time}', { time: hhmm(this.appt!.at) }), disabled: !can, anyHour: true, onClick: () => { const s = this.dateSpec(); if (s) this.game.openActivity(s) } })
     }
     if (poi.type !== 'club') for (const npc of this.presentAt(poi)) out.push(this.talkButton(npc, poi.type === 'casino' ? 'casino' : 'poi'))
-    if (poi.type === 'shop') out.push({ label: '礼品柜台', note: '给 TA 挑礼物', onClick: () => this.game.openActivity(this.giftShopSpec(null)) })
+    if (poi.type === 'shop') out.push({ label: t('礼品柜台'), note: t('给 TA 挑礼物'), onClick: () => this.game.openActivity(this.giftShopSpec(null)) })
     return out
   }
   talkButton(npc: NpcDef, src: TalkSource, bonus = 0): PanelButton {
     const r = this.rel[npc.id]
-    const name = r?.met ? `和 ${npc.name} 聊聊` : `搭讪：${npc.blurb}`
-    return { label: name, note: r?.met ? `${STAGE_LABEL[r.stage]} · 好感 ${Math.round(r.aff)}` : '', onClick: () => this.game.openActivity(this.talkSpec(npc, src, { bonus })) }
+    const name = r?.met ? t('和 {name} 聊聊', { name: npc.name }) : t('搭讪：{who}', { who: npc.blurb })
+    return { label: name, note: r?.met ? t('{stage} · 好感 {n}', { stage: STAGE_LABEL[r.stage], n: Math.round(r.aff) }) : '', onClick: () => this.game.openActivity(this.talkSpec(npc, src, { bonus })) }
   }
 
   /** 礼品柜台（商店）或快递送礼（联系人页，to = 收礼人） */
@@ -574,8 +575,8 @@ export class Relations {
     const render = () => {
       const root = api.root; root.innerHTML = ''
       const wrap = el('div', 'club-wrap'), main = el('div', 'club-main')
-      main.append(el('div', 'club-say', to ? `快递送礼给 ${to.name}（运费 ${fmt$(DELIVERY_FEE)}，库存里的礼物只收运费）` : '挑一份礼物，下次见面时送出（或在联系人页快递）。'))
-      if (to) { const rr = this.get(to.id); main.append(el('div', 'club-note', rr.dates > 0 || rr.aff >= 40 ? `TA 喜欢：${to.gifts.love.map((g) => giftById(g)?.name).join('、')}` : '多聊聊、约会几次才知道 TA 喜欢什么')) }
+      main.append(el('div', 'club-say', to ? t('快递送礼给 {name}（运费 {fee}，库存里的礼物只收运费）', { name: to.name, fee: fmt$(DELIVERY_FEE) }) : t('挑一份礼物，下次见面时送出（或在联系人页快递）。')))
+      if (to) { const rr = this.get(to.id); main.append(el('div', 'club-note', rr.dates > 0 || rr.aff >= 40 ? t('TA 喜欢：{list}', { list: to.gifts.love.map((g) => giftById(g)?.name).join(t('、')) }) : t('多聊聊、约会几次才知道 TA 喜欢什么'))) }
       const list = el('div', 'club-list')
       for (const g of GIFTS) {
         const have = this.inv[g.id] ?? 0
@@ -583,7 +584,7 @@ export class Relations {
         const b = el('button')
         b.dataset.club = `g_${g.id}`
         b.innerHTML = ''
-        b.append(el('b', '', g.name), el('br'), document.createTextNode(`${g.desc}`), el('br'), document.createTextNode(`${fmt$(cost)}${have ? ` · 库存 ${have}` : ''}`))
+        b.append(el('b', '', g.name), el('br'), document.createTextNode(`${g.desc}`), el('br'), document.createTextNode(fmt$(cost) + (have ? ' · ' + t('库存 {n}', { n: have }) : '')))
         b.disabled = cost > this.ctx.player.money
         b.addEventListener('click', () => {
           if (to) {
@@ -591,34 +592,34 @@ export class Relations {
             if (have > 0) { this.inv[g.id]--; if (!this.inv[g.id]) delete this.inv[g.id] }
             spend(this.ctx, DELIVERY_FEE, 'date:delivery')
             const res = this.giveGift(to, g.id, true)
-            api.toast(`${to.name}：${res.line}\n好感 ${fmtDelta(res.delta)}`, 3)
+            api.toast(t('{name}：{line}\n好感 {d}', { name: to.name, line: res.line, d: fmtDelta(res.delta) }), 3)
           } else {
             if (!spend(this.ctx, g.price, 'date:gift')) return
             this.inv[g.id] = have + 1
-            api.toast(`买下 ${g.name}`)
+            api.toast(t('买下 {gift}', { gift: g.name }))
           }
           render()
         })
         list.append(b)
       }
-      main.append(list, btn('关闭', () => api.close(), { id: 'gs_close' }))
+      main.append(list, btn(t('关闭'), () => api.close(), { id: 'gs_close' }))
       wrap.append(main); root.append(wrap)
     }
-    return { id: 'club_gifts', title: to ? `送礼 · ${to.name}` : '礼品柜台', subtitle: to ? '快递' : '商店', returnToPanel: !to, mount: (_r, a) => { api = a; injectStyle(); render() } }
+    return { id: 'club_gifts', title: to ? t('送礼 · {name}', { name: to.name }) : t('礼品柜台'), subtitle: to ? t('快递') : t('商店'), returnToPanel: !to, mount: (_r, a) => { api = a; injectStyle(); render() } }
   }
 
   /** 邀约（联系人页） */
   inviteSpec(npc: NpcDef): ActivitySpec {
     let api: ActivityApi
     return {
-      id: 'club_invite', title: `邀约 · ${npc.name}`, subtitle: STAGE_LABEL[this.get(npc.id).stage],
+      id: 'club_invite', title: t('邀约 · {name}', { name: npc.name }), subtitle: STAGE_LABEL[this.get(npc.id).stage],
       mount: (_r, a) => {
         api = a; injectStyle()
         const wrap = el('div', 'club-wrap'), side = el('div', 'club-side'), cv = el('canvas'); drawPortrait(cv, npc, 0.3)
         side.append(cv, el('div', 'nm', npc.name))
-        const main = el('div', 'club-main'), say = el('div', 'club-say', '想约 TA 去哪里？'), box = el('div', 'club-opts')
+        const main = el('div', 'club-main'), say = el('div', 'club-say', t('想约 TA 去哪里？')), box = el('div', 'club-opts')
         main.append(say, box); wrap.append(side, main); api.root.append(wrap)
-        this.inviteUi(npc, box, (m) => { say.textContent = m.line; box.innerHTML = ''; box.append(btn('好', () => api.close(), { id: 'inv_ok' })) }, () => api.close())
+        this.inviteUi(npc, box, (m) => { say.textContent = m.line; box.innerHTML = ''; box.append(btn(t('好'), () => api.close(), { id: 'inv_ok' })) }, () => api.close())
       },
     }
   }
@@ -626,32 +627,32 @@ export class Relations {
   view(): AppView {
     const ks = this.known()
     const st = this.apptState()
-    if (!ks.length && !st) return { lines: ['还没有认识的人 · 晚上去克拉码头夜店（21:00–04:00）看看，或者在小贩中心 / 商场 / 赌场留意身边的人'], sections: this.game.venueSections(CLUB_ID) }
-    const lines = [`联系人 ${ks.length} 位 · 恋人 ${ks.filter((n) => this.rel[n.id].stage === 'lover').length} 位${Object.keys(this.inv).length ? ` · 礼物库存 ${Object.values(this.inv).reduce((a, b) => a + b, 0)} 件` : ''}`]
-    if (st) lines.push(`约会：${st.npc.name} · ${st.place!.name} · ${Math.floor(this.appt!.at / 24) + 1 === this.day ? '今天' : '明天'} ${hhmm(this.appt!.at)}`)
+    if (!ks.length && !st) return { lines: [t('还没有认识的人 · 晚上去克拉码头夜店（21:00–04:00）看看，或者在小贩中心 / 商场 / 赌场留意身边的人')], sections: this.game.venueSections(CLUB_ID) }
+    const lines = [t('联系人 {n} 位 · 恋人 {m} 位', { n: ks.length, m: ks.filter((n) => this.rel[n.id].stage === 'lover').length }) + (Object.keys(this.inv).length ? t(' · 礼物库存 {k} 件', { k: Object.values(this.inv).reduce((a, b) => a + b, 0) }) : '')]
+    if (st) lines.push(t('约会：{name} · {place} · {when}', { name: st.npc.name, place: st.place!.name, when: Math.floor(this.appt!.at / 24) + 1 === this.day ? t('今天 {time}', { time: hhmm(this.appt!.at) }) : t('明天 {time}', { time: hhmm(this.appt!.at) }) }))
     const items: AppItem[] = ks.map((npc) => {
       const r = this.rel[npc.id]
       const last = r.sms[r.sms.length - 1]
       return {
         title: `${npc.name} · ${npc.alias}`,
-        desc: `${npc.age} 岁 · ${npc.job}${last ? `\n${last.from === 'me' ? '我' : npc.name}：${last.text}` : ''}`,
+        desc: t('{age} 岁 · {job}', { age: npc.age, job: npc.job }) + (last ? '\n' + t('{who}：{text}', { who: last.from === 'me' ? t('我') : npc.name, text: last.text }) : ''),
         value: `♥ ${Math.round(r.aff)}`,
-        status: `${STAGE_LABEL[r.stage]}${this.isBirthday(npc) ? ' · 今天生日' : ''}${this.day - r.lastContact > 2 ? ` · ${this.day - r.lastContact} 天没联系` : ''}`,
+        status: STAGE_LABEL[r.stage] + (this.isBirthday(npc) ? t(' · 今天生日') : '') + (this.day - r.lastContact > 2 ? t(' · {n} 天没联系', { n: this.day - r.lastContact }) : ''),
         tone: r.stage === 'lover' ? 'owned' : undefined,
         actions: [
-          { label: '发消息', onClick: () => this.game.openActivity(this.talkSpec(npc, 'text')) },
-          { label: '邀约', disabled: !!this.appt || r.inviteDay === this.day, onClick: () => this.game.openActivity(this.inviteSpec(npc)) },
-          { label: '送礼（快递）', onClick: () => this.game.openActivity(this.giftShopSpec(npc)) },
+          { label: t('发消息'), onClick: () => this.game.openActivity(this.talkSpec(npc, 'text')) },
+          { label: t('邀约'), disabled: !!this.appt || r.inviteDay === this.day, onClick: () => this.game.openActivity(this.inviteSpec(npc)) },
+          { label: t('送礼（快递）'), onClick: () => this.game.openActivity(this.giftShopSpec(npc)) },
         ],
       }
     })
     const log: string[] = []
-    for (const npc of ks) for (const m of this.rel[npc.id].sms) log.push(`${String(m.day).padStart(4, '0')}${m.t}|第${m.day}天 ${m.t} ${m.from === 'me' ? '我 → ' + npc.name : npc.name}：${m.text}`)
+    for (const npc of ks) for (const m of this.rel[npc.id].sms) log.push(`${String(m.day).padStart(4, '0')}${m.t}|` + t('第{d}天 {time} {who}：{text}', { d: m.day, time: m.t, who: m.from === 'me' ? t('我 → {name}', { name: npc.name }) : npc.name, text: m.text }))
     log.sort().reverse()
     return {
       lines,
       bars: ks.map((n) => ({ label: n.name, pct: this.rel[n.id].aff / 100, text: `${Math.round(this.rel[n.id].aff)} · ${STAGE_LABEL[this.rel[n.id].stage]}` })),
-      sections: [...this.game.venueSections(CLUB_ID), { title: '联系人', items }],
+      sections: [...this.game.venueSections(CLUB_ID), { title: t('联系人'), items }],
       log: log.slice(0, 10).map((s) => s.slice(s.indexOf('|') + 1)),
     }
   }
@@ -661,12 +662,12 @@ export class Relations {
   hudCard() {
     const st = this.apptState(); if (!st || !this.apptSoon) return null
     const left = this.appt!.at - this.abs
-    const timer = st.phase === 'early' ? `${Math.floor(left) ? Math.floor(left) + 'h' : ''}${String(Math.floor((left % 1) * 60)).padStart(2, '0')}m` : '现在'
+    const timer = st.phase === 'early' ? `${Math.floor(left) ? Math.floor(left) + 'h' : ''}${String(Math.floor((left % 1) * 60)).padStart(2, '0')}m` : t('现在')
     return {
-      title: `约会 · ${st.npc.name}`,
+      title: t('约会 · {name}', { name: st.npc.name }),
       desc: `${st.place!.name} ${hhmm(this.appt!.at)}`,
       timer,
-      sub: this.companion ? (this.companion.mode === 'follow' ? `${st.npc.name} 跟着你 · 在门口按 E 开始约会` : `${st.npc.name} 已在门口等你`) : '提前到会更加分',
+      sub: this.companion ? (this.companion.mode === 'follow' ? t('{name} 跟着你 · 在门口按 E 开始约会', { name: st.npc.name }) : t('{name} 已在门口等你', { name: st.npc.name })) : t('提前到会更加分'),
     }
   }
   navTarget() {

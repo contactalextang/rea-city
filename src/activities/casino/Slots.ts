@@ -2,6 +2,7 @@ import type { Input } from '../../core/Input'
 import { SLOT_LINES, SLOT_PAYS_3, SLOT_CHERRY, SLOT_SYMS, type SlotSym } from '../../data/casino'
 import { SLOT_STRIPS, slotSpin, slotGrid, slotEval, slotTheoryRtp, type SlotWin } from './rules'
 import { Table, money } from './table'
+import { t } from '../../i18n'
 
 const RX = 300, RY = 110, RW = 150, RG = 14, RH = 108
 const STOP_T = [1.0, 1.4, 1.8]
@@ -29,14 +30,14 @@ export class SlotsTable extends Table {
   private start() {
     if (this.spin) return
     const bet = this.chip
-    if (bet < this.hall.min || bet > this.hall.max) { this.notice(`本厅每转 ${money(this.hall.min)}–${money(this.hall.max)}`, 1.5); return }
-    if (!this.host.stake(this.game, bet)) { this.notice('现金不足', 1.4); return }
+    if (bet < this.hall.min || bet > this.hall.max) { this.notice(t('本厅每转 {min}–{max}', { min: money(this.hall.min), max: money(this.hall.max) }), 1.5); return }
+    if (!this.host.stake(this.game, bet)) { this.notice(t('现金不足'), 1.4); return }
     const stops = this.forced ?? slotSpin(); this.forced = null
     const p0 = this.pos.map((p) => mod(p, L))
     const d = stops.map((s, i) => mod(p0[i] - s, L) + L * (3 + i))
     this.spin = { t: 0, p0, d, stops, bet, stopped: [false, false, false] }
     this.wins = []
-    this.status = '旋转中…'
+    this.status = t('旋转中…')
   }
   private settle() {
     const sp = this.spin!; this.spin = null
@@ -44,8 +45,8 @@ export class SlotsTable extends Table {
     const { wins, ret } = slotEval(slotGrid(sp.stops), sp.bet / 5)
     this.wins = wins; this.winT = 0
     const best = wins.reduce((a, w) => Math.max(a, w.pay), 0)
-    const tag = wins.length ? `${wins.length} 条线中奖` : '未中奖'
-    this.finishRound(sp.bet, ret, ret > 0 ? `${tag} · 返还 ${money(ret)}${best >= sp.bet * 20 ? ' · 大奖！' : ''}` : `${tag} · 输 ${money(sp.bet)}`)
+    const tag = wins.length ? t('{n} 条线中奖', { n: wins.length }) : t('未中奖')
+    this.finishRound(sp.bet, ret, ret > 0 ? t('{tag} · 返还 {n}', { tag, n: money(ret) }) + (best >= sp.bet * 20 ? t(' · 大奖！') : '') : t('{tag} · 输 {n}', { tag, n: money(sp.bet) }))
   }
   forceFinish() { if (this.spin) this.settle() }
 
@@ -157,19 +158,19 @@ export class SlotsTable extends Table {
     }
     // 赔率表
     const px = 850
-    this.text('赔率（× 每线注）', px, 108, 14, '#ffd33d', 'left', 800)
+    this.text(t('赔率（× 每线注）'), px, 108, 14, '#ffd33d', 'left', 800)
     const order: SlotSym[] = ['merlion', 'seven', 'bar', 'bell', 'plum', 'orange', 'lemon', 'cherry']
     order.forEach((s, i) => {
       const y = 140 + i * 36
       for (let k = 0; k < 3; k++) this.drawSym(s, px + 14 + k * 30, y, 30)
       this.text(`${SLOT_PAYS_3[s]}`, px + 120, y, 15, '#fff', 'left', 800)
     })
-    this.text(`樱桃：第 1 轴起 1 颗 ×${SLOT_CHERRY.one} · 2 颗 ×${SLOT_CHERRY.two}`, px, 140 + 8 * 36, 12, '#fff', 'left', 600)
-    this.text(`5 条线 · 每线注 = 总注 / 5 · RTP ${(this.rtp * 100).toFixed(1)}%`, px, 140 + 8 * 36 + 22, 11, 'rgba(255,255,255,.7)', 'left', 500)
+    this.text(t('樱桃：第 1 轴起 1 颗 ×{a} · 2 颗 ×{b}', { a: SLOT_CHERRY.one, b: SLOT_CHERRY.two }), px, 140 + 8 * 36, 12, '#fff', 'left', 600)
+    this.text(t('5 条线 · 每线注 = 总注 / 5 · RTP {r}%', { r: (this.rtp * 100).toFixed(1) }), px, 140 + 8 * 36 + 22, 11, 'rgba(255,255,255,.7)', 'left', 500)
     // 按钮
     const betting = !this.spin, bx = 640, by = 540
-    this.button('btn:spin', bx + 220, by, 200, 52, `旋转 ${money(this.chip)}`, betting && this.cash >= this.chip, () => this.start(), '#ffd33d', 'Space')
-    if (betting) this.status = `每转 ${money(this.chip)}（点筹码改注）· 每线 ${money(this.chip / 5)}`
+    this.button('btn:spin', bx + 220, by, 200, 52, t('旋转 {n}', { n: money(this.chip) }), betting && this.cash >= this.chip, () => this.start(), '#ffd33d', 'Space')
+    if (betting) this.status = t('每转 {n}（点筹码改注）· 每线 {line}', { n: money(this.chip), line: money(this.chip / 5) })
     this.chipRack(betting)
   }
 

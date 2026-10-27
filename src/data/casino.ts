@@ -3,14 +3,15 @@
  * 规则逻辑（发牌、补牌、结算）在 src/activities/casino/rules.ts，纯函数，scripts/casino-sim.ts 直接调用。
  * 本文件不依赖 DOM / three，Node 原生可跑。
  */
+import { t } from '../i18n'
 
 export type CasinoGameId = 'blackjack' | 'roulette' | 'sicbo' | 'baccarat' | 'slots'
 export const CASINO_GAMES: { id: CasinoGameId; name: string; desc: string }[] = [
-  { id: 'blackjack', name: '21 点', desc: '6 副牌 · 庄家软 17 停 · 黑杰克 3:2' },
-  { id: 'roulette', name: '轮盘', desc: '欧式单零 · 直注 35:1' },
-  { id: 'sicbo', name: '骰宝', desc: '大小 1:1（围骰庄赢）· 全围 30:1' },
-  { id: 'baccarat', name: '百家乐', desc: '庄 0.95:1 · 闲 1:1 · 和 8:1' },
-  { id: 'slots', name: '老虎机', desc: '3 轴 5 线 · RTP≈94%' },
+  { id: 'blackjack', name: t('21 点'), desc: t('6 副牌 · 庄家软 17 停 · 黑杰克 3:2') },
+  { id: 'roulette', name: t('轮盘'), desc: t('欧式单零 · 直注 35:1') },
+  { id: 'sicbo', name: t('骰宝'), desc: t('大小 1:1（围骰庄赢）· 全围 30:1') },
+  { id: 'baccarat', name: t('百家乐'), desc: t('庄 0.95:1 · 闲 1:1 · 和 8:1') },
+  { id: 'slots', name: t('老虎机'), desc: t('3 轴 5 线 · RTP≈94%') },
 ]
 export const gameName = (id: string) => CASINO_GAMES.find((g) => g.id === id)?.name ?? id
 
@@ -27,9 +28,9 @@ export interface HallDef {
   unlock: string | null
 }
 export const HALLS: HallDef[] = [
-  { id: 'main', name: '普通厅', min: 10, max: 500, chips: [10, 25, 50, 100, 500], unlock: null },
-  { id: 'high', name: '高额厅', min: 100, max: 5000, chips: [100, 500, 1000, 2500, 5000], unlock: 'casino_high' },
-  { id: 'vip', name: 'VIP 厅', min: 1000, max: 50000, chips: [1000, 5000, 10000, 25000, 50000], unlock: 'casino_vip' },
+  { id: 'main', name: t('普通厅'), min: 10, max: 500, chips: [10, 25, 50, 100, 500], unlock: null },
+  { id: 'high', name: t('高额厅'), min: 100, max: 5000, chips: [100, 500, 1000, 2500, 5000], unlock: 'casino_high' },
+  { id: 'vip', name: t('VIP 厅'), min: 1000, max: 50000, chips: [1000, 5000, 10000, 25000, 50000], unlock: 'casino_vip' },
 ]
 export const hallById = (id: string) => HALLS.find((h) => h.id === id) ?? HALLS[0]
 
@@ -94,14 +95,14 @@ export const BACCARAT = {
 // ---------------- 老虎机（3 轴 × 3 行，5 条线） ----------------
 export type SlotSym = 'cherry' | 'lemon' | 'orange' | 'plum' | 'bell' | 'bar' | 'seven' | 'merlion'
 export const SLOT_SYMS: { id: SlotSym; label: string; color: string }[] = [
-  { id: 'cherry', label: '樱桃', color: '#e5383b' },
-  { id: 'lemon', label: '柠檬', color: '#ffd60a' },
-  { id: 'orange', label: '橙子', color: '#fb8500' },
-  { id: 'plum', label: '李子', color: '#9d4edd' },
-  { id: 'bell', label: '铃铛', color: '#f4c430' },
+  { id: 'cherry', label: t('樱桃'), color: '#e5383b' },
+  { id: 'lemon', label: t('柠檬'), color: '#ffd60a' },
+  { id: 'orange', label: t('橙子'), color: '#fb8500' },
+  { id: 'plum', label: t('李子'), color: '#9d4edd' },
+  { id: 'bell', label: t('铃铛'), color: '#f4c430' },
   { id: 'bar', label: 'BAR', color: '#e9ecef' },
   { id: 'seven', label: '7', color: '#ff2d55' },
-  { id: 'merlion', label: '鱼尾狮', color: '#4cc9f0' },
+  { id: 'merlion', label: t('鱼尾狮'), color: '#4cc9f0' },
 ]
 /** 每条轴的符号带（每轴 32 格，三轴相同；停位均匀随机） */
 export const SLOT_STRIP_COUNTS: Record<SlotSym, number> = {

@@ -1,5 +1,6 @@
 import type { Ctx } from '../core/Context'
 import type { Input } from '../core/Input'
+import { t } from '../i18n'
 
 /**
  * 活动宿主（P10）：全屏 DOM 容器 + 可选 Canvas，承载赌桌 / 舞蹈 / 约会等小游戏。
@@ -115,7 +116,7 @@ export class Activity {
     this.subEl = document.createElement('span'); this.subEl.className = 'act-sub'
     this.moneyEl = document.createElement('span'); this.moneyEl.className = 'act-money'
     head.append(this.titleEl, this.subEl, this.moneyEl)
-    this.xbtn = document.createElement('button'); this.xbtn.className = 'xbtn'; this.xbtn.textContent = '×'; this.xbtn.title = '关闭 (Esc)'
+    this.xbtn = document.createElement('button'); this.xbtn.className = 'xbtn'; this.xbtn.textContent = '×'; this.xbtn.title = t('关闭 (Esc)')
     this.xbtn.addEventListener('click', () => this.close())
     this.body = document.createElement('div'); this.body.className = 'act-body'
     this.toastEl = document.createElement('div'); this.toastEl.className = 'act-toast'

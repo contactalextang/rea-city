@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { CharacterSpec, Role, Slot } from './CharacterSpec'
 import { specKey } from './CharacterSpec'
+import { t } from '../i18n'
 import { CHAR_UNIFORMS, CharacterMaterial, createCharacterMaterial, matClassOf } from './CharacterMaterial'
 
 /** 部件里按材质划分的顶点区间（合并后用于按 role 上色） */
@@ -165,7 +166,7 @@ export class CharacterLibrary {
         if (!info) console.warn(`[CharacterLibrary] 部件 ${id} 的材质 ${mat.name} 不在 catalog 中，按 fixed 处理`)
         return { start: offsets[i], count: m.geometry.attributes.position.count, materialName: mat.name, role: info?.role ?? 'fixed', defaultColor: info?.default ?? '#' + mat.color.getHexString() }
       })
-      this.parts.set(id, { id, slot: def.slot, gender: def.gender, set: def.set, label: def.label, tris: def.tris, geometry, groups })
+      this.parts.set(id, { id, slot: def.slot, gender: def.gender, set: def.set, label: t(def.label), tris: def.tris, geometry, groups })
     }
     if (!skeleton) throw new Error('characters.glb 里没有蒙皮部件')
     for (const def of catalog.parts) if (!this.parts.has(def.id)) console.warn(`[CharacterLibrary] catalog 部件 ${def.id} 在 glb 里找不到`)

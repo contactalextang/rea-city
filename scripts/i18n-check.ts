@@ -88,7 +88,7 @@ for (const f of walk(SRC)) {
   const rel = relative(ROOT, f)
   if (src.includes('i18n-ignore-file')) continue
   for (const L of literals(src)) {
-    if (!CJK.test(L.text) || !HAN.test(L.text)) continue
+    if (!CJK.test(L.text)) continue
     const ln = lineOf(src, L.start)
     const before = src.slice(Math.max(0, L.start - 40), L.start)
     const wrapped = /\bt\(\s*$/.test(before) && !L.tpl
@@ -104,7 +104,7 @@ const html = readFileSync(join(ROOT, 'index.html'), 'utf8')
 const body = html.slice(html.indexOf('<body'))
 body.split('\n').forEach((ln, k) => {
   const plain = ln.replace(/<!--.*?-->/g, '')
-  if (HAN.test(plain) && !/data-i18n|i18n-ignore/.test(plain)) leaks.push(`index.html:${html.slice(0, html.indexOf('<body')).split('\n').length + k}  ${plain.trim().slice(0, 70)}`)
+  if (HAN.test(plain) && !/data-i18n|i18n-ignore/.test(ln)) leaks.push(`index.html:${html.slice(0, html.indexOf('<body')).split('\n').length + k}  ${plain.trim().slice(0, 70)}`)
 })
 
 // 英文词典

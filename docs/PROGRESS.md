@@ -100,6 +100,14 @@
 - [ ] P14.5（可选，暂缓）反射与接触阴影
 - [x] P14.V 固定机位（keongsaik/southbridge/hdb/cbd/aerial）前后对比：high/low/off 0 报错、60 fps（headless vsync），high draw 111–218、三角 1.3–2.6M（基线 0.4–1.8M）、programs 47→51；单测 18/18、geo:check 不变
 
+## Phase I18N — 系统语言可选 中文 / English（计划 ~/.claude/plans/bright-brewing-fern.md）
+> 机制：`src/i18n`，中文原文作 key，`t('罚款 {n}', { n })`；语言在 i18n 模块加载时确定（`?lang=` ← 设置 ← 浏览器语言），切换 = 存设置+存档后重载；词典 `src/i18n/en/*.ts` 按模块分文件；`npm run i18n:check` 查漏网/缺 key/占位符/冲突。
+- [x] I18N.0 基建（6c5c1e1）：i18n 模块、Settings.lang、开局/建角色右上角与手机设置的语言按钮、检查脚本、node 模拟共用解析钩子 scripts/lib/ts-resolve.mjs
+- [x] I18N.1–6 抽字+翻译（并行，约 1770 个 key）：1 Game/ui/index.html → en/ui · 2 systems → en/systems · 3 data 表 → en/data · 4 dates/club → en/social · 5 arena/race → en/arena · 6 casino → en/casino
+- [x] I18N.V 验收：check/build 通过；i18n:check 漏网/缺 key/占位符/冲突全 0（另查只有全角标点的字面量）；econ/casino/ride sim 通过；Playwright 英文版开局、HUD、手机 13 个子页、衣柜部件名、赌场五游戏、夜店/约会、竞技场、赛车页面无残留中文，运行时缺 key 警告 0；右上角与手机设置切换语言后重载、设置记住、存档保留；中文版 HUD 与原来一致。
+  约定：新界面文字一律 `t('中文')`，英文补到 `src/i18n/en/<模块>.ts`；同一中文 key 只能一个译文（21 点「和」=Push 与百家乐 Tie 用 `lang` 分支）；街景招牌中文不翻（Signage.ts i18n-ignore-file）；调试面板、Error、GLSL 不翻。
+  遗留：触屏英文布局（I1 已缩小按钮字号）未在真机测；`?lang=` 只在随后有设置保存时才写入本地设置；「未使用 key」里约 70 条是 HTML/部件名等动态 key，属正常。
+
 ## 后续
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
 - [x] P12 射击 / 赛车 10 级难度阶梯（计划 ~/.claude/plans/soft-scribbling-garden.md）：src/data/tiers.ts；竞技场 botParams(t) 锚点插值 + dmgMul/utility，天梯按 ELO 定中心级别；赛车 RACE_TIERS（水平加成 + 橡皮筋参数）；各自 tier/tierMax 进存档，在最高级别获胜解锁下一级；奖金/XP ×TIER_REWARD；成就 race_legend/arena_legend

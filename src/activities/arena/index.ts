@@ -6,6 +6,7 @@ import { spend } from '../../systems/Wallet'
 import { MODES, ELO_START, DIFF_ELO, PRO_TIER, rankOf, rankedDifficulty, toTier, type ArenaModeId, type Difficulty } from '../../data/arena'
 import { TIER_COUNT, clampTier, tierLabel, tierReward, unlockAfterWin } from '../../data/tiers'
 import { ArenaMode, type MatchResult } from './ArenaMode'
+import { t } from '../../i18n'
 
 interface Rec { mode: ArenaModeId; won: boolean; draw: boolean; score: string; k: number; d: number; hs: number; prize: number; elo: number; day: number; time: string }
 interface ArenaSave { elo: number; best: number; matches: number; wins: number; kills: number; deaths: number; hs: number; ranked: number; history: Rec[]; tier: number; tierMax: number }
@@ -44,15 +45,15 @@ export function installArena(game: Game) {
       st.best = Math.max(st.best, st.elo)
       st.ranked++
       const ra = rankOf(st.elo)
-      lines.push(`天梯：${rb} → ${ra}（ELO ${before} → ${st.elo}，${delta >= 0 ? '+' : ''}${delta}）`)
-      if (ra !== rb) game.hud.toast(`段位${st.elo > before ? '晋升' : '降级'}：${ra}`, 4)
+      lines.push(t('天梯：{rb} → {ra}（ELO {before} → {elo}，{delta}）', { rb, ra, before, elo: st.elo, delta: `${delta >= 0 ? '+' : ''}${delta}` }))
+      if (ra !== rb) game.hud.toast(st.elo > before ? t('段位晋升：{ra}', { ra }) : t('段位降级：{ra}', { ra }), 4)
     }
     if (r.won && tier && (mode === 'casual' || mode === 'duel')) {
       const max = unlockAfterWin(st.tierMax, tier)
       if (max > st.tierMax) {
         st.tierMax = max; st.tier = max
-        lines.push(`解锁新难度：${tierLabel(max)}（奖金 ×${tierReward(max)}）`)
-        game.hud.toast(`射击难度解锁：${tierLabel(max)}`, 4)
+        lines.push(t('解锁新难度：{tier}（奖金 ×{mul}）', { tier: tierLabel(max), mul: tierReward(max) }))
+        game.hud.toast(t('射击难度解锁：{tier}', { tier: tierLabel(max) }), 4)
       }
     }
     st.history.unshift({ mode, won: r.won, draw: r.draw, score: `${r.scoreUs}:${r.scoreThem}`, k: r.kills, d: r.deaths, hs: r.headshots, prize: r.prize, elo: delta, day: game.clock.day, time: game.clock.hhmm })
@@ -77,8 +78,8 @@ export function installArena(game: Game) {
   /** 报名：解锁检查 → 扣报名费 → 进入 */
   const start = (mode: ArenaModeId, pay = true): boolean => {
     const m = MODES[mode]
-    if (m.unlock && !isUnlocked(game.ctx.role.id, game.progress.level, m.unlock)) { game.hud.toast(`需要 Lv${unlockLevel(game.ctx.role.id, m.unlock)}`); return false }
-    if (pay && m.fee > 0 && !spend(game.ctx, m.fee, 'arena:entry')) { game.hud.toast('现金不足'); return false }
+    if (m.unlock && !isUnlocked(game.ctx.role.id, game.progress.level, m.unlock)) { game.hud.toast(t('需要 Lv{lv}', { lv: unlockLevel(game.ctx.role.id, m.unlock) })); return false }
+    if (pay && m.fee > 0 && !spend(game.ctx, m.fee, 'arena:entry')) { game.hud.toast(t('现金不足')); return false }
     pending = diffsFor(mode)
     const ok = game.enterArena(mode)
     if (!ok) { pending = null; if (pay && m.fee > 0) game.wallet.earn(m.fee, 'arena:refund') }
@@ -90,16 +91,22 @@ export function installArena(game: Game) {
     const kd = st.deaths ? (st.kills / st.deaths).toFixed(2) : String(st.kills)
     const lvlOk = isUnlocked(game.ctx.role.id, game.progress.level, 'arena_ranked')
     return {
-      lines: [`段位：${rankOf(st.elo)}（ELO ${st.elo}，最高 ${rankOf(st.best)}）`, `战绩：${st.matches} 场 · 胜 ${st.wins}（${rate}%）· 天梯 ${st.ranked} 场`, `击杀 ${st.kills} · 死亡 ${st.deaths} · K/D ${kd} · 爆头 ${st.hs}`, `难度：${tierLabel(st.tier)}（已解锁到 ${tierLabel(st.tierMax)}${st.tierMax < TIER_COUNT ? '，在最高级别赢一局解锁下一级' : '，全部解锁'}）`, lvlOk ? '丹戎巴葛射击俱乐部（24 小时）报名天梯赛' : `天梯赛 Lv${unlockLevel(game.ctx.role.id, 'arena_ranked')} 解锁`],
+      lines: [
+        t('段位：{rank}（ELO {elo}，最高 {best}）', { rank: rankOf(st.elo), elo: st.elo, best: rankOf(st.best) }),
+        t('战绩：{n} 场 · 胜 {wins}（{rate}%）· 天梯 {ranked} 场', { n: st.matches, wins: st.wins, rate, ranked: st.ranked }),
+        t('击杀 {k} · 死亡 {d} · K/D {kd} · 爆头 {hs}', { k: st.kills, d: st.deaths, kd, hs: st.hs }),
+        st.tierMax < TIER_COUNT ? t('难度：{tier}（已解锁到 {max}，在最高级别赢一局解锁下一级）', { tier: tierLabel(st.tier), max: tierLabel(st.tierMax) }) : t('难度：{tier}（已解锁到 {max}，全部解锁）', { tier: tierLabel(st.tier), max: tierLabel(st.tierMax) }),
+        lvlOk ? t('丹戎巴葛射击俱乐部（24 小时）报名天梯赛') : t('天梯赛 Lv{lv} 解锁', { lv: unlockLevel(game.ctx.role.id, 'arena_ranked') }),
+      ],
       sections: [...game.venueSections('arena_tanjong_pagar'), {
-        title: '最近 10 场',
+        title: t('最近 10 场'),
         items: st.history.length ? st.history.map((h) => ({
-          title: `${h.won ? '胜' : h.draw ? '平' : '负'} · ${MODES[h.mode]?.name ?? h.mode} · ${h.score}`,
-          desc: `K ${h.k} / D ${h.d} · 爆头 ${h.hs} · 第 ${h.day} 天 ${h.time}`,
+          title: `${h.won ? t('胜') : h.draw ? t('平') : t('负')} · ${MODES[h.mode]?.name ?? h.mode} · ${h.score}`,
+          desc: t('K {k} / D {d} · 爆头 {hs} · 第 {day} 天 {time}', { k: h.k, d: h.d, hs: h.hs, day: h.day, time: h.time }),
           value: h.prize ? `+$${h.prize}` : '',
           status: h.mode === 'ranked' ? `ELO ${h.elo >= 0 ? '+' : ''}${h.elo}` : undefined,
           tone: h.won ? 'owned' as const : undefined,
-        })) : [{ title: '还没有比赛记录', desc: '去丹戎巴葛射击俱乐部报名一场吧' }],
+        })) : [{ title: t('还没有比赛记录'), desc: t('去丹戎巴葛射击俱乐部报名一场吧') }],
       }],
     }
   }
@@ -154,16 +161,16 @@ export function installArena(game: Game) {
       const btn = (mode: ArenaModeId) => {
         const m = MODES[mode]
         const locked = m.unlock ? !isUnlocked(role, lv, m.unlock) : false
-        return { label: m.name, note: locked ? `需要 Lv${unlockLevel(role, m.unlock!)}` : `${m.fee ? '$' + m.fee : '免费'} · ${m.desc}`, disabled: locked, onClick: () => { start(mode) } }
+        return { label: m.name, note: locked ? t('需要 Lv{lv}', { lv: unlockLevel(role, m.unlock!) }) : `${m.fee ? '$' + m.fee : t('免费')} · ${m.desc}`, disabled: locked, onClick: () => { start(mode) } }
       }
       const tierBtn = {
-        label: `难度：${tierLabel(st.tier)}`,
-        note: `奖金 / XP ×${tierReward(st.tier)} · 休闲 / 单挑 / 死斗生效 · ${st.tierMax < TIER_COUNT ? `在 ${tierLabel(st.tierMax)} 赢一局解锁下一级` : '已全部解锁'}（点按切换）`,
+        label: t('难度：{tier}', { tier: tierLabel(st.tier) }),
+        note: t('奖金 / XP ×{mul} · 休闲 / 单挑 / 死斗生效 · {next}（点按切换）', { mul: tierReward(st.tier), next: st.tierMax < TIER_COUNT ? t('在 {tier} 赢一局解锁下一级', { tier: tierLabel(st.tierMax) }) : t('已全部解锁') }),
         onClick: () => { st.tier = st.tier >= st.tierMax ? 1 : st.tier + 1; game.interactions.open(poi) },
       }
       return [tierBtn, btn('casual'), btn('ranked'), btn('pro'), btn('duel'), btn('dm')]
     },
-    app: { name: 'arena', title: '竞技场', view },
+    app: { name: 'arena', title: t('竞技场'), view },
     debug: () => dbg,
   })
 }

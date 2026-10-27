@@ -1,4 +1,5 @@
 import { minimapNav, fmtDist } from './Minimap'
+import { t, lang } from '../i18n'
 
 const $ = (id: string) => document.getElementById(id)!
 
@@ -60,12 +61,12 @@ export class Hud {
 
   /** 任务卡片的方位箭头 + 距离（相对相机朝向；数据来自本帧 Minimap.draw 算出的 minimapNav），无目标隐藏 */
   private nav() {
-    const t = minimapNav.target
+    const tg = minimapNav.target
     let html = ''
-    if (t && t.dist < 6) html = '就在这里'
-    else if (t) {
-      const deg = Math.round(t.angle * 180 / Math.PI / 5) * 5
-      html = `<span class="arr" style="transform:rotate(${deg}deg)">↑</span>${fmtDist(t.dist, ' ')}`
+    if (tg && tg.dist < 6) html = t('就在这里')
+    else if (tg) {
+      const deg = Math.round(tg.angle * 180 / Math.PI / 5) * 5
+      html = `<span class="arr" style="transform:rotate(${deg}deg)">↑</span>${fmtDist(tg.dist, ' ')}`
     }
     if (html === this.navHtml) return
     this.navHtml = html
@@ -81,18 +82,18 @@ export class Hud {
 
   /** 等级条旁的净资产（紧凑写法：净资产 $12.3k） */
   netWorth(n: number) {
-    const t = `净资产 ${compactUsd(n)}`
-    if (t !== this.nwText) { this.nwText = t; $('networth').textContent = t }
+    const s = t('净资产 {n}', { n: compactUsd(n) })
+    if (s !== this.nwText) { this.nwText = s; $('networth').textContent = s }
   }
 
   private moodText = ''
   /** 左上角心情：`心情 72 · 平静`；低于 30 红色（XP/工资 ×0.85），高于 75 绿色（×1.1） */
   mood(v: number, mul: number) {
     const r = Math.round(v)
-    const t = `心情 ${r}${mul < 1 ? ' · 低落 XP/工资 ×0.85' : mul > 1 ? ' · 愉快 XP/工资 ×1.1' : ''}`
-    if (t === this.moodText) return
-    this.moodText = t
-    const el = $('mood'); el.textContent = t
+    const s = t('心情 {n}', { n: r }) + (mul < 1 ? t(' · 低落 XP/工资 ×0.85') : mul > 1 ? t(' · 愉快 XP/工资 ×1.1') : '')
+    if (s === this.moodText) return
+    this.moodText = s
+    const el = $('mood'); el.textContent = s
     el.className = `mood${mul < 1 ? ' low' : mul > 1 ? ' high' : ''}`
   }
 
@@ -146,21 +147,26 @@ export class Hud {
   touchHelp() {
     this.touch = true
     $('ov-keys').innerHTML = [
-      ['左侧拖动', '移动 / 驾驶（推到底奔跑）'], ['右侧拖动', '转动视角'], ['上车 / 下车', '靠近车辆后点'],
-      ['交互', '进入地点（绿框亮起时）'], ['跳 / 手刹', '跳跃 / 手刹漂移'], ['手机', '状态 / 工作 / 地图 / 设置 / 存档'],
-      ['任务', '任务提示'], ['全屏', '切换全屏（iPhone 请“添加到主屏幕”）'],
+      [t('左侧拖动'), t('移动 / 驾驶（推到底奔跑）')], [t('右侧拖动'), t('转动视角')], [t('上车 / 下车'), t('靠近车辆后点')],
+      [t('交互'), t('进入地点（绿框亮起时）')], [t('跳 / 手刹'), t('跳跃 / 手刹漂移')], [t('手机'), t('状态 / 工作 / 地图 / 设置 / 存档')],
+      [t('任务'), t('任务提示')], [t('全屏'), t('切换全屏（iPhone 请“添加到主屏幕”）')],
     ].map(([k, v]) => `<span><kbd>${k}</kbd></span><span>${v}</span>`).join('')
-    const tip = document.querySelector('#phone .tip'); if (tip) tip.textContent = '点右上 × 关闭手机'
-    $('weapon').textContent = '手枪 · 按住「开火」射击'
+    const tip = document.querySelector('#phone .tip'); if (tip) tip.textContent = t('点右上 × 关闭手机')
+    $('weapon').textContent = t('手枪 · 按住「开火」射击')
   }
 
   /** 触屏模式：文案里的按键名换成屏幕按钮名 */
   private keys(text: string) {
     if (!this.touch) return text
+    if (lang === 'en') return text
+      .replace(/\b[Pp]ress F(?= to (get out|exit))/g, `Tap “${t('下车')}”`).replace(/\b[Pp]ress F\b/g, `Tap “${t('上车')}”`)
+      .replace(/\b[Pp]ress E\b/g, `Tap “${t('交互')}”`).replace(/\b[Pp]ress M\b/g, `Tap “${t('任务')}”`)
+      .replace(/(^|[^A-Za-z])F get (in|out)\b/gi, (_, p, w) => `${p}“${w.toLowerCase() === 'out' ? t('下车') : t('上车')}”`).replace(/(^|[^A-Za-z])F (?=pick up)/gi, `$1“${t('上车')}” `).replace(/(^|[^A-Za-z])E (?=enter|talk)/gi, `$1“${t('交互')}” `)
+      .replace(/\b[Pp]ress Tab\b ?/g, '').replace(/\bTab (?=phone|close|clock in|→)/gi, '')
     return text
-      .replace(/按 ?F ?(上车|下车)?/g, (_, w) => w === '下车' ? '点「下车」' : '点「上车」')
-      .replace(/按 ?E ?/g, '点「交互」').replace(/按 ?M ?/g, '点「任务」')
-      .replace(/(^|[^A-Za-z])F (?=上车|上客|下车)/g, '$1「上车」').replace(/(^|[^A-Za-z])E (?=进入|与)/g, '$1「交互」')
+      .replace(/按 ?F ?(上车|下车)?/g, (_, w) => w === '下车' ? '点「下车」' : '点「上车」') // i18n-ignore：中文模式按键名替换
+      .replace(/按 ?E ?/g, '点「交互」').replace(/按 ?M ?/g, '点「任务」') // i18n-ignore
+      .replace(/(^|[^A-Za-z])F (?=上车|上客|下车)/g, '$1「上车」').replace(/(^|[^A-Za-z])E (?=进入|与)/g, '$1「交互」') // i18n-ignore
       .replace(/Tab ?(?=手机|关闭|开工|→)/g, '')
   }
 
@@ -177,7 +183,7 @@ export class Hud {
   }
 
   showOverlay(title: string, sub: string, cls: '' | 'red' | 'gold', showKeys: boolean, go: string) {
-    const t = $('ov-title'); t.textContent = title; t.className = cls
+    const ti = $('ov-title'); ti.textContent = title; ti.className = cls
     $('ov-sub').textContent = sub
     $('ov-keys').style.display = showKeys ? '' : 'none'
     $('ov-go').textContent = go

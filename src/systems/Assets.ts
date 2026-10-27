@@ -6,6 +6,7 @@ import type { Vehicle } from '../entities/Vehicle'
 import { SHOP, shopItem, canRoleBuy, ROLE_NAME, GOLD_OWN_CAR, type ShopItem } from '../data/shop'
 import { isUnlocked, unlockLevel } from '../data/progression'
 import { spend } from './Wallet'
+import { t } from '../i18n'
 
 /** 存档：已拥有物品 id、主住处 POI、车库（车 id + 车况）、当前取出的车 */
 export interface AssetsSave {
@@ -91,9 +92,9 @@ export class Assets implements Subsystem<AssetsSave> {
 
   /** 不能买的原因（null = 可以买；不含钱和门口距离） */
   private lockReason(it: ShopItem): string | null {
-    if (this.owns(it.id)) return '已拥有'
-    if (!canRoleBuy(it, this.role)) return `仅限${it.roles.map((r) => ROLE_NAME[r]).join(' / ')}`
-    if (!isUnlocked(this.role, this.host.level(), it.id)) return `Lv${unlockLevel(this.role, it.id)} 解锁`
+    if (this.owns(it.id)) return t('已拥有')
+    if (!canRoleBuy(it, this.role)) return t('仅限{roles}', { roles: it.roles.map((r) => ROLE_NAME[r]).join(' / ') })
+    if (!isUnlocked(this.role, this.host.level(), it.id)) return t('Lv{n} 解锁', { n: unlockLevel(this.role, it.id) })
     return null
   }
 
@@ -115,23 +116,23 @@ export class Assets implements Subsystem<AssetsSave> {
   buy(id: string, atDoor = false): true | string {
     const fail = (r: string) => { this.host.toast(r, 3); return r }
     const it = shopItem(id)
-    if (!it || it.hidden) return fail('没有这件商品')
-    if (this.owns(id)) return fail(`你已经拥有「${it.name}」`)
-    if (!canRoleBuy(it, this.role)) return fail(`「${it.name}」仅限${it.roles.map((r) => ROLE_NAME[r]).join(' / ')}身份购买`)
-    if (!isUnlocked(this.role, this.host.level(), id)) return fail(`「${it.name}」需要 Lv${unlockLevel(this.role, id)} 解锁（当前 Lv${this.host.level()}）`)
+    if (!it || it.hidden) return fail(t('没有这件商品'))
+    if (this.owns(id)) return fail(t('你已经拥有「{name}」', { name: it.name }))
+    if (!canRoleBuy(it, this.role)) return fail(t('「{name}」仅限{roles}身份购买', { name: it.name, roles: it.roles.map((r) => ROLE_NAME[r]).join(' / ') }))
+    if (!isUnlocked(this.role, this.host.level(), id)) return fail(t('「{name}」需要 Lv{n} 解锁（当前 Lv{lv}）', { name: it.name, n: unlockLevel(this.role, id), lv: this.host.level() }))
     if (it.kind === 'property') {
       const p = this.propPoi(it)
-      if (!p) return fail('这座城市没有这处房产')
+      if (!p) return fail(t('这座城市没有这处房产'))
       const pl = this.ctx.player
-      if (!atDoor && Math.hypot(pl.x - p.door.x, pl.z - p.door.z) > DOOR_DIST) return fail(`房产要到门口购买：${p.name}`)
+      if (!atDoor && Math.hypot(pl.x - p.door.x, pl.z - p.door.z) > DOOR_DIST) return fail(t('房产要到门口购买：{name}', { name: p.name }))
     }
-    if (!spend(this.ctx, it.price, it.id)) return fail(`钱不够：「${it.name}」要 ${usd(it.price)}，还差 ${usd(it.price - this.ctx.player.money)}`)
+    if (!spend(this.ctx, it.price, it.id)) return fail(t('钱不够：「{name}」要 {price}，还差 {short}', { name: it.name, price: usd(it.price), short: usd(it.price - this.ctx.player.money) }))
     this.s.owned.push(id)
     if (it.kind === 'vehicle') this.s.garage.push({ id, health: 100 })
     this.recompute()
     this.ctx.events.emit('purchased', { kind: it.kind, id, cost: it.price })
-    const where = it.kind === 'vehicle' ? ' · 已停进车库，到家门口取车' : it.kind === 'property' ? ' · 门口可设为主住所' : ''
-    this.host.toast(`买下「${it.name}」 −${usd(it.price)}${where}`, 3.5)
+    const where = it.kind === 'vehicle' ? t(' · 已停进车库，到家门口取车') : it.kind === 'property' ? t(' · 门口可设为主住所') : ''
+    this.host.toast(t('买下「{name}」 −{price}', { name: it.name, price: usd(it.price) }) + where, 3.5)
     this.host.save()
     return true
   }
@@ -140,9 +141,9 @@ export class Assets implements Subsystem<AssetsSave> {
   setHome(id: string): true | string {
     const it = shopItem(id)
     const poiId = it?.kind === 'property' ? this.propPoi(it)?.id ?? '' : id
-    if (!this.isResidence(poiId)) { const r = '只能把自己的房子设为主住所'; this.host.toast(r); return r }
+    if (!this.isResidence(poiId)) { const r = t('只能把自己的房子设为主住所'); this.host.toast(r); return r }
     this.s.primaryHome = poiId
-    this.host.toast(`主住所：${this.ctx.pois.byId(poiId)?.name ?? poiId} · 车会停在这里`, 3)
+    this.host.toast(t('主住所：{name} · 车会停在这里', { name: this.ctx.pois.byId(poiId)?.name ?? poiId }), 3)
     return true
   }
 
@@ -151,22 +152,22 @@ export class Assets implements Subsystem<AssetsSave> {
     const fail = (r: string) => { if (!silent) this.host.toast(r, 3); return r }
     const g = this.s.garage.find((c) => c.id === id)
     const it = shopItem(id)
-    if (!g || !it?.preset) return fail('车库里没有这辆车')
+    if (!g || !it?.preset) return fail(t('车库里没有这辆车'))
     const pl = this.ctx.player
     if (this.activeVehicle && pl.vehicle === this.activeVehicle) {
-      if (this.s.activeCar === id) return fail(`你正开着「${it.name}」`)
+      if (this.s.activeCar === id) return fail(t('你正开着「{name}」', { name: it.name }))
       pl.exit(this.ctx.world)
     }
     const poi = this.ctx.pois.byId(atPoi ?? this.primaryHome) ?? this.ctx.pois.byId(this.ctx.role.home)
-    if (!poi) return fail('找不到住所')
+    if (!poi) return fail(t('找不到住所'))
     this.syncHealth()
     if (this.activeVehicle) this.host.spawner.recallOwned(this.activeVehicle)
     // 门口最近车道上、往回 10 m（门口 +8 m 处是开局停的那辆空车）
     const gr = this.ctx.graph
     const lane = gr.nearestLane(poi.door.x, poi.door.z)
-    const t = Math.max(6, Math.min(lane.edge.length - 6, lane.t - 10))
-    const p = gr.lanePoint(lane.edge, t, { x: 0, z: 0 })
-    const d = gr.dirAt(lane.edge, t, { x: 0, z: 0 })
+    const lt = Math.max(6, Math.min(lane.edge.length - 6, lane.t - 10))
+    const p = gr.lanePoint(lane.edge, lt, { x: 0, z: 0 })
+    const d = gr.dirAt(lane.edge, lt, { x: 0, z: 0 })
     const pre = it.preset
     const v = this.host.spawner.spawnOwned(this.ctx, id, p.x, p.z, Math.atan2(d.x, d.z), pre, id === GOLD_OWN_CAR)
     v.tune = pre.tune ? { ...pre.tune } : { accel: 1, maxFwd: 1 }
@@ -175,7 +176,7 @@ export class Assets implements Subsystem<AssetsSave> {
     if (g.health < 100) v.damage(100 - g.health)
     this.activeVehicle = v
     this.s.activeCar = id
-    if (!silent) this.host.toast(`「${it.name}」已停在 ${poi.name} 门口`, 3)
+    if (!silent) this.host.toast(t('「{name}」已停在 {poi} 门口', { name: it.name, poi: poi.name }), 3)
     return true
   }
 
@@ -195,7 +196,7 @@ export class Assets implements Subsystem<AssetsSave> {
     clock.set(7, clock.day)
     needs.sync()
     needs.set(needs.hunger - rest.hunger, 100)
-    this.host.toast(`在${it.name}睡了个好觉`, 2.5)
+    this.host.toast(t('在{name}睡了个好觉', { name: it.name }), 2.5)
     this.ctx.events.emit('slept', { day: clock.day, xpMul: rest.xpMul })
     this.host.save()
     this.host.closePanel()
@@ -211,27 +212,27 @@ export class Assets implements Subsystem<AssetsSave> {
       for (const it of SHOP) {
         if (it.kind !== 'upgrade' || !canRoleBuy(it, this.role) || this.owns(it.id)) continue
         const lock = this.lockReason(it)
-        out.push({ label: `买 ${it.name}`, note: lock ?? `${usd(it.price)} · ${it.desc}`, disabled: !!lock, onClick: () => { if (this.buy(it.id) === true) this.refresh(poi) } })
+        out.push({ label: t('买 {name}', { name: it.name }), note: lock ?? `${usd(it.price)} · ${it.desc}`, disabled: !!lock, onClick: () => { if (this.buy(it.id) === true) this.refresh(poi) } })
       }
     }
     // 房产门口：未拥有 → 买下
     for (const it of SHOP) {
       if (it.kind !== 'property' || this.propPoi(it)?.id !== poi.id || this.owns(it.id)) continue
       const lock = this.lockReason(it)
-      out.push({ label: `买下此处 ${usd(it.price)}`, note: lock ?? `${it.name} · ${it.desc}`, onClick: () => { if (this.buy(it.id, true) === true) this.refresh(poi) } })
+      out.push({ label: t('买下此处 {price}', { price: usd(it.price) }), note: lock ?? `${it.name} · ${it.desc}`, onClick: () => { if (this.buy(it.id, true) === true) this.refresh(poi) } })
     }
     // 自有住所：取车、设为主住所、（地标豪宅）睡觉
     if (this.isResidence(poi.id)) {
       for (const c of this.s.garage) {
         const it = shopItem(c.id); if (!it) continue
         const out_ = this.s.activeCar === c.id
-        out.push({ label: `取车：${it.name}`, note: `车况 ${c.health}%${out_ ? ' · 已取出（重新停到门口）' : ''}`, onClick: () => { if (this.spawnCar(c.id, poi.id) === true) this.host.closePanel() } })
+        out.push({ label: t('取车：{name}', { name: it.name }), note: t('车况 {n}%', { n: c.health }) + (out_ ? t(' · 已取出（重新停到门口）') : ''), onClick: () => { if (this.spawnCar(c.id, poi.id) === true) this.host.closePanel() } })
       }
-      if (this.primaryHome !== poi.id) out.push({ label: '设为主住所', note: '车库取车停在这里', onClick: () => { this.setHome(poi.id); this.refresh(poi) } })
+      if (this.primaryHome !== poi.id) out.push({ label: t('设为主住所'), note: t('车库取车停在这里'), onClick: () => { this.setHome(poi.id); this.refresh(poi) } })
       const prop = this.propertyAt(poi.id)
       if (prop && poi.type !== 'home') {
-        out.push({ label: '睡觉到 07:00', note: `精力 100 · 饱食 −${prop.rest?.hunger ?? 20} · 明天 XP +${Math.round(((prop.rest?.xpMul ?? 1) - 1) * 100)}%`, onClick: () => this.sleepAt(prop) })
-        out.push({ label: '存档', onClick: () => { this.host.save(); this.host.toast('已存档') } })
+        out.push({ label: t('睡觉到 07:00'), note: t('精力 100 · 饱食 −{h} · 明天 XP +{xp}%', { h: prop.rest?.hunger ?? 20, xp: Math.round(((prop.rest?.xpMul ?? 1) - 1) * 100) }), onClick: () => this.sleepAt(prop) })
+        out.push({ label: t('存档'), onClick: () => { this.host.save(); this.host.toast(t('已存档')) } })
       }
     }
     return out
@@ -246,27 +247,27 @@ export class Assets implements Subsystem<AssetsSave> {
       const lock = this.lockReason(it)
       const owned = this.owns(it.id)
       const a: AppItem = { title: it.name, desc: it.desc, value: usd(it.price) }
-      if (owned) { a.status = '已拥有'; a.tone = 'owned'; return a }
+      if (owned) { a.status = t('已拥有'); a.tone = 'owned'; return a }
       if (lock) { a.status = lock; a.tone = 'locked'; return a }
-      if (it.kind === 'property') { a.status = `到门口购买 · ${this.propPoi(it)?.name ?? ''}`; return a }
-      if (money < it.price) a.status = `还差 ${usd(it.price - money)}`
-      a.actions = [{ label: '购买', disabled: money < it.price, onClick: () => { this.buy(it.id) } }]
+      if (it.kind === 'property') { a.status = t('到门口购买 · {name}', { name: this.propPoi(it)?.name ?? '' }); return a }
+      if (money < it.price) a.status = t('还差 {n}', { n: usd(it.price - money) })
+      a.actions = [{ label: t('购买'), disabled: money < it.price, onClick: () => { this.buy(it.id) } }]
       return a
     }
     const cat = this.catalog
     const group = (k: ShopItem['kind']) => cat.filter((it) => it.kind === k).map(item)
     const garage: AppItem[] = this.s.garage.map((c) => {
       const it = shopItem(c.id)
-      return { title: it?.name ?? c.id, value: `车况 ${c.health}%`, status: this.s.activeCar === c.id ? `已取出 · 停在 ${home} 附近` : '在车库（到住所门口取车）', tone: 'owned' }
+      return { title: it?.name ?? c.id, value: t('车况 {n}%', { n: c.health }), status: this.s.activeCar === c.id ? t('已取出 · 停在 {home} 附近', { home }) : t('在车库（到住所门口取车）'), tone: 'owned' }
     })
-    if (!garage.length) garage.push({ title: '车库空空', desc: '买下的车会停在主住所，到门口面板「取车」。' })
+    if (!garage.length) garage.push({ title: t('车库空空'), desc: t('买下的车会停在主住所，到门口面板「取车」。') })
     return {
-      lines: [`现金 ${usd(money)} · 资产 ${this.s.owned.length} 件，买价合计 ${usd(this.value())}`, `主住所：${home}`],
+      lines: [t('现金 {cash} · 资产 {n} 件，买价合计 {total}', { cash: usd(money), n: this.s.owned.length, total: usd(this.value()) }), t('主住所：{home}', { home })],
       sections: [
-        { title: '车辆', items: group('vehicle') },
-        { title: '房产（到门口购买）', items: group('property') },
-        { title: '升级', items: group('upgrade') },
-        { title: '车库', items: garage },
+        { title: t('车辆'), items: group('vehicle') },
+        { title: t('房产（到门口购买）'), items: group('property') },
+        { title: t('升级'), items: group('upgrade') },
+        { title: t('车库'), items: garage },
       ],
     }
   }

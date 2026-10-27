@@ -19,6 +19,7 @@ import { ArenaSfx } from './ArenaSfx'
 import { Grenades, type NadeKind } from './Grenades'
 import { Bot, inSite, type BotWorld, type BotOut, type BombInfo, type SoundEvent } from './Bot'
 import { SPAWNS, BUY_ZONES, HOLDS, toCell, type SiteId } from './layout'
+import { t } from '../../i18n'
 
 export interface MatchResult {
   mode: ArenaModeId; won: boolean; draw: boolean; surrender: boolean
@@ -40,7 +41,7 @@ const D2R = Math.PI / 180
 const SUB = 1 / 120
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _muz = new THREE.Vector3(), _sz = new THREE.Vector2()
 const shot: ShotResult = { victim: null, group: null, point: new THREE.Vector3(), normal: new THREE.Vector3(), dist: 0, boxKind: '' }
-const WNAME: Record<string, string> = { knife: '刀', glock: 'Glock', usp: 'USP-S', deagle: '沙鹰', mac10: 'MAC-10', mp9: 'MP9', nova: 'Nova', ak47: 'AK-47', m4a4: 'M4A4', awp: 'AWP', he: '手雷', c4: 'C4', world: '摔落' }
+const WNAME: Record<string, string> = { knife: t('刀'), glock: 'Glock', usp: 'USP-S', deagle: t('沙鹰'), mac10: 'MAC-10', mp9: 'MP9', nova: 'Nova', ak47: 'AK-47', m4a4: 'M4A4', awp: 'AWP', he: t('手雷'), c4: 'C4', world: t('摔落') }
 
 /**
  * 射击竞技会话：独立 Scene / 相机 / 碰撞体，Game 在 state='arena' 期间每帧调用 update + render。
@@ -172,7 +173,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
     // —— 选手 ——
     const lib = game.charLib
     const solo = mode === 'duel' || mode === 'dm'
-    const myName = game.playerName || '你'
+    const myName = game.playerName || t('你')
     this.player = new Actor(0, myName, 'A', 'T', true)
     this.actors.push(this.player)
     const mk = (name: string, team: string, side: Side, diff: Difficulty, i: number) => {
@@ -215,7 +216,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
     this.requestLock()
 
     if (mode === 'dm') this.startDm(); else this.startRound()
-    this.hud.center(`${MODES[mode].name}\n${mode === 'dm' ? '5 分钟 · 击杀最多者获胜' : mode === 'duel' ? `先赢 ${MATCH.duelWin} 回合` : `你是 ${this.player.side === 'T' ? 'T（进攻方）' : 'CT（防守方）'} · 先赢 ${MATCH.winRounds} 回合`}`, 4)
+    this.hud.center(`${MODES[mode].name}\n${mode === 'dm' ? t('5 分钟 · 击杀最多者获胜') : mode === 'duel' ? t('先赢 {n} 回合', { n: MATCH.duelWin }) : t('你是 {side} · 先赢 {n} 回合', { side: this.player.side === 'T' ? t('T（进攻方）') : t('CT（防守方）'), n: MATCH.winRounds })}`, 4)
   }
 
   // ———————————————————— BotWorld ————————————————————
@@ -376,11 +377,11 @@ export class ArenaMode implements ArenaSession, BotWorld {
       if (reason === 'defuse' && this.defuser) mvp = this.defuser
       if (mvp) { mvp.stats.mvps++; mvp.stats.score += 2 }
       const side = this.sideOfTeam(winTeam)
-      const why = reason === 'bomb' ? '炸弹爆炸' : reason === 'defuse' ? '炸弹已拆除' : reason === 'time' ? '时间耗尽' : '全歼对手'
+      const why = reason === 'bomb' ? t('炸弹爆炸') : reason === 'defuse' ? t('炸弹已拆除') : reason === 'time' ? t('时间耗尽') : t('全歼对手')
       const mine = winTeam === this.player.team
-      this.hud.center(`${side === 'T' ? '恐怖分子' : '反恐精英'} 获胜 · ${why}${mvp ? `\nMVP：${mvp.name}` : ''}`, TIMES.roundEnd)
+      this.hud.center(`${side === 'T' ? t('恐怖分子 获胜 · {why}', { why }) : t('反恐精英 获胜 · {why}', { why })}${mvp ? '\n' + t('MVP：{name}', { name: mvp.name }) : ''}`, TIMES.roundEnd)
       this.sfx.ui(mine ? 'win' : 'lose')
-    } else this.hud.center('平局 · 时间耗尽', TIMES.roundEnd)
+    } else this.hud.center(t('平局 · 时间耗尽'), TIMES.roundEnd)
     const winN = this.mode === 'duel' ? MATCH.duelWin : MATCH.winRounds
     const maxRounds = this.mode === 'duel' ? MATCH.duelWin * 2 - 1 : MATCH.half * 2
     if (this.score.A >= winN || this.score.B >= winN || this.round >= maxRounds) this.matchOver(false)
@@ -397,7 +398,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
       if (a.visual) { a.visual.dispose(); a.visual = new ActorVisual(this.game.charLib, a.side, a.variant); this.scene.add(a.visual.group) }
     }
     this.viewmodel.setSide(this.player.side)
-    this.hud.center(`半场换边\n你现在是 ${this.player.side === 'T' ? 'T（进攻方）' : 'CT（防守方）'}`, 4)
+    this.hud.center(t('半场换边\n你现在是 {side}', { side: this.player.side === 'T' ? t('T（进攻方）') : t('CT（防守方）') }), 4)
   }
 
   // ———————————————————— 死斗 ————————————————————
@@ -454,9 +455,9 @@ export class ArenaMode implements ArenaSession, BotWorld {
     this.expectUnlock = !!document.pointerLockElement
     if (document.pointerLockElement) document.exitPointerLock()
     this.hud.scoreboard(false, [], '')
-    const title = won ? '胜利！' : draw ? '平局' : '失败'
-    const sub = this.mode === 'dm' ? `你的击杀 ${us} · 最高对手 ${them}` : `比分 ${us} : ${them}`
-    const body = [`击杀 ${p.stats.kills} · 死亡 ${p.stats.deaths} · 助攻 ${p.stats.assists} · 爆头 ${p.stats.hs} · MVP ${p.stats.mvps}`, prize > 0 ? `奖金 +$${prize}` : '无奖金', ...extra]
+    const title = won ? t('胜利！') : draw ? t('平局') : t('失败')
+    const sub = this.mode === 'dm' ? t('你的击杀 {us} · 最高对手 {them}', { us, them }) : t('比分 {us} : {them}', { us, them })
+    const body = [t('击杀 {k} · 死亡 {d} · 助攻 {a} · 爆头 {hs} · MVP {mvp}', { k: p.stats.kills, d: p.stats.deaths, a: p.stats.assists, hs: p.stats.hs, mvp: p.stats.mvps }), prize > 0 ? t('奖金 +${n}', { n: prize }) : t('无奖金'), ...extra]
     this.hud.showEnd(title, sub, this.scoreRows(), body, () => this.game.exitArena())
     this.hud.center('', 0.01)
   }
@@ -516,7 +517,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
     this.refreshBuy()
   }
   private refreshBuy() {
-    const left = this.phase === 'freeze' ? `冻结 ${Math.ceil(this.phaseLeft)} s` : this.mode === 'dm' ? '死斗：免费' : `购买时间 ${Math.max(0, Math.ceil(TIMES.buyWindow - this.roundT))} s`
+    const left = this.phase === 'freeze' ? t('冻结 {n} s', { n: Math.ceil(this.phaseLeft) }) : this.mode === 'dm' ? t('死斗：免费') : t('购买时间 {n} s', { n: Math.max(0, Math.ceil(TIMES.buyWindow - this.roundT)) })
     this.hud.showBuy(true, this.buyGroups(), this.player.money, left, (id) => this.playerBuy(id), () => this.closeBuy(true))
   }
   closeBuy(relock = false) {
@@ -587,7 +588,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
     if (input.justPressed('KeyZ') && this.mode !== 'dm' && this.mode !== 'duel') {
       this.command = this.command === 'free' ? 'follow' : this.command === 'follow' ? 'hold' : 'free'
       this.commandLook.set(p.body.x - Math.sin(p.yaw) * 12, 0, p.body.z - Math.cos(p.yaw) * 12)
-      this.hud.center(this.command === 'follow' ? '队友：跟我！' : this.command === 'hold' ? '队友：守住这里！' : '队友：自由行动', 1.5)
+      this.hud.center(this.command === 'follow' ? t('队友：跟我！') : this.command === 'hold' ? t('队友：守住这里！') : t('队友：自由行动'), 1.5)
     }
     // 开镜
     const w = p.weapon()
@@ -723,13 +724,13 @@ export class ArenaMode implements ArenaSession, BotWorld {
     }
     for (const [a, d] of v.dmgFrom) if (a !== by && d >= 40 && this.isEnemy(a, v)) { a.stats.assists++; a.stats.score += 1 }
     const side = (a: Actor | null) => a ? (this.mode === 'dm' ? (a === this.player ? 't' : 'ct') : a.side.toLowerCase()) : 't'
-    this.hud.feed({ killer: by ? by.name : '世界', ks: side(by), victim: v.name, vs: side(v), weapon: WNAME[weapon] ?? weapon, hs, me: by === this.player || v === this.player })
+    this.hud.feed({ killer: by ? by.name : t('世界'), ks: side(by), victim: v.name, vs: side(v), weapon: WNAME[weapon] ?? weapon, hs, me: by === this.player || v === this.player })
     // 炸弹掉落
     if (v.hasC4) { v.hasC4 = false; this.bomb.state = 'dropped'; this.bomb.carrier = null; this.bomb.pos.set(v.body.x, v.body.y, v.body.z); this.placeBombMesh() }
     if (this.bomb.defuser === v) this.bomb.defuser = null
     if (v === this.player) {
       this.scoped = 0
-      if (this.mode !== 'dm') this.hud.center(`你被 ${by?.name ?? '世界'} 击杀${hs ? '（爆头）' : ''}`, 2.5)
+      if (this.mode !== 'dm') this.hud.center(hs ? t('你被 {name} 击杀（爆头）', { name: by?.name ?? t('世界') }) : t('你被 {name} 击杀', { name: by?.name ?? t('世界') }), 2.5)
     }
     if (this.mode === 'dm') this.respawnAt.set(v, this.time + 2)
   }
@@ -877,7 +878,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
       for (const a of this.actors) if (a.alive && a.side === 'T' && Math.hypot(a.body.x - this.bomb.pos.x, a.body.z - this.bomb.pos.z) < 1.3) {
         a.hasC4 = true; this.bomb.state = 'carried'; this.bomb.carrier = a
         this.removeBombMesh()
-        if (a === this.player) this.hud.center('你捡起了 C4', 1.5)
+        if (a === this.player) this.hud.center(t('你捡起了 C4'), 1.5)
         break
       }
     }
@@ -934,7 +935,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
           this.bombLeft = TIMES.bomb; this.beepT = 0
           this.plantedThisRound = true; this.planter = a
           a.money = Math.min(ECON.max, a.money + ECON.plantPlayer); a.stats.score += 2
-          this.hud.center('C4 已安放！', 2)
+          this.hud.center(t('C4 已安放！'), 2)
           this.placeBombMesh()
           a.slot = a.bestSlot()
         }
@@ -1089,7 +1090,7 @@ export class ArenaMode implements ArenaSession, BotWorld {
   }
 
   private scoreRows(): ScoreRow[] {
-    const rows = this.actors.map((a) => ({ name: a.name + (a.isPlayer ? '（你）' : a.diff >= PRO_TIER ? ' ★' : ''), side: this.mode === 'dm' ? (a.isPlayer ? 'T' : 'CT') : a.side, k: a.stats.kills, d: a.stats.deaths, a: a.stats.assists, hs: a.stats.hs, mvp: a.stats.mvps, money: a.money, alive: a.alive, me: a.isPlayer, score: a.stats.score + a.stats.kills * 0 }))
+    const rows = this.actors.map((a) => ({ name: a.name + (a.isPlayer ? t('（你）') : a.diff >= PRO_TIER ? ' ★' : ''), side: this.mode === 'dm' ? (a.isPlayer ? 'T' : 'CT') : a.side, k: a.stats.kills, d: a.stats.deaths, a: a.stats.assists, hs: a.stats.hs, mvp: a.stats.mvps, money: a.money, alive: a.alive, me: a.isPlayer, score: a.stats.score + a.stats.kills * 0 }))
     rows.sort((x, y) => (x.side === y.side ? y.score - x.score || y.k - x.k : x.side < y.side ? 1 : -1))
     return rows
   }
@@ -1113,9 +1114,9 @@ export class ArenaMode implements ArenaSession, BotWorld {
     const view = this.specTarget ?? p
     h.setVitals(view.hp, view.armor, view.helmet, p.money, this.map.zoneAt(view.body.x, view.body.z))
     const w = view.weapon()
-    if (view.slot === 'grenade') h.setAmmo(GRENADE_NAMES[view.grenades[0]] ?? '投掷物', String(view.grenades.length), ' 个', '')
-    else if (view.slot === 'c4') h.setAmmo('C4 炸药', '', '', '在包点按住左键 / E 安放')
-    else h.setAmmo(w.def.name, w.def.kind === 'knife' ? '—' : String(w.mag), w.def.kind === 'knife' ? '' : ` / ${w.reserve}`, [...view.grenades.map((g) => GRENADE_NAMES[g]), view.hasC4 ? 'C4' : '', view.kit ? '拆弹器' : ''].filter(Boolean).join(' · '))
+    if (view.slot === 'grenade') h.setAmmo(GRENADE_NAMES[view.grenades[0]] ?? t('投掷物'), String(view.grenades.length), t(' 个'), '')
+    else if (view.slot === 'c4') h.setAmmo(t('C4 炸药'), '', '', t('在包点按住左键 / E 安放'))
+    else h.setAmmo(w.def.name, w.def.kind === 'knife' ? '—' : String(w.mag), w.def.kind === 'knife' ? '' : ` / ${w.reserve}`, [...view.grenades.map((g) => GRENADE_NAMES[g]), view.hasC4 ? 'C4' : '', view.kit ? t('拆弹器') : ''].filter(Boolean).join(' · '))
     h.setVisibleCore(!h.endOpen)
     // 准星：散布 → 像素
     const scoped = view === p && w.def.scope && w.scope > 0
@@ -1126,19 +1127,19 @@ export class ArenaMode implements ArenaSession, BotWorld {
     h.crosshair(Math.max(3, inacc * pxPerRad * 0.9), view.alive && !scoped && w.def.kind !== 'sniper' && !h.buyOpen)
     h.blind(view.blindT > 0 ? Math.min(1, view.blindT / 1.5) : 0)
     // 进度条
-    if (view.actionT > 0) h.progress(view.side === 'T' ? '正在安放 C4…' : view.kit ? '拆弹中（拆弹器）…' : '拆弹中…', view.actionT / (view.side === 'T' ? TIMES.plant : view.kit ? TIMES.defuseKit : TIMES.defuse))
+    if (view.actionT > 0) h.progress(view.side === 'T' ? t('正在安放 C4…') : view.kit ? t('拆弹中（拆弹器）…') : t('拆弹中…'), view.actionT / (view.side === 'T' ? TIMES.plant : view.kit ? TIMES.defuseKit : TIMES.defuse))
     else h.progress(null)
-    h.bomb(this.bomb.state === 'planted' ? `● C4 已安放于 ${this.bomb.site} 点` : this.bomb.state === 'dropped' ? '○ C4 掉落' : null)
+    h.bomb(this.bomb.state === 'planted' ? t('● C4 已安放于 {site} 点', { site: this.bomb.site ?? '' }) : this.bomb.state === 'dropped' ? t('○ C4 掉落') : null)
     // 提示
     let hint: string | null = null
     if (p.alive && this.bombMode && this.phase === 'live') {
-      if (p.hasC4 && inSite(p.body.x, p.body.z)) hint = p.slot === 'c4' ? '按住左键 / E 安放 C4' : '按 5 拿出 C4 安放'
-      else if (p.side === 'CT' && this.bomb.state === 'planted' && Math.hypot(p.body.x - this.bomb.pos.x, p.body.z - this.bomb.pos.z) < 1.6) hint = '按住 E 拆除 C4'
+      if (p.hasC4 && inSite(p.body.x, p.body.z)) hint = p.slot === 'c4' ? t('按住左键 / E 安放 C4') : t('按 5 拿出 C4 安放')
+      else if (p.side === 'CT' && this.bomb.state === 'planted' && Math.hypot(p.body.x - this.bomb.pos.x, p.body.z - this.bomb.pos.z) < 1.6) hint = t('按住 E 拆除 C4')
     }
-    if (this.phase === 'freeze' && !h.buyOpen && this.round > 0) hint = `购买阶段 ${Math.ceil(this.phaseLeft)} s · B 打开购买菜单`
-    if (!document.pointerLockElement && !h.buyOpen && !h.endOpen && !this.paused && p.alive && !this.autopilot) hint = '点击画面锁定鼠标'
+    if (this.phase === 'freeze' && !h.buyOpen && this.round > 0) hint = t('购买阶段 {n} s · B 打开购买菜单', { n: Math.ceil(this.phaseLeft) })
+    if (!document.pointerLockElement && !h.buyOpen && !h.endOpen && !this.paused && p.alive && !this.autopilot) hint = t('点击画面锁定鼠标')
     h.hint(hint)
-    h.scoreboard(this.sbOpen && !h.endOpen, this.scoreRows(), this.mode === 'dm' ? '死斗' : `回合 ${this.round} · ${this.score.A} : ${this.score.B}`)
+    h.scoreboard(this.sbOpen && !h.endOpen, this.scoreRows(), this.mode === 'dm' ? t('死斗') : t('回合 {n} · {a} : {b}', { n: this.round, a: this.score.A, b: this.score.B }))
     if (h.buyOpen && Math.floor(this.time * 2) !== Math.floor((this.time - dt) * 2)) this.refreshBuy()
     // 雷达
     const dots: RadarDot[] = []

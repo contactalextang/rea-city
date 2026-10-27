@@ -1,4 +1,5 @@
 import type { Poi, Side } from '../systems/Poi'
+import { t } from '../i18n'
 import type { RoadGraph } from '../world/RoadGraph'
 
 /**
@@ -29,30 +30,30 @@ export interface VenueDef {
 
 export const VENUES: VenueDef[] = [
   {
-    id: 'casino_mbs', type: 'casino', name: '滨海湾金沙赌场 Marina Bay Sands Casino',
-    desc: '24 小时营业。21 点、轮盘、骰宝、百家乐、老虎机。',
+    id: 'casino_mbs', type: 'casino', name: t('滨海湾金沙赌场 Marina Bay Sands Casino'),
+    desc: t('24 小时营业。21 点、轮盘、骰宝、百家乐、老虎机。'),
     hours: null,
     // 金沙 landmark 门口 (1326.46, 155.75) 附近；吸附时会自动避开 landmark 自己的门口
     sg: { x: 1326.46, z: 155.75 },
     grid: { bi: 7, bj: 1, side: 'S' },
   },
   {
-    id: 'club_clarke_quay', type: 'club', name: '克拉码头夜店 Clarke Quay',
-    desc: '河畔酒吧街。点酒、跳舞、认识新朋友。',
+    id: 'club_clarke_quay', type: 'club', name: t('克拉码头夜店 Clarke Quay'),
+    desc: t('河畔酒吧街。点酒、跳舞、认识新朋友。'),
     hours: [21, 4],
     sg: { x: 57.7, z: -695.6 },
     grid: { bi: 3, bj: 1, side: 'E' },
   },
   {
-    id: 'race_marina_bay', type: 'race', name: '滨海湾赛道 Marina Bay Street Circuit（摩天轮旁维修区）',
-    desc: '夜间街头赛在这里集合报名。',
+    id: 'race_marina_bay', type: 'race', name: t('滨海湾赛道 Marina Bay Street Circuit（摩天轮旁维修区）'),
+    desc: t('夜间街头赛在这里集合报名。'),
     hours: [20, 4],
     sg: { x: 1859.7, z: -759.0 },
     grid: { bi: 8, bj: 3, side: 'E' },
   },
   {
-    id: 'arena_tanjong_pagar', type: 'arena', name: '丹戎巴葛射击俱乐部',
-    desc: '24 小时营业。5v5 爆破 / 1v1 单挑 / 死斗。',
+    id: 'arena_tanjong_pagar', type: 'arena', name: t('丹戎巴葛射击俱乐部'),
+    desc: t('24 小时营业。5v5 爆破 / 1v1 单挑 / 死斗。'),
     hours: null,
     // Guoco Tower (-90,604) 与 Capital Tower (126.75,535.5) 之间
     sg: { x: 20, z: 570 },
@@ -76,7 +77,7 @@ export function venueOpen(v: VenueDef, hour: number): boolean {
 }
 const hh = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`
 /** 营业时间文字：`24 小时营业` / `营业 21:00–04:00` */
-export function hoursText(v: VenueDef) { return v.hours ? `营业 ${hh(v.hours[0])}–${hh(v.hours[1])}` : '24 小时营业' }
+export function hoursText(v: VenueDef) { return v.hours ? t('营业 {from}–{to}', { from: hh(v.hours[0]), to: hh(v.hours[1]) }) : t('24 小时营业') }
 
 /**
  * sg 世界：把场馆门口吸附到 anchor 最近车道所在边的行驶侧人行道上，朝向马路。

@@ -8,6 +8,7 @@ import { cloneSpec, validateSpec } from '../characters/CharacterSpec'
 import { CLOTH_PALETTE, HAIR_PALETTE, SHOE_PALETTE, SKIN_PALETTE, identitySpec } from '../characters/presets'
 import type { RoleId } from '../data/roles'
 import { DEFAULT_ROLE, ROLES, isRoleId } from '../data/roles'
+import { t } from '../i18n'
 
 export interface CreatorResult { role: RoleId; spec: CharacterSpec; name: string }
 
@@ -25,23 +26,23 @@ type ColorKey = 'skin' | 'hair' | 'top' | 'bottom' | 'shoes' | 'hat'
 const STORAGE_KEY = 'rea.character'
 const ROLE_ORDER: RoleId[] = ['gang', 'gold', 'white', 'blue']
 const SLOTS: { slot: Slot; label: string }[] = [
-  { slot: 'head', label: '头' }, { slot: 'body', label: '上衣' }, { slot: 'legs', label: '下装' }, { slot: 'feet', label: '鞋' }, { slot: 'hat', label: '帽子' },
+  { slot: 'head', label: t('头') }, { slot: 'body', label: t('上衣') }, { slot: 'legs', label: t('下装') }, { slot: 'feet', label: t('鞋') }, { slot: 'hat', label: t('帽子') },
 ]
 const COLOR_ROWS: { key: ColorKey; label: string; palette: string[] }[] = [
-  { key: 'skin', label: '肤色', palette: SKIN_PALETTE },
-  { key: 'hair', label: '发色', palette: HAIR_PALETTE },
-  { key: 'top', label: '上衣', palette: CLOTH_PALETTE },
-  { key: 'bottom', label: '下装', palette: CLOTH_PALETTE },
-  { key: 'shoes', label: '鞋', palette: SHOE_PALETTE },
-  { key: 'hat', label: '帽色', palette: CLOTH_PALETTE },
+  { key: 'skin', label: t('肤色'), palette: SKIN_PALETTE },
+  { key: 'hair', label: t('发色'), palette: HAIR_PALETTE },
+  { key: 'top', label: t('上衣'), palette: CLOTH_PALETTE },
+  { key: 'bottom', label: t('下装'), palette: CLOTH_PALETTE },
+  { key: 'shoes', label: t('鞋'), palette: SHOE_PALETTE },
+  { key: 'hat', label: t('帽色'), palette: CLOTH_PALETTE },
 ]
 
 /** 身份卡补充信息（家 = 中文地名；能做的事） */
 const ROLE_INFO: Record<RoleId, { home: string; can: string[]; names: { m: string; f: string } }> = {
-  gang: { home: '牛车水店屋', can: ['偷车', '收保护费', '街头破坏', '有枪 · 会被通缉'], names: { m: 'Ah Huat', f: 'Ah Lian' } },
-  gold: { home: '滨海湾公寓', can: ['赶会议', '投资', '豪车'], names: { m: 'Marcus Tan', f: 'Rachel Tan' } },
-  white: { home: '中峇鲁组屋', can: ['朝九晚五', '加班', 'MRT 通勤', '付房租'], names: { m: 'Jason Lim', f: 'Siti' } },
-  blue: { home: '红山组屋', can: ['开的士', '送外卖', '工地', '体力消耗快'], names: { m: 'Raju', f: 'Kavitha' } },
+  gang: { home: t('牛车水店屋'), can: [t('偷车'), t('收保护费'), t('街头破坏'), t('有枪 · 会被通缉')], names: { m: 'Ah Huat', f: 'Ah Lian' } },
+  gold: { home: t('滨海湾公寓'), can: [t('赶会议'), t('投资'), t('豪车')], names: { m: 'Marcus Tan', f: 'Rachel Tan' } },
+  white: { home: t('中峇鲁组屋'), can: [t('朝九晚五'), t('加班'), t('MRT 通勤'), t('付房租')], names: { m: 'Jason Lim', f: 'Siti' } },
+  blue: { home: t('红山组屋'), can: [t('开的士'), t('送外卖'), t('工地'), t('体力消耗快')], names: { m: 'Raju', f: 'Kavitha' } },
 }
 
 const PREVIEW_BG = 0x1a2140
@@ -456,20 +457,20 @@ export class Creator {
     })
     const panel = el('div', 'cr-panel')
     const head = el('div', 'cr-head')
-    head.append(el('h2', '', this.mode === 'wardrobe' ? '衣柜' : '创建角色'))
+    head.append(el('h2', '', this.mode === 'wardrobe' ? t('衣柜') : t('创建角色')))
     if (this.mode === 'new') {
       const steps = el('div', 'cr-steps')
-      steps.append(el('span', 's1', '① 选择身份'), el('span', 'sep', '›'), el('span', 's2', '② 外观'))
+      steps.append(el('span', 's1', t('① 选择身份')), el('span', 'sep', '›'), el('span', 's2', t('② 外观')))
       head.append(steps)
     }
     const body = el('div', 'cr-body')
     if (this.mode === 'new') body.append(this.buildStep1())
     body.append(this.buildStep2())
     const foot = el('div', 'cr-foot')
-    const back = el('button', 'cr-btn', this.mode === 'wardrobe' ? '取消' : '上一步')
+    const back = el('button', 'cr-btn', this.mode === 'wardrobe' ? t('取消') : t('上一步'))
     back.onclick = () => this.mode === 'wardrobe' ? this.cancel() : this.back()
     const hint = el('span', 'cr-hint')
-    hint.innerHTML = this.mode === 'wardrobe' ? '<kbd>Enter</kbd> 保存 · <kbd>Esc</kbd> 取消' : '<kbd>Enter</kbd> 确认'
+    hint.innerHTML = this.mode === 'wardrobe' ? t('<kbd>Enter</kbd> 保存 · <kbd>Esc</kbd> 取消') : t('<kbd>Enter</kbd> 确认')
     const ok = el('button', 'cr-btn primary')
     ok.onclick = () => this.step === 1 ? this.next() : this.confirm()
     foot.append(back, hint, ok)
@@ -490,9 +491,9 @@ export class Creator {
     preview.addEventListener('pointerup', end)
     preview.addEventListener('pointercancel', end)
     const tag = el('div', 'cr-roletag')
-    preview.append(tag, el('div', 'cr-drag', '拖拽旋转'))
+    preview.append(tag, el('div', 'cr-drag', t('拖拽旋转')))
     const anims = el('div', 'cr-anims')
-    for (const [a, label] of [['Idle', '站立'], ['Walk', '走路'], ['Run', '跑步'], ['Aim', '持枪']] as const) {
+    for (const [a, label] of [['Idle', t('站立')], ['Walk', t('走路')], ['Run', t('跑步')], ['Aim', t('持枪')]] as const) {
       const b = el('button', 'cr-chip', label)
       b.onclick = () => this.setAnim(a)
       this.animBtns.set(a, b)
@@ -506,20 +507,20 @@ export class Creator {
 
   private buildStep1(): HTMLElement {
     const sec = el('section', 'cr-s1')
-    sec.append(el('p', 'cr-sub', '选择你在这座城市的身份：决定起始资金、住处和能做的事。'))
+    sec.append(el('p', 'cr-sub', t('选择你在这座城市的身份：决定起始资金、住处和能做的事。')))
     const row = el('div', 'cr-cards')
     for (const id of ROLE_ORDER) {
       const def = ROLES[id], info = ROLE_INFO[id]
       const card = el('div', 'cr-card')
       card.tabIndex = 0
       card.dataset.role = id
-      const t = el('div', 'ct')
-      t.append(el('b', '', def.title))
-      if (id === DEFAULT_ROLE) t.append(el('span', 'cr-badge', '默认'))
-      card.append(t, el('div', 'cd', def.desc))
+      const ct = el('div', 'ct')
+      ct.append(el('b', '', def.title))
+      if (id === DEFAULT_ROLE) ct.append(el('span', 'cr-badge', t('默认')))
+      card.append(ct, el('div', 'cd', def.desc))
       const meta = el('div', 'cm')
-      const home = el('div', '', '家 '); home.append(el('b', '', info.home))
-      const cash = el('div', '', '起始现金 '); cash.append(el('b', 'cash', `S$ ${def.cash.toLocaleString('en-SG')}`))
+      const home = el('div', '', t('家') + ' '); home.append(el('b', '', info.home))
+      const cash = el('div', '', t('起始现金') + ' '); cash.append(el('b', 'cash', `S$ ${def.cash.toLocaleString('en-SG')}`))
       meta.append(home, cash)
       const ul = el('ul', 'cc')
       for (const c of info.can) ul.append(el('li', '', c))
@@ -537,7 +538,7 @@ export class Creator {
     const sec = el('section', 'cr-s2')
     // 名字
     const nameRow = el('div', 'cr-row')
-    nameRow.append(el('label', 'cr-lab', '名字'))
+    nameRow.append(el('label', 'cr-lab', t('名字')))
     const input = el('input', 'cr-name')
     input.type = 'text'; input.maxLength = 20; input.value = this.name; input.placeholder = this.defaultName()
     input.oninput = () => this.setName(input.value)
@@ -545,16 +546,16 @@ export class Creator {
     this.nameInput = input
     // 性别
     const gRow = el('div', 'cr-row')
-    gRow.append(el('label', 'cr-lab', '性别'))
+    gRow.append(el('label', 'cr-lab', t('性别')))
     const seg = el('div', 'cr-seg')
-    const bm = el('button', 'cr-chip', '男'), bf = el('button', 'cr-chip', '女')
+    const bm = el('button', 'cr-chip', t('男')), bf = el('button', 'cr-chip', t('女'))
     bm.onclick = () => this.setGender('m'); bf.onclick = () => this.setGender('f')
     seg.append(bm, bf); gRow.append(seg)
     this.genderBtns = { m: bm, f: bf }
     sec.append(nameRow, gRow)
     // 部件
     const partsBox = el('div', 'cr-group')
-    partsBox.append(el('div', 'cr-gt', '部件'))
+    partsBox.append(el('div', 'cr-gt', t('部件')))
     for (const { slot, label } of SLOTS) {
       const r = el('div', 'cr-row')
       r.append(el('label', 'cr-lab', label))
@@ -570,7 +571,7 @@ export class Creator {
     sec.append(partsBox)
     // 颜色
     const colBox = el('div', 'cr-group')
-    colBox.append(el('div', 'cr-gt', '颜色'))
+    colBox.append(el('div', 'cr-gt', t('颜色')))
     for (const { key, label, palette } of COLOR_ROWS) {
       const r = el('div', 'cr-row top')
       r.append(el('label', 'cr-lab', label))
@@ -583,7 +584,7 @@ export class Creator {
         btns.push(b); sw.append(b)
       }
       const custom = el('input', 'cr-custom')
-      custom.type = 'color'; custom.title = '自定义颜色'
+      custom.type = 'color'; custom.title = t('自定义颜色')
       custom.oninput = () => this.setColor(key, custom.value)
       sw.append(custom)
       r.append(sw)
@@ -593,7 +594,7 @@ export class Creator {
     sec.append(colBox)
     // 随机 / 恢复
     const acts = el('div', 'cr-acts')
-    const rnd = el('button', 'cr-btn', '🎲 随机'), rst = el('button', 'cr-btn', '恢复身份默认')
+    const rnd = el('button', 'cr-btn', t('🎲 随机')), rst = el('button', 'cr-btn', t('恢复身份默认'))
     rnd.onclick = () => this.randomize(); rst.onclick = () => this.resetToRole()
     acts.append(rnd, rst)
     sec.append(acts)
@@ -609,7 +610,7 @@ export class Creator {
     steps?.querySelector('.s1')?.classList.toggle('on', this.step === 1)
     steps?.querySelector('.s2')?.classList.toggle('on', this.step === 2)
     if (this.backBtn) this.backBtn.style.visibility = this.mode === 'new' && this.step === 1 ? 'hidden' : 'visible'
-    if (this.okBtn) this.okBtn.textContent = this.mode === 'wardrobe' ? '保存' : this.step === 1 ? '下一步 ›' : '开始游戏'
+    if (this.okBtn) this.okBtn.textContent = this.mode === 'wardrobe' ? t('保存') : this.step === 1 ? t('下一步 ›') : t('开始游戏')
     if (this.roleTag) this.roleTag.textContent = ROLES[this.role].title
     if (this.nameInput) { this.nameInput.value = this.name; this.nameInput.placeholder = this.defaultName() }
     this.refreshForm()
@@ -620,7 +621,7 @@ export class Creator {
     if (this.genderBtns) { this.genderBtns.m.classList.toggle('on', this.spec.body === 'm'); this.genderBtns.f.classList.toggle('on', this.spec.body === 'f') }
     for (const [slot, lab] of this.partLabels) {
       const id = this.spec.parts[slot]
-      lab.textContent = id ? this.lib.parts.get(id)?.label ?? id : '无'
+      lab.textContent = id ? this.lib.parts.get(id)?.label ?? id : t('无')
     }
     const colors = this.spec.colors as Record<string, string>
     for (const [key, row] of this.swatchRows) {
@@ -636,7 +637,7 @@ export class Creator {
   }
 }
 
-const CSS = `
+const CSS = /* i18n-ignore：CSS */ `
 .cr-root { position: fixed; inset: 0; z-index: 50; display: flex; color: #fff; font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif; user-select: none; }
 .cr-root button { font-family: inherit; }
 .cr-panel { position: relative; display: flex; flex-direction: column; width: min(440px, 44vw); margin: 16px 0 16px 16px; background: rgba(5,8,20,.82); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.45); overflow: hidden; transition: width .25s; }

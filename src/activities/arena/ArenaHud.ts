@@ -3,6 +3,8 @@
  * 雷达、准星（随散布扩张）、命中标记、Tab 计分板、购买菜单、暂停菜单、结算、观战、开镜遮罩、闪白、受击红边、进度条。
  * 所有可点元素拦截 mousedown，避免触发 Game 的 body 指针锁定。
  */
+import { t } from '../../i18n'
+
 const CSS = `
 .ah{position:fixed;inset:0;pointer-events:none;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:#fff;z-index:40;user-select:none;text-shadow:0 1px 2px rgba(0,0,0,.8)}
 .ah *{box-sizing:border-box}
@@ -85,10 +87,10 @@ export class ArenaHud {
     r.innerHTML = `
       <div class="blind"></div><div class="dmg"></div><div class="scope" style="display:none"></div>
       <div class="top"><div class="alive t"></div><div class="sc t">0</div><div class="tm">1:55</div><div class="sc ct">0</div><div class="alive ct"></div></div>
-      <div class="bomb" style="display:none">● C4 已安放</div>
+      <div class="bomb" style="display:none">${t('● C4 已安放')}</div>
       <canvas class="radar" width="200" height="200"></canvas>
       <div class="money">$800</div><div class="zone"></div>
-      <div class="hp"><div><b class="hpv">100</b><span>生命</span></div><div><b class="arv">0</b><span class="arl">护甲</span></div></div>
+      <div class="hp"><div><b class="hpv">100</b><span>${t('生命')}</span></div><div><b class="arv">0</b><span class="arl">${t('护甲')}</span></div></div>
       <div class="ammo"><div class="wn"></div><b class="mag">0</b><small class="res"> / 0</small><div class="nd"></div></div>
       <div class="feed"></div>
       <div class="xh"><i></i><i></i><i></i><i></i></div><div class="hm"></div>
@@ -96,9 +98,9 @@ export class ArenaHud {
       <div class="prog" style="display:none"><div class="pl"></div><div class="bar"><i></i></div></div>
       <div class="spec" style="display:none"></div>
       <div class="sb" style="display:none"><table></table></div>
-      <div class="modal buym"><div class="box"><h2>购买</h2><div class="sub"></div><div class="buy"></div><button class="bigbtn closeb">关闭（B / Esc）</button></div></div>
-      <div class="modal pausem"><div class="box"><h2>暂停</h2><div class="sub">比赛已暂停。点击“继续”重新锁定鼠标。</div><button class="bigbtn resume">继续</button><button class="bigbtn quit" style="background:#8a3030">投降退出</button></div></div>
-      <div class="modal endm"><div class="box"><h2 class="et"></h2><div class="sub es"></div><table class="etab"></table><div class="ebody" style="margin-top:10px"></div><button class="bigbtn exitb">返回城市</button></div></div>`
+      <div class="modal buym"><div class="box"><h2>${t('购买')}</h2><div class="sub"></div><div class="buy"></div><button class="bigbtn closeb">${t('关闭（B / Esc）')}</button></div></div>
+      <div class="modal pausem"><div class="box"><h2>${t('暂停')}</h2><div class="sub">${t('比赛已暂停。点击“继续”重新锁定鼠标。')}</div><button class="bigbtn resume">${t('继续')}</button><button class="bigbtn quit" style="background:#8a3030">${t('投降退出')}</button></div></div>
+      <div class="modal endm"><div class="box"><h2 class="et"></h2><div class="sub es"></div><table class="etab"></table><div class="ebody" style="margin-top:10px"></div><button class="bigbtn exitb">${t('返回城市')}</button></div></div>`
     for (const m of r.querySelectorAll('.modal')) m.addEventListener('mousedown', (e) => e.stopPropagation())
     document.body.appendChild(r)
     this.root = r
@@ -123,7 +125,7 @@ export class ArenaHud {
     }
   }
   setVitals(hp: number, armor: number, helmet: boolean, money: number, zone: string) {
-    this.text('.hpv', String(Math.max(0, Math.ceil(hp)))); this.text('.arv', String(Math.ceil(armor))); this.text('.arl', helmet ? '护甲+头盔' : '护甲')
+    this.text('.hpv', String(Math.max(0, Math.ceil(hp)))); this.text('.arv', String(Math.ceil(armor))); this.text('.arl', helmet ? t('护甲+头盔') : t('护甲'))
     const low = hp <= 25 ? '1' : '0'; if (this.cache.get('low') !== low) { this.cache.set('low', low); this.q('.hpv').classList.toggle('low', hp <= 25) }
     this.text('.money', '$' + money); this.text('.zone', zone)
   }
@@ -149,7 +151,7 @@ export class ArenaHud {
     this.disp('.prog', label !== null)
     if (label !== null) { this.text('.pl', label); (this.q('.prog .bar i')).style.width = `${Math.round(f * 100)}%` }
   }
-  spectate(name: string | null) { this.disp('.spec', !!name); if (name) this.text('.spec', `观战：${name}（左键切换）`) }
+  spectate(name: string | null) { this.disp('.spec', !!name); if (name) this.text('.spec', t('观战：{name}（左键切换）', { name })) }
   bomb(text: string | null) { this.disp('.bomb', !!text); if (text) this.text('.bomb', text) }
   feed(e: FeedEntry) {
     const d = document.createElement('div')
@@ -193,7 +195,7 @@ export class ArenaHud {
     this.disp('.sb', open)
     if (!open) return
     const tab = this.q('.sb table')
-    const head = `<tr><th>${title}</th><th>K</th><th>D</th><th>A</th><th>爆头</th><th>MVP</th><th>得分</th><th>金钱</th></tr>`
+    const head = `<tr><th>${title}</th><th>K</th><th>D</th><th>A</th><th>${t('爆头')}</th><th>MVP</th><th>${t('得分')}</th><th>${t('金钱')}</th></tr>`
     const body = rows.map((r) => `<tr class="${r.side.toLowerCase()} ${r.alive ? '' : 'dead'} ${r.me ? 'me' : ''}"><td></td><td>${r.k}</td><td>${r.d}</td><td>${r.a}</td><td>${r.hs}</td><td>${r.mvp ? '★' + r.mvp : ''}</td><td>${r.score}</td><td>$${r.money}</td></tr>`).join('')
     const html = head + body
     if (this.cache.get('sbh') !== html + rows.map((r) => r.name).join()) {
@@ -208,7 +210,7 @@ export class ArenaHud {
     this.buyOpen = open
     const m = this.q('.buym'); m.style.display = open ? 'flex' : 'none'
     if (!open || !groups) return
-    this.q('.buym .sub').textContent = `$${money} · ${left} · 数字键：组号 + 序号（如 3 1 = 第 3 组第 1 个）`
+    this.q('.buym .sub').textContent = `$${money} · ${left} · ${t('数字键：组号 + 序号（如 3 1 = 第 3 组第 1 个）')}`
     const wrap = this.q('.buym .buy')
     wrap.innerHTML = ''
     groups.forEach((g, gi) => {
@@ -220,7 +222,7 @@ export class ArenaHud {
         if (it.owned) b.classList.add('own')
         b.innerHTML = `<span class="p"></span>`
         b.prepend(document.createTextNode(`${ii + 1} ${it.name}`))
-        ;(b.querySelector('.p') as HTMLElement).textContent = it.owned ? '已有' : `$${it.price}`
+        ;(b.querySelector('.p') as HTMLElement).textContent = it.owned ? t('已有') : `$${it.price}`
         b.addEventListener('click', () => onBuy?.(it.id))
         col.appendChild(b)
       })
@@ -239,7 +241,7 @@ export class ArenaHud {
     this.q('.endm .et').textContent = title
     this.q('.endm .es').textContent = sub
     const tab = this.q('.endm .etab')
-    tab.innerHTML = `<tr><th>选手</th><th>K</th><th>D</th><th>A</th><th>爆头</th><th>MVP</th><th>得分</th></tr>` + rows.map((r) => `<tr class="${r.side.toLowerCase()} ${r.me ? 'me' : ''}"><td></td><td>${r.k}</td><td>${r.d}</td><td>${r.a}</td><td>${r.hs}</td><td>${r.mvp ? '★' + r.mvp : ''}</td><td>${r.score}</td></tr>`).join('')
+    tab.innerHTML = `<tr><th>${t('选手')}</th><th>K</th><th>D</th><th>A</th><th>${t('爆头')}</th><th>MVP</th><th>${t('得分')}</th></tr>` + rows.map((r) => `<tr class="${r.side.toLowerCase()} ${r.me ? 'me' : ''}"><td></td><td>${r.k}</td><td>${r.d}</td><td>${r.a}</td><td>${r.hs}</td><td>${r.mvp ? '★' + r.mvp : ''}</td><td>${r.score}</td></tr>`).join('')
     tab.querySelectorAll('tr td:first-child').forEach((td, i) => { td.textContent = rows[i].name })
     const b = this.q('.endm .ebody'); b.innerHTML = ''
     for (const line of body) { const d = document.createElement('div'); d.textContent = line; b.appendChild(d) }

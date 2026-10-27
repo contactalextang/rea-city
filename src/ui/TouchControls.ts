@@ -1,4 +1,5 @@
 import type { Input } from '../core/Input'
+import { t } from '../i18n'
 
 /**
  * 触屏操作层（仅 input.touch 时创建）：左半屏浮动摇杆、右半屏拖动转视角、右下动作键、顶部小按钮。
@@ -23,7 +24,7 @@ export interface TouchState {
   hasGun: boolean
 }
 
-const CSS = `
+const CSS = /* i18n-ignore：CSS 注释 */ `
 #touch { position: fixed; inset: 0; z-index: 5; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 #touch.off { display: none; }
 #touch .stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; background: rgba(255,255,255,.10); border: 2px solid rgba(255,255,255,.35); pointer-events: none; }
@@ -35,6 +36,8 @@ const CSS = `
 #touch .tb.hide { display: none; }
 #touch .act { width: 62px; height: 62px; }
 #touch .top { top: calc(8px + env(safe-area-inset-top)); width: 44px; height: 44px; border-radius: 12px; font-size: 13px; }
+html[lang=en] #touch .top { font-size: 10px; }
+html[lang=en] #touch .act { font-size: 12px; }
 /* 竖屏：顶部按钮改成小地图下方竖排，避开左上 HUD */
 @media (max-aspect-ratio: 1/1) {
   #touch .top { left: auto !important; right: calc(12px + env(safe-area-inset-right)); }
@@ -72,19 +75,19 @@ export class TouchControls {
 
     // 右下动作键（right / bottom 均为 px，加安全区）
     const act: [string, string, string, number, number][] = [
-      ['fire', '开火', 'ControlLeft', 18, 168],
-      ['f', '上车', 'KeyF', 92, 96],
-      ['jump', '跳', 'Space', 18, 22],
-      ['e', '交互', 'KeyE', 92, 22],
-      ['horn', '喇叭', 'KeyH', 166, 22],
-      ['run', '跑', 'ShiftLeft', 18, 96],
+      ['fire', t('开火'), 'ControlLeft', 18, 168],
+      ['f', t('上车'), 'KeyF', 92, 96],
+      ['jump', t('跳'), 'Space', 18, 22],
+      ['e', t('交互'), 'KeyE', 92, 22],
+      ['horn', t('喇叭'), 'KeyH', 166, 22],
+      ['run', t('跑'), 'ShiftLeft', 18, 96],
     ]
     for (const [id, label, code, right, bottom] of act) {
       const b = this.button(id, label, code, 'act')
       b.style.right = `calc(${right}px + env(safe-area-inset-right))`; b.style.bottom = `calc(${bottom}px + env(safe-area-inset-bottom))`
     }
     // 顶部小按钮（居中一排）
-    const top: [string, string, string | null, number][] = [['phone', '手机', 'Tab', -76], ['quest', '任务', 'KeyM', -24], ['full', '全屏', null, 28]]
+    const top: [string, string, string | null, number][] = [['phone', t('手机'), 'Tab', -76], ['quest', t('任务'), 'KeyM', -24], ['full', t('全屏'), null, 28]]
     for (const [id, label, code, dx] of top) {
       if (id === 'full' && isStandalone()) continue
       const b = this.button(id, label, code, 'top')
@@ -201,8 +204,8 @@ export class TouchControls {
     b.fire.classList.toggle('hide', !s.hasGun || s.inVehicle)
     b.horn.classList.toggle('hide', !s.inVehicle)
     b.run.classList.toggle('hide', s.inVehicle)
-    b.f.textContent = s.inVehicle ? '下车' : '上车'
-    b.jump.textContent = s.inVehicle ? '手刹' : '跳'
+    b.f.textContent = s.inVehicle ? t('下车') : t('上车')
+    b.jump.textContent = s.inVehicle ? t('手刹') : t('跳')
     b.e.classList.toggle('hl', s.canInteract)
   }
 }

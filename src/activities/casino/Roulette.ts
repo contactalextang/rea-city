@@ -2,6 +2,7 @@ import type { Input } from '../../core/Input'
 import { WHEEL_ORDER } from '../../data/casino'
 import { rouletteSpin, rouletteReturn, rouletteColor, rouletteParse } from './rules'
 import { Table, money } from './table'
+import { t } from '../../i18n'
 
 const CX = 250, CY = 290, R = 205
 const BX = 520, BY = 110, CW = 42, CH = 52
@@ -35,7 +36,7 @@ export class RouletteTable extends Table {
     const d = (((b0 - target) % TAU) + TAU) % TAU + TAU * 7
     this.spin = { t: 0, n, w0, wv, b0, bv: (2 * d) / SPIN_T, stake, bets: { ...this.bets }, lastSeg: 0 }
     this.lastWin = null
-    this.status = '买定离手…'
+    this.status = t('买定离手…')
   }
 
   private settle() {
@@ -45,7 +46,7 @@ export class RouletteTable extends Table {
     this.lastWin = sp.n
     this.bets = {}
     const c = rouletteColor(sp.n)
-    this.finishRound(sp.stake, ret, `${sp.n} ${c === 'red' ? '红' : c === 'black' ? '黑' : '零'} · ${ret > sp.stake ? `赢 ${money(ret - sp.stake)}` : ret === sp.stake ? '持平' : `输 ${money(sp.stake - ret)}`}`)
+    this.finishRound(sp.stake, ret, `${sp.n} ${c === 'red' ? t('红') : c === 'black' ? t('黑') : t('零')} · ${ret > sp.stake ? t('赢 {n}', { n: money(ret - sp.stake) }) : ret === sp.stake ? t('持平') : t('输 {n}', { n: money(sp.stake - ret) })}`)
   }
   forceFinish() { if (this.spin) this.settle() }
 
@@ -145,14 +146,14 @@ export class RouletteTable extends Table {
       this.cell(`straight:${n}`, BX + c * CW, BY + r * CH, CW, CH, String(n), COL[rouletteColor(n) as 'red' | 'black'])
     }
     for (let r = 0; r < 3; r++) this.cell(`column:${3 - r}`, BX + 12 * CW, BY + r * CH, 48, CH, '2:1', '#0d5c37', 13)
-    const dz = ['第一打 1–12', '第二打 13–24', '第三打 25–36']
+    const dz = [t('第一打 1–12'), t('第二打 13–24'), t('第三打 25–36')]
     for (let i = 0; i < 3; i++) this.cell(`dozen:${i + 1}`, BX + i * 4 * CW, BY + 3 * CH, 4 * CW, 40, dz[i], '#0d5c37', 13)
-    const out: [string, string, string][] = [['low', '1–18', '#0d5c37'], ['even', '双', '#0d5c37'], ['red', '红', COL.red], ['black', '黑', COL.black], ['odd', '单', '#0d5c37'], ['high', '19–36', '#0d5c37']]
+    const out: [string, string, string][] = [['low', '1–18', '#0d5c37'], ['even', t('双'), '#0d5c37'], ['red', t('红'), COL.red], ['black', t('黑'), COL.black], ['odd', t('单'), '#0d5c37'], ['high', '19–36', '#0d5c37']]
     out.forEach(([k, l, f], i) => this.cell(k, BX + i * 2 * CW, BY + 3 * CH + 40, 2 * CW, 40, l, f, 14))
-    this.text('直注 35:1 · 打 / 列 2:1 · 红黑 / 单双 / 大小 1:1 · 开 0 时外围注全输', BX + 6 * CW, BY - 18, 12, 'rgba(255,255,255,.7)')
+    this.text(t('直注 35:1 · 打 / 列 2:1 · 红黑 / 单双 / 大小 1:1 · 开 0 时外围注全输'), BX + 6 * CW, BY - 18, 12, 'rgba(255,255,255,.7)')
     // 历史
     const hy = BY + 3 * CH + 110
-    this.text('最近开出', BX - 42, hy, 12, 'rgba(255,255,255,.7)', 'left')
+    this.text(t('最近开出'), BX - 42, hy, 12, 'rgba(255,255,255,.7)', 'left')
     this.history.forEach((n, i) => {
       const x = BX + 20 + i * 36
       this.g.fillStyle = COL[rouletteColor(n)]; this.g.beginPath(); this.g.arc(x, hy, 14, 0, TAU); this.g.fill()
@@ -160,12 +161,12 @@ export class RouletteTable extends Table {
     })
     // 按钮
     const betting = !this.spin, bx = 640, by = 540
-    this.button('btn:clear', bx, by, 100, 52, '清除', betting && this.betTotal > 0, () => this.clearBets(), '#adb5bd')
-    this.button('btn:rebet', bx + 110, by, 100, 52, '重复', betting && this.betTotal === 0 && Object.keys(this.lastBets).length > 0, () => this.rebet(), '#adb5bd')
-    this.button('btn:spin', bx + 220, by, 200, 52, '开转', betting && this.betTotal > 0, () => this.start(), '#ffd33d', 'Space')
+    this.button('btn:clear', bx, by, 100, 52, t('清除'), betting && this.betTotal > 0, () => this.clearBets(), '#adb5bd')
+    this.button('btn:rebet', bx + 110, by, 100, 52, t('重复'), betting && this.betTotal === 0 && Object.keys(this.lastBets).length > 0, () => this.rebet(), '#adb5bd')
+    this.button('btn:spin', bx + 220, by, 200, 52, t('开转'), betting && this.betTotal > 0, () => this.start(), '#ffd33d', 'Space')
     if (betting) {
       const n = Object.keys(this.bets).length
-      this.status = this.betTotal ? `${n} 注 · 共 ${money(this.betTotal)}` : '选筹码 → 点格子下注（可多注）→ 开转'
+      this.status = this.betTotal ? t('{n} 注 · 共 {total}', { n, total: money(this.betTotal) }) : t('选筹码 → 点格子下注（可多注）→ 开转')
     }
     this.chipRack(betting)
   }

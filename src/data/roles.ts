@@ -1,4 +1,5 @@
 /** 玩家身份定义：决定初始资金、可用系统与需求衰减速度（建角色界面与 Law/Needs 共用） */
+import { t } from '../i18n'
 export type RoleId = 'gang' | 'gold' | 'white' | 'blue'
 
 export interface RoleDef {
@@ -18,19 +19,19 @@ export interface RoleDef {
 
 export const ROLES: Record<RoleId, RoleDef> = {
   gang: {
-    id: 'gang', title: '黑帮成员', desc: '街头讨生活：偷车、火拼、躲警察。', home: 'home_gang', cash: 500,
+    id: 'gang', title: t('黑帮成员'), desc: t('街头讨生活：偷车、火拼、躲警察。'), home: 'home_gang', cash: 500,
     systems: { gun: true, wanted: true, luxury: false, rent: false }, needsRate: 1,
   },
   gold: {
-    id: 'gold', title: '金领', desc: '资本玩家：豪车、会所、投资。', home: 'home_gold', cash: 20000,
+    id: 'gold', title: t('金领'), desc: t('资本玩家：豪车、会所、投资。'), home: 'home_gold', cash: 20000,
     systems: { gun: false, wanted: false, luxury: true, rent: false }, needsRate: 1,
   },
   white: {
-    id: 'white', title: '白领', desc: '朝九晚五，房租与 KPI 两头烧。', home: 'home_white', cash: 2000,
+    id: 'white', title: t('白领'), desc: t('朝九晚五，房租与 KPI 两头烧。'), home: 'home_white', cash: 2000,
     systems: { gun: false, wanted: false, luxury: false, rent: true }, needsRate: 1,
   },
   blue: {
-    id: 'blue', title: '蓝领', desc: '工地与小贩中心之间奔波，手停口停。', home: 'home_blue', cash: 300,
+    id: 'blue', title: t('蓝领'), desc: t('工地与小贩中心之间奔波，手停口停。'), home: 'home_blue', cash: 300,
     systems: { gun: false, wanted: false, luxury: false, rent: true }, needsRate: 1.3,
   },
 }

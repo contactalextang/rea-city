@@ -4,6 +4,7 @@ import type { Ctx } from '../../core/Context'
 import type { CasinoGameId, HallDef } from '../../data/casino'
 import { RANK_TXT, SUIT_TXT, type Card } from './rules'
 import type { CasinoSfx } from './sfx'
+import { t } from '../../i18n'
 
 /** 赌桌 UI 依赖的宿主（Casino 插件实现）：押注扣钱、结算记账 / 统计 / 事件 */
 export interface CasinoHost {
@@ -190,7 +191,7 @@ export abstract class Table {
   /** 底部：筹码架 + 现金 / 下注 / 限额 */
   protected chipRack(enabled: boolean, y = VH - 58) {
     const chips = this.hall.chips, gap = 58, x0 = 40
-    this.text('筹码', x0, y - 30, 12, 'rgba(255,255,255,.7)', 'left')
+    this.text(t('筹码'), x0, y - 30, 12, 'rgba(255,255,255,.7)', 'left')
     chips.forEach((v, i) => {
       const x = x0 + 24 + i * gap, sel = v === this.chip
       if (sel) { this.g.fillStyle = 'rgba(255,215,0,.35)'; this.g.beginPath(); this.g.arc(x, y, 27, 0, Math.PI * 2); this.g.fill() }
@@ -200,8 +201,8 @@ export abstract class Table {
   }
   protected drawFooter() {
     const y = VH - 22
-    this.text(`现金 ${money(this.cash)}`, VW - 40, 40, 18, '#7ee787', 'right', 800)
-    this.text(`${this.hall.name} · 限额 ${money(this.hall.min)}–${money(this.hall.max)}`, VW - 40, 64, 13, 'rgba(255,255,255,.75)', 'right', 500)
+    this.text(t('现金 {n}', { n: money(this.cash) }), VW - 40, 40, 18, '#7ee787', 'right', 800)
+    this.text(t('{hall} · 限额 {min}–{max}', { hall: this.hall.name, min: money(this.hall.min), max: money(this.hall.max) }), VW - 40, 64, 13, 'rgba(255,255,255,.75)', 'right', 500)
     if (this.noticeText && this.t < this.noticeUntil) {
       // 提示：黄色粗体 + 深色底条，占用状态行（各桌布局都给状态行留了空）
       const g = this.g
@@ -219,8 +220,8 @@ export abstract class Table {
   /** 往下注区加一枚当前筹码（限额、现金检查） */
   protected place(key: string, maxTotal = this.hall.max) {
     const amt = this.chip
-    if (this.betTotal + amt > maxTotal) { this.notice(`超过本厅上限 ${money(maxTotal)}`, 1.4); return }
-    if (this.betTotal + amt > this.cash) { this.notice('现金不足', 1.4); return }
+    if (this.betTotal + amt > maxTotal) { this.notice(t('超过本厅上限 {n}', { n: money(maxTotal) }), 1.4); return }
+    if (this.betTotal + amt > this.cash) { this.notice(t('现金不足'), 1.4); return }
     this.bets[key] = (this.bets[key] ?? 0) + amt
     this.sfx.chip()
   }
@@ -228,16 +229,16 @@ export abstract class Table {
   protected rebet() {
     const tot = Object.values(this.lastBets).reduce((a, b) => a + b, 0)
     if (!tot) return
-    if (tot > this.cash) { this.notice('现金不足，无法重复上局', 1.4); return }
+    if (tot > this.cash) { this.notice(t('现金不足，无法重复上局'), 1.4); return }
     if (tot > this.hall.max) return
     this.bets = { ...this.lastBets }; this.sfx.chip()
   }
   /** 确认下注：最低限额 + 扣钱；成功返回总额 */
   protected commitBets(): number {
     const tot = this.betTotal
-    if (tot <= 0) { this.notice('请先点筹码再点下注区', 1.6); return 0 }
-    if (tot < this.hall.min) { this.notice(`本厅最低 ${money(this.hall.min)}`, 1.6); return 0 }
-    if (!this.host.stake(this.game, tot)) { this.notice('现金不足', 1.4); return 0 }
+    if (tot <= 0) { this.notice(t('请先点筹码再点下注区'), 1.6); return 0 }
+    if (tot < this.hall.min) { this.notice(t('本厅最低 {n}', { n: money(this.hall.min) }), 1.6); return 0 }
+    if (!this.host.stake(this.game, tot)) { this.notice(t('现金不足'), 1.4); return 0 }
     this.lastBets = { ...this.bets }
     return tot
   }
@@ -246,7 +247,7 @@ export abstract class Table {
   protected finishRound(stake: number, ret: number, label?: string) {
     this.host.settle(this.game, stake, ret, this.api)
     const net = ret - stake
-    const text = label ?? (net > 0 ? `赢 ${money(net)}` : net < 0 ? `输 ${money(-net)}` : '和局 · 退回本金')
+    const text = label ?? (net > 0 ? t('赢 {n}', { n: money(net) }) : net < 0 ? t('输 {n}', { n: money(-net) }) : t('和局 · 退回本金'))
     this.banner = { text, color: net > 0 ? '#ffd33d' : net < 0 ? '#ff6b6b' : '#e5e5e5', t: 2.6 }
     if (net > 0) this.sfx.win(net >= stake * 5); else if (net < 0) this.sfx.lose(); else this.sfx.push()
   }

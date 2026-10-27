@@ -2,6 +2,7 @@ import type { Input } from '../../core/Input'
 import { SICBO_PAYS } from '../../data/casino'
 import { rollDice, sicboReturn, sicboOdds } from './rules'
 import { Table, money } from './table'
+import { t } from '../../i18n'
 
 const BX = 420, BW = 660
 const SHAKE_T = 1.7
@@ -30,7 +31,7 @@ export class SicboTable extends Table {
     const d = this.forced ?? rollDice(); this.forced = null
     this.roll = { t: 0, d, stake, bets: { ...this.bets }, shakeT: 0 }
     this.last = null
-    this.status = '摇骰中…'
+    this.status = t('摇骰中…')
   }
   private settle() {
     const r = this.roll!; this.roll = null
@@ -39,8 +40,8 @@ export class SicboTable extends Table {
     this.history.unshift(r.d); this.history.length = Math.min(this.history.length, 8)
     this.bets = {}
     const sum = r.d[0] + r.d[1] + r.d[2], tri = r.d[0] === r.d[1] && r.d[1] === r.d[2]
-    const tag = tri ? `围骰 ${r.d[0]}` : `${sum} 点 ${sum >= 11 ? '大' : '小'}`
-    this.finishRound(r.stake, ret, `${r.d.join('-')} · ${tag} · ${ret > r.stake ? `赢 ${money(ret - r.stake)}` : ret === r.stake ? '持平' : `输 ${money(r.stake - ret)}`}`)
+    const tag = tri ? t('围骰 {n}', { n: r.d[0] }) : t('{n} 点 {bs}', { n: sum, bs: sum >= 11 ? t('大') : t('小') })
+    this.finishRound(r.stake, ret, `${r.d.join('-')} · ${tag} · ${ret > r.stake ? t('赢 {n}', { n: money(ret - r.stake) }) : ret === r.stake ? t('持平') : t('输 {n}', { n: money(r.stake - ret) })}`)
   }
   forceFinish() { if (this.roll) this.settle() }
 
@@ -111,14 +112,14 @@ export class SicboTable extends Table {
       const lift = Math.sin(r!.t * 30) * 6
       g.fillStyle = 'rgba(160,110,40,.92)'; g.beginPath(); g.ellipse(cx, cy - 10 + lift, 130, 110, 0, Math.PI, 0); g.lineTo(cx + 130, cy + 30 + lift); g.ellipse(cx, cy + 30 + lift, 130, 30, 0, 0, Math.PI); g.closePath(); g.fill()
       g.strokeStyle = '#ffd33d'; g.lineWidth = 3; g.stroke()
-      this.text('骰宝', cx, cy - 40 + lift, 28, '#fff3bf', 'center', 900)
+      this.text(t('骰宝'), cx, cy - 40 + lift, 28, '#fff3bf', 'center', 900)
     }
     if (this.last && !r) {
       const s = this.last[0] + this.last[1] + this.last[2], tri = this.last[0] === this.last[1] && this.last[1] === this.last[2]
-      this.text(tri ? `围骰 ${this.last[0]}` : `${s} 点 · ${s >= 11 ? '大' : '小'} · ${s % 2 ? '单' : '双'}`, cx, cy + 150, 20, '#ffd33d', 'center', 800)
+      this.text(tri ? t('围骰 {n}', { n: this.last[0] }) : t('{n} 点 · {bs} · {oe}', { n: s, bs: s >= 11 ? t('大') : t('小'), oe: s % 2 ? t('单') : t('双') }), cx, cy + 150, 20, '#ffd33d', 'center', 800)
     }
     // 历史
-    this.text('最近', 40, 395, 12, 'rgba(255,255,255,.7)', 'left')
+    this.text(t('最近'), 40, 395, 12, 'rgba(255,255,255,.7)', 'left')
     this.history.forEach((d, i) => {
       const y = 420 + Math.floor(i / 2) * 26, x = 60 + (i % 2) * 160
       d.forEach((f, j) => this.drawDie(x + j * 24, y, 20, f))
@@ -127,28 +128,28 @@ export class SicboTable extends Table {
     })
     // 下注台
     let y = 96
-    this.cell('small', BX, y, 150, 66, '小 4–10', '1:1 · 围骰庄赢')
-    this.cell('odd', BX + 158, y, 108, 66, '单', '1:1')
-    this.cell('anyTriple', BX + 274, y, 112, 66, '全围', `${SICBO_PAYS.anyTriple}:1`, '#7a1f1f')
-    this.cell('even', BX + 394, y, 108, 66, '双', '1:1')
-    this.cell('big', BX + 510, y, 150, 66, '大 11–17', '1:1 · 围骰庄赢')
+    this.cell('small', BX, y, 150, 66, t('小 4–10'), t('1:1 · 围骰庄赢'))
+    this.cell('odd', BX + 158, y, 108, 66, t('单'), '1:1')
+    this.cell('anyTriple', BX + 274, y, 112, 66, t('全围'), `${SICBO_PAYS.anyTriple}:1`, '#7a1f1f')
+    this.cell('even', BX + 394, y, 108, 66, t('双'), '1:1')
+    this.cell('big', BX + 510, y, 150, 66, t('大 11–17'), t('1:1 · 围骰庄赢'))
     y = 172
     const cw = (BW - 5 * 6) / 6
-    for (let f = 1; f <= 6; f++) this.drawTriple(`triple:${f}`, BX + (f - 1) * (cw + 6), y, cw, 54, f, `围骰 ${SICBO_PAYS.triple}:1`, 3)
+    for (let f = 1; f <= 6; f++) this.drawTriple(`triple:${f}`, BX + (f - 1) * (cw + 6), y, cw, 54, f, t('围骰 {n}', { n: `${SICBO_PAYS.triple}:1` }), 3)
     y = 232
-    for (let f = 1; f <= 6; f++) this.drawTriple(`double:${f}`, BX + (f - 1) * (cw + 6), y, cw, 50, f, `对子 ${SICBO_PAYS.double}:1`, 2)
+    for (let f = 1; f <= 6; f++) this.drawTriple(`double:${f}`, BX + (f - 1) * (cw + 6), y, cw, 50, f, t('对子 {n}:1', { n: SICBO_PAYS.double }), 2)
     y = 290
     const tw = (BW - 13 * 3) / 14
     for (let t = 4; t <= 17; t++) this.cell(`total:${t}`, BX + (t - 4) * (tw + 3), y, tw, 58, String(t), `${SICBO_PAYS.total[t]}:1`)
     y = 356
-    for (let f = 1; f <= 6; f++) this.cell(`single:${f}`, BX + (f - 1) * (cw + 6), y, cw, 70, '', '1/2/3 颗 1:1/2:1/3:1', '#0d5c37', f)
-    this.text('单点：押的点数出现 1 颗赔 1:1，2 颗 2:1，3 颗 3:1 · 大小 / 单双遇围骰全输', BX + BW / 2, 446, 12, 'rgba(255,255,255,.65)')
+    for (let f = 1; f <= 6; f++) this.cell(`single:${f}`, BX + (f - 1) * (cw + 6), y, cw, 70, '', t('1/2/3 颗 1:1/2:1/3:1'), '#0d5c37', f)
+    this.text(t('单点：押的点数出现 1 颗赔 1:1，2 颗 2:1，3 颗 3:1 · 大小 / 单双遇围骰全输'), BX + BW / 2, 446, 12, 'rgba(255,255,255,.65)')
     // 按钮
     const betting = !r, bx = 640, by = 540
-    this.button('btn:clear', bx, by, 100, 52, '清除', betting && this.betTotal > 0, () => this.clearBets(), '#adb5bd')
-    this.button('btn:rebet', bx + 110, by, 100, 52, '重复', betting && this.betTotal === 0 && Object.keys(this.lastBets).length > 0, () => this.rebet(), '#adb5bd')
-    this.button('btn:roll', bx + 220, by, 200, 52, '摇骰', betting && this.betTotal > 0, () => this.start(), '#ffd33d', 'Space')
-    if (betting) this.status = this.betTotal ? `${Object.keys(this.bets).length} 注 · 共 ${money(this.betTotal)}` : '选筹码 → 点下注区（可多注）→ 摇骰'
+    this.button('btn:clear', bx, by, 100, 52, t('清除'), betting && this.betTotal > 0, () => this.clearBets(), '#adb5bd')
+    this.button('btn:rebet', bx + 110, by, 100, 52, t('重复'), betting && this.betTotal === 0 && Object.keys(this.lastBets).length > 0, () => this.rebet(), '#adb5bd')
+    this.button('btn:roll', bx + 220, by, 200, 52, t('摇骰'), betting && this.betTotal > 0, () => this.start(), '#ffd33d', 'Space')
+    if (betting) this.status = this.betTotal ? t('{n} 注 · 共 {total}', { n: Object.keys(this.bets).length, total: money(this.betTotal) }) : t('选筹码 → 点下注区（可多注）→ 摇骰')
     this.chipRack(betting)
   }
 

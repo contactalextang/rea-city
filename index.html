@@ -198,74 +198,74 @@
     <canvas id="minimap" width="200" height="200"></canvas>
     <div class="debug" id="debug"></div>
     <div class="crosshair" id="crosshair"></div>
-    <div class="weapon" id="weapon">手枪 · 左键射击</div>
+    <div class="weapon" id="weapon" data-i18n>手枪 · 左键射击</div>
   </div>
   <div class="vignette" id="vignette"></div>
   <div class="panel" id="panel">
-    <button class="xbtn" id="panel-close" title="关闭 (Esc)">×</button>
+    <button class="xbtn" id="panel-close" title="关闭 (Esc)" data-i18n-title>×</button>
     <h2 id="panel-title"></h2>
     <div class="sub" id="panel-sub"></div>
     <div class="lines" id="panel-lines"></div>
     <div class="buttons" id="panel-buttons"></div>
   </div>
   <div class="phone" id="phone">
-    <button class="xbtn" id="phone-close" title="关闭 (Tab)">×</button>
+    <button class="xbtn" id="phone-close" title="关闭 (Tab)" data-i18n-title>×</button>
     <h2>REA PHONE</h2>
     <div class="ptime" id="phone-time"></div>
     <div class="pmoney" id="phone-money">$0</div>
     <div class="prole" id="phone-role"></div>
     <div class="plaw" id="phone-law"></div>
-    <div class="bar hunger" id="phone-hunger"><span>饱食 <b></b></span><div class="track"><div class="fill"></div></div></div>
-    <div class="bar energy" id="phone-energy"><span>精力 <b></b></span><div class="track"><div class="fill"></div></div></div>
-    <div class="bar mood" id="phone-mood"><span>心情 <b></b></span><div class="track"><div class="fill"></div></div></div>
+    <div class="bar hunger" id="phone-hunger"><span><span data-i18n>饱食</span> <b></b></span><div class="track"><div class="fill"></div></div></div>
+    <div class="bar energy" id="phone-energy"><span><span data-i18n>精力</span> <b></b></span><div class="track"><div class="fill"></div></div></div>
+    <div class="bar mood" id="phone-mood"><span><span data-i18n>心情</span> <b></b></span><div class="track"><div class="fill"></div></div></div>
     <div class="apps">
-      <button data-app="work">工作</button>
-      <button data-app="progress">成长</button>
-      <button data-app="shop">商店</button>
-      <button data-app="biz">生意</button>
-      <button data-app="wallet">钱包</button>
-      <button data-app="ride">出行</button>
-      <button data-app="contacts">联系人</button>
-      <button data-app="casino">赌场</button>
-      <button data-app="race">赛车</button>
-      <button data-app="arena">竞技</button>
-      <button data-app="map">地图</button>
-      <button data-app="char">角色</button>
-      <button data-app="settings">设置</button>
-      <button data-app="save">存档</button>
-      <button data-app="load">读档</button>
-      <button data-app="restart" class="danger">重新开始</button>
+      <button data-app="work" data-i18n>工作</button>
+      <button data-app="progress" data-i18n>成长</button>
+      <button data-app="shop" data-i18n>商店</button>
+      <button data-app="biz" data-i18n>生意</button>
+      <button data-app="wallet" data-i18n>钱包</button>
+      <button data-app="ride" data-i18n>出行</button>
+      <button data-app="contacts" data-i18n>联系人</button>
+      <button data-app="casino" data-i18n>赌场</button>
+      <button data-app="race" data-i18n>赛车</button>
+      <button data-app="arena" data-i18n>竞技</button>
+      <button data-app="map" data-i18n>地图</button>
+      <button data-app="char" data-i18n>角色</button>
+      <button data-app="settings" data-i18n>设置</button>
+      <button data-app="save" data-i18n>存档</button>
+      <button data-app="load" data-i18n>读档</button>
+      <button data-app="restart" class="danger" data-i18n>重新开始</button>
     </div>
-    <div class="sub work" id="phone-sub-work"><h3>工作</h3><div id="phone-work"></div></div>
-    <div class="sub" id="phone-sub-map"><h3>地图</h3><canvas id="phone-map" width="400" height="400"></canvas></div>
+    <div class="sub work" id="phone-sub-work"><h3 data-i18n>工作</h3><div id="phone-work"></div></div>
+    <div class="sub" id="phone-sub-map"><h3 data-i18n>地图</h3><canvas id="phone-map" width="400" height="400"></canvas></div>
     <div class="sub" id="phone-sub-settings">
-      <h3>设置</h3>
-      <div class="row">时间流速 <button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button></div>
-      <div class="row">阴影 <button data-shadows="1">开</button><button data-shadows="0">关</button></div>
-      <div class="row">音乐 <button data-music="1">开</button><button data-music="0">关</button></div>
-      <div class="row">画质 <button data-fx="high">高</button><button data-fx="low">低</button><button data-fx="off">关</button></div>
-      <div class="row">亮度 <input type="range" id="phone-bright" min="0.7" max="1.6" step="0.05"><span id="phone-bright-v"></span></div>
-      <div class="row">语言 / Language <button data-lang="zh">中文</button><button data-lang="en">English</button></div>
+      <h3 data-i18n>设置</h3>
+      <div class="row"><span data-i18n>时间流速</span> <button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button></div>
+      <div class="row"><span data-i18n>阴影</span> <button data-shadows="1" data-i18n>开</button><button data-shadows="0" data-i18n>关</button></div>
+      <div class="row"><span data-i18n>音乐</span> <button data-music="1" data-i18n>开</button><button data-music="0" data-i18n>关</button></div>
+      <div class="row"><span data-i18n>画质</span> <button data-fx="high" data-i18n>高</button><button data-fx="low" data-i18n>低</button><button data-fx="off" data-i18n>关</button></div>
+      <div class="row"><span data-i18n>亮度</span> <input type="range" id="phone-bright" min="0.7" max="1.6" step="0.05"><span id="phone-bright-v"></span></div>
+      <div class="row" data-i18n-ignore>语言 / Language <button data-lang="zh">中文</button><button data-lang="en">English</button></div> <!-- i18n-ignore：本来就是双语 -->
     </div>
-    <div class="tip">Tab 关闭手机 · E 与地点交互 · F 上下车</div>
+    <div class="tip" data-i18n>Tab 关闭手机 · E 与地点交互 · F 上下车</div>
   </div>
-  <div class="lang-sw" id="lang-sw"><button data-lang="zh">中文</button><button data-lang="en">EN</button></div>
+  <div class="lang-sw" id="lang-sw" data-i18n-ignore><button data-lang="zh">中文</button><button data-lang="en">EN</button></div> <!-- i18n-ignore：语言名不翻 -->
   <div class="overlay" id="overlay">
     <h1 id="ov-title">REA CITY</h1>
-    <p id="ov-sub">程序生成的开放城市 · 偷车、飙车、躲警察、做任务</p>
+    <p id="ov-sub" data-i18n>程序生成的开放城市 · 偷车、飙车、躲警察、做任务</p>
     <div class="keys" id="ov-keys">
-      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>移动 / 驾驶</span>
-      <span><kbd>Shift</kbd></span><span>奔跑</span>
-      <span><kbd>Space</kbd></span><span>跳跃 / 手刹漂移</span>
-      <span><kbd>F</kbd></span><span>上车 / 下车</span>
-      <span><kbd>E</kbd></span><span>进入地点（小贩中心 / 地铁 / 家…）</span>
-      <span><kbd>Tab</kbd></span><span>手机（状态 / 地图 / 设置 / 存档）</span>
-      <span><kbd>M</kbd></span><span>任务提示</span>
-      <span><kbd>Tab</kbd>→工作</span><span>开工 / 下班 / 投资</span>
-      <span><kbd>Enter</kbd></span><span>切换全屏</span>
-      <span><kbd>鼠标</kbd></span><span>转动视角（点击画面锁定，Esc 解锁）</span>
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span data-i18n>移动 / 驾驶</span>
+      <span><kbd>Shift</kbd></span><span data-i18n>奔跑</span>
+      <span><kbd>Space</kbd></span><span data-i18n>跳跃 / 手刹漂移</span>
+      <span><kbd>F</kbd></span><span data-i18n>上车 / 下车</span>
+      <span><kbd>E</kbd></span><span data-i18n>进入地点（小贩中心 / 地铁 / 家…）</span>
+      <span><kbd>Tab</kbd></span><span data-i18n>手机（状态 / 地图 / 设置 / 存档）</span>
+      <span><kbd>M</kbd></span><span data-i18n>任务提示</span>
+      <span data-i18n-html><kbd>Tab</kbd>→工作</span><span data-i18n>开工 / 下班 / 投资</span>
+      <span><kbd>Enter</kbd></span><span data-i18n>切换全屏</span>
+      <span data-i18n-html><kbd>鼠标</kbd></span><span data-i18n>转动视角（点击画面锁定，Esc 解锁）</span>
     </div>
-    <div class="go" id="ov-go">按任意键或点击开始</div>
+    <div class="go" id="ov-go" data-i18n>按任意键或点击开始</div>
     <div class="attrib" id="ov-attrib" style="display:none"></div>
   </div>
   <div class="ride-fade" id="ride-fade"><div class="rt" id="ride-title"></div><div class="rs" id="ride-sub"></div><div class="rd"><i></i><i></i><i></i></div></div>

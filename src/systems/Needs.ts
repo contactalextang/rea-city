@@ -1,5 +1,6 @@
 import type { Clock } from './Clock'
 import { clamp } from '../config'
+import { t } from '../i18n'
 import { playerEffects } from './Assets'
 import type { EventBus } from '../core/Context'
 
@@ -51,7 +52,7 @@ export class Needs {
   /** XP / 工资倍率：< 30 ×0.85，> 75 ×1.1，其余 ×1 */
   get moodMul() { return this._mood < MOOD.low ? MOOD.lowMul : this._mood > MOOD.high ? MOOD.highMul : 1 }
   /** 心情档位文字 */
-  get moodLabel() { return this._mood < MOOD.low ? '低落' : this._mood > MOOD.high ? '愉快' : '平静' }
+  get moodLabel() { return this._mood < MOOD.low ? t('低落') : this._mood > MOOD.high ? t('愉快') : t('平静') }
 
   get low() { return this.hunger < NEED_LOW || this.energy < NEED_LOW }
   /** 步行/奔跑速度倍率 */

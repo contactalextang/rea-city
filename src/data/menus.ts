@@ -1,4 +1,5 @@
 /** 消费菜单数据：小贩中心、便利店 */
+import { t } from '../i18n'
 export interface MenuItem {
   id: string
   name: string
@@ -8,21 +9,21 @@ export interface MenuItem {
 }
 
 export const HAWKER_MENU: MenuItem[] = [
-  { id: 'chicken_rice', name: '海南鸡饭', price: 4, hunger: 35 },
-  { id: 'laksa', name: '叻沙', price: 5, hunger: 40 },
-  { id: 'char_kway_teow', name: '炒粿条', price: 4.5, hunger: 38 },
-  { id: 'satay', name: '沙爹 10 串', price: 8, hunger: 45 },
-  { id: 'nasi_lemak', name: '椰浆饭', price: 3.5, hunger: 30 },
-  { id: 'kaya_toast', name: '咖椰吐司套餐', price: 3.2, hunger: 20, energy: 5 },
+  { id: 'chicken_rice', name: t('海南鸡饭'), price: 4, hunger: 35 },
+  { id: 'laksa', name: t('叻沙'), price: 5, hunger: 40 },
+  { id: 'char_kway_teow', name: t('炒粿条'), price: 4.5, hunger: 38 },
+  { id: 'satay', name: t('沙爹 10 串'), price: 8, hunger: 45 },
+  { id: 'nasi_lemak', name: t('椰浆饭'), price: 3.5, hunger: 30 },
+  { id: 'kaya_toast', name: t('咖椰吐司套餐'), price: 3.2, hunger: 20, energy: 5 },
   { id: 'kopi', name: 'Kopi', price: 1.4, hunger: 15, energy: 8 },
   { id: 'teh', name: 'Teh', price: 1.4, hunger: 15, energy: 6 },
 ]
 
 export const SHOP_MENU: MenuItem[] = [
-  { id: 'water', name: '矿泉水', price: 1, hunger: 5 },
-  { id: 'bread', name: '面包', price: 2, hunger: 15 },
-  { id: 'cup_noodle', name: '杯面', price: 2.5, hunger: 25 },
-  { id: 'energy_drink', name: '能量饮料', price: 3, hunger: 5, energy: 15 },
+  { id: 'water', name: t('矿泉水'), price: 1, hunger: 5 },
+  { id: 'bread', name: t('面包'), price: 2, hunger: 15 },
+  { id: 'cup_noodle', name: t('杯面'), price: 2.5, hunger: 25 },
+  { id: 'energy_drink', name: t('能量饮料'), price: 3, hunger: 5, energy: 15 },
 ]
 
 /** 工作与消费参数（集中放这里便于调平衡） */

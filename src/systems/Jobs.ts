@@ -10,9 +10,10 @@ import { JOB_TEXT, JOB_PARAMS, ASSETS, type AssetId, type JobText } from '../dat
 import { ECONOMY } from '../data/menus'
 import { rand, pick, CAR_WID, type VehicleKind } from '../config'
 import { earn as earnCash } from './Wallet'
+import { t } from '../i18n'
 
 /** 实际入账与标价不同（心情倍率）时的提示后缀 */
-const moodNote = (ctx: Ctx, got: number, base: number) => Math.abs(got - base) > 0.005 ? ` · 心情 ×${ctx.needs.moodMul}` : ''
+const moodNote = (ctx: Ctx, got: number, base: number) => Math.abs(got - base) > 0.005 ? t(' · 心情 ×{mul}', { mul: ctx.needs.moodMul }) : ''
 
 /**
  * 工作系统：按身份提供可开工/下班的工作（的士、外卖、偷车、收保护费、赶会议…）
@@ -100,8 +101,8 @@ abstract class BaseJob implements Job {
   passive = false
   active = false
   constructor(protected J: Jobs, id: string) {
-    const t = JOB_TEXT.find((x) => x.id === id) as JobText
-    this.id = t.id; this.title = t.title; this.roles = t.roles; this.desc = t.desc
+    const jt = JOB_TEXT.find((x) => x.id === id) as JobText
+    this.id = jt.id; this.title = jt.title; this.roles = jt.roles; this.desc = jt.desc
   }
   available(_ctx: Ctx): boolean | string { return true }
   start(ctx: Ctx) { this.active = true; this.begin(ctx) }
@@ -112,7 +113,7 @@ abstract class BaseJob implements Job {
   protected end(_ctx: Ctx) {}
   /** 完成并结束 */
   protected finish(ctx: Ctx, amount: number, msg: string | ((got: number) => string)) { this.J.earn(this.id, amount, msg); this.stop(ctx) }
-  protected fail(ctx: Ctx, reason: string) { this.J.toast(`${this.title}失败：${reason}`, 3); this.stop(ctx) }
+  protected fail(ctx: Ctx, reason: string) { this.J.toast(t('{title}失败：{reason}', { title: this.title, reason }), 3); this.stop(ctx) }
   protected pdist(ctx: Ctx, p: P2) { return Math.round(Math.hypot(ctx.player.worldX - p.x, ctx.player.worldZ - p.z)) }
 }
 
@@ -123,12 +124,12 @@ class GangSteal extends BaseJob {
   private timer = 0
   private phase: 'find' | 'deliver' = 'find'
   constructor(J: Jobs) { super(J, 'gang_steal') }
-  available(ctx: Ctx) { return ctx.pois.byType('shop').length + ctx.pois.byType('landmark').length > 0 ? true : '没有销赃点' }
+  available(ctx: Ctx) { return ctx.pois.byType('shop').length + ctx.pois.byType('landmark').length > 0 ? true : t('没有销赃点') }
   protected begin(ctx: Ctx) {
     this.timer = JOB_PARAMS.steal.timeLimit; this.phase = 'find'; this.car = null
     this.fence = pick([...ctx.pois.byType('shop'), ...ctx.pois.byType('landmark')])
     this.pickTarget(ctx)
-    this.J.toast(this.car ? '目标车已标记（粉柱），抢到后开去销赃点' : '附近没有合适的车，等一下…', 3)
+    this.J.toast(this.car ? t('目标车已标记（粉柱），抢到后开去销赃点') : t('附近没有合适的车，等一下…'), 3)
   }
   private pickTarget(ctx: Ctx) {
     const px = ctx.player.worldX, pz = ctx.player.worldZ
@@ -138,25 +139,25 @@ class GangSteal extends BaseJob {
   }
   update(dt: number, ctx: Ctx) {
     this.timer -= dt
-    if (this.timer <= 0) { this.fail(ctx, '超时'); return }
-    const t = this.car
+    if (this.timer <= 0) { this.fail(ctx, t('超时')); return }
+    const car = this.car
     if (this.phase === 'find') {
-      if (!t || !t.active || t.wrecked || (t.driver !== 'traffic' && ctx.player.vehicle !== t)) { this.pickTarget(ctx); this.J.blue.set(this.car); return }
-      this.J.blue.set(t)
-      if (ctx.player.vehicle === t) { this.phase = 'deliver'; this.J.blue.set(this.fence!.door); this.J.toast(`开到销赃点：${this.fence!.name}`, 3) }
+      if (!car || !car.active || car.wrecked || (car.driver !== 'traffic' && ctx.player.vehicle !== car)) { this.pickTarget(ctx); this.J.blue.set(this.car); return }
+      this.J.blue.set(car)
+      if (ctx.player.vehicle === car) { this.phase = 'deliver'; this.J.blue.set(this.fence!.door); this.J.toast(t('开到销赃点：{name}', { name: this.fence!.name }), 3) }
       return
     }
-    if (!t || !t.active || t.wrecked) { this.fail(ctx, '车报废了'); return }
-    if (ctx.player.vehicle === t && dist2(t, this.fence!.door) < JOB_PARAMS.steal.deliverRadius && t.absSpeed < 2) {
-      const bonus = Math.round(Math.max(0, t.health))
-      ctx.player.exit(ctx.world); t.deactivate()
-      this.finish(ctx, JOB_PARAMS.steal.reward + bonus, (got) => `交货成功 +$${got}（含车况加成 $${bonus}）`)
+    if (!car || !car.active || car.wrecked) { this.fail(ctx, t('车报废了')); return }
+    if (ctx.player.vehicle === car && dist2(car, this.fence!.door) < JOB_PARAMS.steal.deliverRadius && car.absSpeed < 2) {
+      const bonus = Math.round(Math.max(0, car.health))
+      ctx.player.exit(ctx.world); car.deactivate()
+      this.finish(ctx, JOB_PARAMS.steal.reward + bonus, (got) => t('交货成功 +${got}（含车况加成 ${bonus}）', { got, bonus }))
     }
   }
   hudText() {
-    const t = this.car
-    if (this.phase === 'find') return t ? `抢粉柱标记的车（${this.pdist(this.J.ctx, t)} m）` : '寻找目标车…'
-    return `开到 ${this.fence!.name}（${this.pdist(this.J.ctx, this.fence!.door)} m）`
+    const car = this.car
+    if (this.phase === 'find') return car ? t('抢粉柱标记的车（{d} m）', { d: this.pdist(this.J.ctx, car) }) : t('寻找目标车…')
+    return t('开到 {name}（{d} m）', { name: this.fence!.name, d: this.pdist(this.J.ctx, this.fence!.door) })
   }
   timeLeft() { return this.timer }
   target() { return this.phase === 'find' ? (this.car && this.car.active ? { x: this.car.x, z: this.car.z } : null) : this.fence!.door }
@@ -167,30 +168,30 @@ class GangProtect extends BaseJob {
   private stores: Poi[] = []
   private idx = 0
   constructor(J: Jobs) { super(J, 'gang_protect') }
-  available(ctx: Ctx) { return ctx.pois.byType('shop').length + ctx.pois.byType('hawker').length > 0 ? true : '附近没有店' }
+  available(ctx: Ctx) { return ctx.pois.byType('shop').length + ctx.pois.byType('hawker').length > 0 ? true : t('附近没有店') }
   protected begin(ctx: Ctx) {
     const pool = [...ctx.pois.byType('shop'), ...ctx.pois.byType('hawker')].sort(() => Math.random() - 0.5)
     this.stores = []
     for (let i = 0; i < JOB_PARAMS.protect.stores; i++) this.stores.push(pool[i % pool.length])
     this.idx = 0
     this.J.yellow.set(this.stores[0].door)
-    this.J.toast(`去 ${this.stores[0].name} 门口按 E 收钱`, 3)
+    this.J.toast(t('去 {name} 门口按 E 收钱', { name: this.stores[0].name }), 3)
   }
   get current() { return this.stores[this.idx] ?? null }
   poiButtons(poi: Poi): PanelButton[] {
     if (!this.active || poi !== this.current) return []
-    return [{ label: '收保护费', note: `$${JOB_PARAMS.protect.min}–${JOB_PARAMS.protect.max}`, onClick: () => this.collect(this.J.ctx) }]
+    return [{ label: t('收保护费'), note: `$${JOB_PARAMS.protect.min}–${JOB_PARAMS.protect.max}`, onClick: () => this.collect(this.J.ctx) }]
   }
   private collect(ctx: Ctx) {
     const amount = Math.round(rand(JOB_PARAMS.protect.min, JOB_PARAMS.protect.max))
-    this.J.earn(this.id, amount, (got) => `收到 $${got}（${this.idx + 1}/${this.stores.length}）`)
-    if (Math.random() < JOB_PARAMS.protect.policeChance) { ctx.law.crime('carjack', JOB_PARAMS.protect.heat, ctx); this.J.toast('店家报警了！', 3) }
+    this.J.earn(this.id, amount, (got) => t('收到 ${got}（{i}/{n}）', { got, i: this.idx + 1, n: this.stores.length }))
+    if (Math.random() < JOB_PARAMS.protect.policeChance) { ctx.law.crime('carjack', JOB_PARAMS.protect.heat, ctx); this.J.toast(t('店家报警了！'), 3) }
     this.idx++
     this.J.closePanel()
-    if (this.idx >= this.stores.length) { this.J.toast('三家收齐，收工', 3); this.stop(ctx); return }
+    if (this.idx >= this.stores.length) { this.J.toast(t('三家收齐，收工'), 3); this.stop(ctx); return }
     this.J.yellow.set(this.current!.door)
   }
-  hudText() { const s = this.current; return s ? `第 ${this.idx + 1}/${this.stores.length} 家：${s.name}（${this.pdist(this.J.ctx, s.door)} m）门口按 E` : null }
+  hudText() { const s = this.current; return s ? t('第 {i}/{n} 家：{name}（{d} m）门口按 E', { i: this.idx + 1, n: this.stores.length, name: s.name, d: this.pdist(this.J.ctx, s.door) }) : null }
   target() { return this.current?.door ?? null }
 }
 
@@ -203,20 +204,20 @@ class GangWreck extends BaseJob {
     J.ctx.events.on('vehicleWrecked', ({ byPlayer }) => {
       if (!this.active || this.phase !== 'wreck' || !byPlayer) return
       this.count++
-      J.toast(`撞毁 ${this.count}/${JOB_PARAMS.wreck.count}`)
+      J.toast(t('撞毁 {i}/{n}', { i: this.count, n: JOB_PARAMS.wreck.count }))
     })
   }
-  protected begin(_ctx: Ctx) { this.count = 0; this.timer = JOB_PARAMS.wreck.timeLimit; this.phase = 'wreck'; this.J.toast('开撞！先去找辆车', 3) }
+  protected begin(_ctx: Ctx) { this.count = 0; this.timer = JOB_PARAMS.wreck.timeLimit; this.phase = 'wreck'; this.J.toast(t('开撞！先去找辆车'), 3) }
   update(dt: number, ctx: Ctx) {
     if (this.phase === 'wreck') {
       this.timer -= dt
-      if (this.timer <= 0) { this.fail(ctx, '超时'); return }
-      if (this.count >= JOB_PARAMS.wreck.count) { this.phase = 'escape'; this.J.toast('够了！甩掉警察', 3) }
+      if (this.timer <= 0) { this.fail(ctx, t('超时')); return }
+      if (this.count >= JOB_PARAMS.wreck.count) { this.phase = 'escape'; this.J.toast(t('够了！甩掉警察'), 3) }
       return
     }
-    if (ctx.law.pursuitLevel <= 0) this.finish(ctx, JOB_PARAMS.wreck.reward, (got) => `街头破坏完成 +$${got}`)
+    if (ctx.law.pursuitLevel <= 0) this.finish(ctx, JOB_PARAMS.wreck.reward, (got) => t('街头破坏完成 +${got}', { got }))
   }
-  hudText() { return this.phase === 'wreck' ? `已撞毁 ${this.count}/${JOB_PARAMS.wreck.count}` : `甩掉警察（热度 ${this.J.ctx.law.pursuitLevel.toFixed(1)}）` }
+  hudText() { return this.phase === 'wreck' ? t('已撞毁 {i}/{n}', { i: this.count, n: JOB_PARAMS.wreck.count }) : t('甩掉警察（热度 {h}）', { h: this.J.ctx.law.pursuitLevel.toFixed(1) }) }
   timeLeft() { return this.phase === 'wreck' ? this.timer : null }
 }
 
@@ -226,7 +227,7 @@ class GoldMeeting extends BaseJob {
   private elapsed = 0
   private limit = 60
   constructor(J: Jobs) { super(J, 'gold_meeting') }
-  available(ctx: Ctx) { return ctx.pois.byType('office').length ? true : '附近没有办公楼' }
+  available(ctx: Ctx) { return ctx.pois.byType('office').length ? true : t('附近没有办公楼') }
   protected begin(ctx: Ctx) {
     const px = ctx.player.worldX, pz = ctx.player.worldZ
     const all = ctx.pois.byType('office')
@@ -236,19 +237,19 @@ class GoldMeeting extends BaseJob {
     this.limit = Math.max(JOB_PARAMS.meeting.minSec, Math.round(d / 1000 * JOB_PARAMS.meeting.secPerKm))
     this.elapsed = 0
     this.J.blue.set(this.office.door)
-    this.J.toast(`会议在 ${this.office.name}，${Math.round(d)} m，${this.limit} 秒内到`, 3)
+    this.J.toast(t('会议在 {name}，{d} m，{sec} 秒内到', { name: this.office.name, d: Math.round(d), sec: this.limit }), 3)
   }
   update(dt: number, ctx: Ctx) {
     this.elapsed += dt
     const o = this.office!
-    if (this.elapsed > this.limit * 2) { this.fail(ctx, '太晚了，会议取消'); return }
+    if (this.elapsed > this.limit * 2) { this.fail(ctx, t('太晚了，会议取消')); return }
     if (this.pdist(ctx, o.door) < JOB_PARAMS.meeting.radius) {
       const late = this.elapsed > this.limit
       const pay = late ? JOB_PARAMS.meeting.reward / 2 : JOB_PARAMS.meeting.reward
-      this.finish(ctx, pay, (got) => late ? `迟到了，只拿到 $${got}` : `准时到会 +$${got}`)
+      this.finish(ctx, pay, (got) => late ? t('迟到了，只拿到 ${got}', { got }) : t('准时到会 +${got}', { got }))
     }
   }
-  hudText() { return `赶到 ${this.office!.name}（${this.pdist(this.J.ctx, this.office!.door)} m）` }
+  hudText() { return t('赶到 {name}（{d} m）', { name: this.office!.name, d: this.pdist(this.J.ctx, this.office!.door) }) }
   timeLeft() { return this.limit - this.elapsed }
   target() { return this.office?.door ?? null }
 }
@@ -275,18 +276,18 @@ class GoldInvest extends BaseJob {
       s.invest[a.id] = round2(v + delta); s.investChange[a.id] = delta
       parts.push(`${a.name} ${delta >= 0 ? '+' : ''}${delta.toFixed(2)}`)
     }
-    if (parts.length) this.J.toast(`投资结算：${parts.join(' · ')}`, 4)
+    if (parts.length) this.J.toast(t('投资结算：{list}', { list: parts.join(' · ') }), 4)
   }
-  status() { const s = this.J.stats; return `持仓 $${(s.invest.fixed + s.invest.index + s.invest.crypto).toFixed(2)}` }
+  status() { const s = this.J.stats; return t('持仓 ${v}', { v: (s.invest.fixed + s.invest.index + s.invest.crypto).toFixed(2) }) }
   /** 被动目标：最近的办公楼（投资在办公楼面板操作） */
   target() { const pl = this.J.ctx.player; return this.J.ctx.pois.nearest(pl.worldX, pl.worldZ, Infinity, ['office'])?.door ?? null }
   buy(ctx: Ctx, asset: AssetId, amount: number) {
     if (amount <= 0) return false
-    if (ctx.player.money < amount) { this.J.toast('现金不够'); return false }
+    if (ctx.player.money < amount) { this.J.toast(t('现金不够')); return false }
     ctx.player.money = round2(ctx.player.money - amount)
     this.J.stats.invest[asset] = round2(this.J.stats.invest[asset] + amount)
     ctx.events.emit('invested', { asset, amount })
-    this.J.toast(`买入 ${ASSETS.find((a) => a.id === asset)!.name} $${amount}`)
+    this.J.toast(t('买入 {name} ${amount}', { name: ASSETS.find((a) => a.id === asset)!.name, amount }))
     return true
   }
   sell(ctx: Ctx, asset: AssetId) {
@@ -294,7 +295,7 @@ class GoldInvest extends BaseJob {
     if (v <= 0) return false
     ctx.player.money = round2(ctx.player.money + v)
     this.J.stats.invest[asset] = 0; this.J.stats.investChange[asset] = 0
-    this.J.toast(`卖出 ${ASSETS.find((a) => a.id === asset)!.name} 回款 $${v.toFixed(2)}`)
+    this.J.toast(t('卖出 {name} 回款 ${v}', { name: ASSETS.find((a) => a.id === asset)!.name, v: v.toFixed(2) }))
     return true
   }
 }
@@ -308,11 +309,11 @@ class WhiteShift extends BaseJob {
   }
   status(ctx: Ctx) {
     const h = ctx.clock.hour, salary = ECONOMY.salary[ctx.role.id] ?? 0
-    if (this.J.stats.lastShiftDay === ctx.clock.day) return '今天已打卡 · 明天 09:00 再来'
-    if (h < 9) return `今天 09:00 可打卡 · 日薪 $${salary}`
-    if (h < 9.5) return `现在去办公楼打卡 · 日薪 $${salary}`
-    if (h < 12) return `迟到打卡（薪资减半 $${salary / 2}）· 12:00 前`
-    return '今天已过打卡时间 · 明天 09:00'
+    if (this.J.stats.lastShiftDay === ctx.clock.day) return t('今天已打卡 · 明天 09:00 再来')
+    if (h < 9) return t('今天 09:00 可打卡 · 日薪 ${salary}', { salary })
+    if (h < 9.5) return t('现在去办公楼打卡 · 日薪 ${salary}', { salary })
+    if (h < 12) return t('迟到打卡（薪资减半 ${half}）· 12:00 前', { half: salary / 2 })
+    return t('今天已过打卡时间 · 明天 09:00')
   }
   /** 被动目标：今天还能打卡（未打卡且 12:00 前）时指向最近的办公楼 */
   target() {
@@ -327,14 +328,14 @@ class WhiteOvertime extends BaseJob {
   passive = true
   constructor(J: Jobs) { super(J, 'white_overtime') }
   private open(ctx: Ctx) { const h = ctx.clock.hour; return h >= JOB_PARAMS.overtime.from && h < JOB_PARAMS.overtime.to }
-  status(ctx: Ctx) { return this.open(ctx) ? '现在可到办公楼门口按 E 加班' : `${JOB_PARAMS.overtime.from}:00–${JOB_PARAMS.overtime.to}:00 办公楼门口按 E` }
+  status(ctx: Ctx) { return this.open(ctx) ? t('现在可到办公楼门口按 E 加班') : t('{from}:00–{to}:00 办公楼门口按 E', { from: JOB_PARAMS.overtime.from, to: JOB_PARAMS.overtime.to }) }
   poiButtons(poi: Poi): PanelButton[] {
     const ctx = this.J.ctx
     if (poi.type !== 'office' || ctx.role.id !== 'white') return []
     const O = JOB_PARAMS.overtime
-    return [{ label: `加班 ${O.hours} 小时`, note: `+$${O.pay} · 精力 −15 饱食 −10`, disabled: !this.open(ctx), onClick: () => {
+    return [{ label: t('加班 {h} 小时', { h: O.hours }), note: t('+${pay} · 精力 −15 饱食 −10', { pay: O.pay }), disabled: !this.open(ctx), onClick: () => {
       ctx.clock.skip(O.hours); ctx.needs.sync(); ctx.needs.add(-10, -15)
-      this.J.earn(this.id, O.pay, (got) => `加班结束 +$${got}`)
+      this.J.earn(this.id, O.pay, (got) => t('加班结束 +${got}', { got }))
       this.J.closePanel()
     } }]
   }
@@ -360,16 +361,16 @@ class BlueTaxi extends BaseJob {
     const crash = (v: Vehicle, impulse: number) => {
       if (!this.active || this.phase !== 'ride' || v !== this.taxi || impulse <= JOB_PARAMS.taxi.crashImpulse) return
       this.rating = Math.max(1, this.rating - 1)
-      J.toast(`乘客吓了一跳 · 本单评分 ${this.rating}`, 2)
+      J.toast(t('乘客吓了一跳 · 本单评分 {r}', { r: this.rating }), 2)
     }
     J.ctx.events.on('vehicleHitVehicle', ({ a, b, impulse }) => crash(a.driver === 'player' ? a : b, impulse))
     J.ctx.events.on('vehicleHitStatic', ({ v, impulse }) => crash(v, impulse))
   }
-  available(ctx: Ctx) { return ctx.player.vehicle?.kind === 'taxi' ? true : '需要先坐在的士里（的士站租车）' }
+  available(ctx: Ctx) { return ctx.player.vehicle?.kind === 'taxi' ? true : t('需要先坐在的士里（的士站租车）') }
   protected begin(ctx: Ctx) {
     this.taxi = ctx.player.vehicle
     this.phase = 'wait'; this.nextTimer = 0; this.toastAt = -1
-    this.J.toast('开工！等乘客招手（黄柱）', 3)
+    this.J.toast(t('开工！等乘客招手（黄柱）'), 3)
   }
   protected end(_ctx: Ctx) {
     if (this.passenger && this.passenger.state === 'hail') this.J.peds.unhail(this.passenger)
@@ -411,7 +412,7 @@ class BlueTaxi extends BaseJob {
     this.J.peds.hail(p)
     this.passenger = p; this.phase = 'hail'
     this.J.yellow.set(p)
-    this.J.toast(`有人招手（黄柱），靠到 ${JOB_PARAMS.taxi.pickupRadius} m 内按 F 上客`, 3)
+    this.J.toast(t('有人招手（黄柱），靠到 {r} m 内按 F 上客', { r: JOB_PARAMS.taxi.pickupRadius }), 3)
   }
   /** 玩家换到另一辆的士（租车/抢车）时接管为本单的车 */
   private adoptTaxi(ctx: Ctx) {
@@ -441,74 +442,74 @@ class BlueTaxi extends BaseJob {
   keyF(ctx: Ctx) {
     if (!this.active) return false
     this.adoptTaxi(ctx)
-    const t = this.taxi
-    if (!t || ctx.player.vehicle !== t) return false
+    const tx = this.taxi
+    if (!tx || ctx.player.vehicle !== tx) return false
     if (this.phase === 'ride') {
-      if (t.absSpeed > 2) { this.hint(ctx, '载客中，先停车再按 F 下车'); return true }
+      if (tx.absSpeed > 2) { this.hint(ctx, t('载客中，先停车再按 F 下车')); return true }
       return false
     }
     if (this.phase !== 'hail') return false
     const p = this.passenger
     if (!p) return true
-    const gap = this.bodyDist(t, p)
-    if (gap > JOB_PARAMS.taxi.pickupRadius) { this.hint(ctx, `乘客在 ${Math.round(gap)} m 外，靠近再按 F`); return true }
+    const gap = this.bodyDist(tx, p)
+    if (gap > JOB_PARAMS.taxi.pickupRadius) { this.hint(ctx, t('乘客在 {d} m 外，靠近再按 F', { d: Math.round(gap) })); return true }
     this.J.peds.board(p)
     this.passenger = null
     // 目的地：≥120 m、且门口贴近车道（车停路上能进到达半径）的随机 POI；没有就退回任意 ≥120 m，再没有取最远的
-    const far = ctx.pois.all.filter((q) => dist2(q.door, t) >= 120)
+    const far = ctx.pois.all.filter((q) => dist2(q.door, tx) >= 120)
     const reachable = far.filter((q) => this.laneDist(ctx, q) <= JOB_PARAMS.taxi.destLaneMax)
     const pool = reachable.length ? reachable : far
-    this.dest = pool.length ? pick(pool) : ctx.pois.all.slice().sort((a, b) => dist2(b.door, t) - dist2(a.door, t))[0] ?? null
-    if (!this.dest) { this.J.toast('没有目的地可去'); this.phase = 'wait'; this.nextTimer = 2; return true }
+    this.dest = pool.length ? pick(pool) : ctx.pois.all.slice().sort((a, b) => dist2(b.door, tx) - dist2(a.door, tx))[0] ?? null
+    if (!this.dest) { this.J.toast(t('没有目的地可去')); this.phase = 'wait'; this.nextTimer = 2; return true }
     this.phase = 'ride'; this.odometer = 0; this.waitSec = 0; this.rating = 5; this.stopTimer = 0; this.awayTimer = 0
-    this.peak = isTaxiPeak(ctx.clock.hour); this.lastX = t.x; this.lastZ = t.z
+    this.peak = isTaxiPeak(ctx.clock.hour); this.lastX = tx.x; this.lastZ = tx.z
     this.J.yellow.set(null); this.J.blue.set(this.dest.door)
-    this.J.toast(`乘客上车 → ${this.dest.name}（${Math.round(dist2(this.dest.door, t))} m）${this.peak ? ' · 高峰 ×1.25' : ''}`, 3)
+    this.J.toast(t('乘客上车 → {name}（{d} m）', { name: this.dest.name, d: Math.round(dist2(this.dest.door, tx)) }) + (this.peak ? t(' · 高峰 ×1.25') : ''), 3)
     return true
   }
   update(dt: number, ctx: Ctx) {
     this.adoptTaxi(ctx)
-    const t = this.taxi!
-    if (t.wrecked || !t.active) { this.J.toast('的士报废，收工了', 3); this.stop(ctx); return }
+    const tx = this.taxi!
+    if (tx.wrecked || !tx.active) { this.J.toast(t('的士报废，收工了'), 3); this.stop(ctx); return }
     if (this.phase === 'wait') { this.nextTimer -= dt; if (this.nextTimer <= 0) this.findPassenger(ctx); return }
     if (this.phase === 'hail') {
       const p = this.passenger
-      if (!p || !p.active || p.state !== 'hail') { this.J.toast('乘客走了，再找一位', 2); this.passenger = null; this.phase = 'wait'; this.nextTimer = 1; this.J.yellow.set(null); return }
+      if (!p || !p.active || p.state !== 'hail') { this.J.toast(t('乘客走了，再找一位'), 2); this.passenger = null; this.phase = 'wait'; this.nextTimer = 1; this.J.yellow.set(null); return }
       this.J.yellow.set(p)
       return
     }
     // ride
-    this.odometer += Math.hypot(t.x - this.lastX, t.z - this.lastZ); this.lastX = t.x; this.lastZ = t.z
-    if (ctx.player.vehicle !== t) { this.awayTimer += dt; if (this.awayTimer > 15) { this.J.toast('乘客等不及，跑了', 3); this.phase = 'wait'; this.nextTimer = 2; this.J.blue.set(null) } return }
+    this.odometer += Math.hypot(tx.x - this.lastX, tx.z - this.lastZ); this.lastX = tx.x; this.lastZ = tx.z
+    if (ctx.player.vehicle !== tx) { this.awayTimer += dt; if (this.awayTimer > 15) { this.J.toast(t('乘客等不及，跑了'), 3); this.phase = 'wait'; this.nextTimer = 2; this.J.blue.set(null) } return }
     this.awayTimer = 0
-    if (t.absSpeed < 1) this.waitSec += dt
+    if (tx.absSpeed < 1) this.waitSec += dt
     const d = this.dest!
     // 到达判定：车辆中心距门口 ≤ arriveRadius 且速度 < arriveSpeed 时累计；半径内偶发超速（被碰、刹车倒溜）只暂停不清零，离开半径才清零
     const T = JOB_PARAMS.taxi
-    if (dist2(t, d.door) <= T.arriveRadius) { if (t.absSpeed < T.arriveSpeed) this.stopTimer += dt } else this.stopTimer = 0
+    if (dist2(tx, d.door) <= T.arriveRadius) { if (tx.absSpeed < T.arriveSpeed) this.stopTimer += dt } else this.stopTimer = 0
     if (this.stopTimer >= T.settleSec) {
       const fare = taxiFare(this.odometer, this.waitSec, this.peak, this.rating)
       this.lastTrip = { dist: Math.round(this.odometer), wait: Math.round(this.waitSec), peak: this.peak, rating: this.rating, fare }
       this.J.stats.taxiTrips++; this.J.stats.taxiRatingSum += this.rating
-      this.J.earn(this.id, fare, (got) => `到达 ${d.name} · ${(this.odometer / 1000).toFixed(2)} km · 车资 $${got.toFixed(2)}${this.rating >= JOB_PARAMS.taxi.tipRating ? '（含小费）' : ''}`)
+      this.J.earn(this.id, fare, (got) => t('到达 {name} · {km} km · 车资 ${fare}', { name: d.name, km: (this.odometer / 1000).toFixed(2), fare: got.toFixed(2) }) + (this.rating >= JOB_PARAMS.taxi.tipRating ? t('（含小费）') : ''))
       this.phase = 'wait'; this.nextTimer = 2; this.dest = null; this.J.blue.set(null)
     }
   }
   hudText() {
-    if (this.phase === 'wait') return '等待下一位乘客…'
+    if (this.phase === 'wait') return t('等待下一位乘客…')
     if (this.phase === 'hail') {
-      const t = this.taxi, p = this.passenger!
-      if (this.canBoard) return '乘客就在车旁 · 按 F 上客'
-      const gap = t && this.J.ctx.player.vehicle === t ? Math.round(this.bodyDist(t, p)) : this.pdist(this.J.ctx, p)
-      return `乘客在 ${gap} m 外招手 · 靠到 ${JOB_PARAMS.taxi.pickupRadius} m 内按 F`
+      const tx = this.taxi, p = this.passenger!
+      if (this.canBoard) return t('乘客就在车旁 · 按 F 上客')
+      const gap = tx && this.J.ctx.player.vehicle === tx ? Math.round(this.bodyDist(tx, p)) : this.pdist(this.J.ctx, p)
+      return t('乘客在 {d} m 外招手 · 靠到 {r} m 内按 F', { d: gap, r: JOB_PARAMS.taxi.pickupRadius })
     }
     const d = this.dest!, T = JOB_PARAMS.taxi
-    const head = `送到 ${d.name}（${this.pdist(this.J.ctx, d.door)} m）· 已行驶 ${(this.odometer / 1000).toFixed(2)} km`
+    const head = t('送到 {name}（{d} m）· 已行驶 {km} km', { name: d.name, d: this.pdist(this.J.ctx, d.door), km: (this.odometer / 1000).toFixed(2) })
     if (this.taxi && dist2(this.taxi, d.door) <= T.arriveRadius) {
       const left = Math.max(0, T.settleSec - this.stopTimer)
-      return `${head} · 停靠中 ${left.toFixed(1)} s${this.taxi.absSpeed < T.arriveSpeed ? '' : '（请停稳）'}`
+      return head + t(' · 停靠中 {s} s', { s: left.toFixed(1) }) + (this.taxi.absSpeed < T.arriveSpeed ? '' : t('（请停稳）'))
     }
-    return `${head} · 门口 ${T.arriveRadius} m 内停稳 ${T.settleSec} s 结算`
+    return head + t(' · 门口 {r} m 内停稳 {s} s 结算', { r: T.arriveRadius, s: T.settleSec })
   }
   /** POI 门口到最近车道中心线的距离（按 POI 缓存） */
   private laneCache = new Map<string, number>()
@@ -529,15 +530,15 @@ class BlueDelivery extends BaseJob {
   private limit = 60
   private dist = 0
   constructor(J: Jobs) { super(J, 'blue_delivery') }
-  available(ctx: Ctx) { return ctx.pois.byType('hawker').length && (ctx.pois.byType('home').length + ctx.pois.byType('office').length) ? true : '附近没有餐馆/收件地址' }
+  available(ctx: Ctx) { return ctx.pois.byType('hawker').length && (ctx.pois.byType('home').length + ctx.pois.byType('office').length) ? true : t('附近没有餐馆/收件地址') }
   protected begin(ctx: Ctx) {
     this.hawker = pick(ctx.pois.byType('hawker')); this.phase = 'pickup'; this.dest = null
     this.J.yellow.set(this.hawker.door)
-    this.J.toast(`接单：去 ${this.hawker.name} 门口按 E 取餐`, 3)
+    this.J.toast(t('接单：去 {name} 门口按 E 取餐', { name: this.hawker.name }), 3)
   }
   poiButtons(poi: Poi): PanelButton[] {
     if (!this.active || this.phase !== 'pickup' || poi !== this.hawker) return []
-    return [{ label: '取餐', note: '外卖单', onClick: () => this.pickup(this.J.ctx) }]
+    return [{ label: t('取餐'), note: t('外卖单'), onClick: () => this.pickup(this.J.ctx) }]
   }
   private pickup(ctx: Ctx) {
     const h = this.hawker!
@@ -547,7 +548,7 @@ class BlueDelivery extends BaseJob {
     this.elapsed = 0; this.phase = 'deliver'
     this.J.yellow.set(null); this.J.blue.set(this.dest.door)
     this.J.closePanel()
-    this.J.toast(`送到 ${this.dest.name}（${Math.round(this.dist)} m），${this.limit} 秒内`, 3)
+    this.J.toast(t('送到 {name}（{d} m），{sec} 秒内', { name: this.dest.name, d: Math.round(this.dist), sec: this.limit }), 3)
   }
   update(dt: number, ctx: Ctx) {
     if (this.phase !== 'deliver') return
@@ -557,12 +558,12 @@ class BlueDelivery extends BaseJob {
     if (this.pdist(ctx, d.door) < JOB_PARAMS.delivery.radius && (!v || v.absSpeed < 3)) {
       const late = this.elapsed > this.limit
       const pay = late ? JOB_PARAMS.delivery.late : round2(JOB_PARAMS.delivery.base + this.dist / 1000 * JOB_PARAMS.delivery.perKm)
-      this.finish(ctx, pay, (got) => late ? `送达但超时，只拿到 $${got}` : `送达 ${d.name} +$${got.toFixed(2)}`)
+      this.finish(ctx, pay, (got) => late ? t('送达但超时，只拿到 ${got}', { got }) : t('送达 {name} +${got}', { name: d.name, got: got.toFixed(2) }))
     }
   }
   hudText() {
-    if (this.phase === 'pickup') return `去 ${this.hawker!.name} 取餐（${this.pdist(this.J.ctx, this.hawker!.door)} m）门口按 E`
-    return `送到 ${this.dest!.name}（${this.pdist(this.J.ctx, this.dest!.door)} m）`
+    if (this.phase === 'pickup') return t('去 {name} 取餐（{d} m）门口按 E', { name: this.hawker!.name, d: this.pdist(this.J.ctx, this.hawker!.door) })
+    return t('送到 {name}（{d} m）', { name: this.dest!.name, d: this.pdist(this.J.ctx, this.dest!.door) })
   }
   timeLeft() { return this.phase === 'deliver' ? this.limit - this.elapsed : null }
   target() { return this.phase === 'pickup' ? this.hawker!.door : this.dest!.door }
@@ -571,7 +572,7 @@ class BlueDelivery extends BaseJob {
 class BlueSite extends BaseJob {
   passive = true
   constructor(J: Jobs) { super(J, 'blue_site') }
-  status(ctx: Ctx) { return ctx.needs.energy < 15 ? '精力不足 15，先吃点东西' : `工地门口按 E · 每小时 $${ECONOMY.siteWage}` }
+  status(ctx: Ctx) { return ctx.needs.energy < 15 ? t('精力不足 15，先吃点东西') : t('工地门口按 E · 每小时 ${wage}', { wage: ECONOMY.siteWage }) }
 }
 
 export class Jobs {
@@ -601,11 +602,11 @@ export class Jobs {
   /** 开始工作：true 成功；字符串为原因 */
   start(id: string): true | string {
     const j = this.byId(id)
-    if (!j) return '没有这项工作'
-    if (j.passive) return '这项工作直接去地点按 E'
-    if (!j.roles.includes(this.ctx.role.id)) return '身份不符'
+    if (!j) return t('没有这项工作')
+    if (j.passive) return t('这项工作直接去地点按 E')
+    if (!j.roles.includes(this.ctx.role.id)) return t('身份不符')
     const a = j.available(this.ctx)
-    if (a !== true) return a === false ? '现在不能开始' : a
+    if (a !== true) return a === false ? t('现在不能开始') : a
     if (this.active) this.active.stop(this.ctx)
     this.active = j
     j.start(this.ctx)
@@ -616,7 +617,7 @@ export class Jobs {
     this.active = null
     j.stop(this.ctx)
     this.clearMarkers()
-    this.toast(`${j.title}：下班`, 2)
+    this.toast(t('{title}：下班', { title: j.title }), 2)
   }
   /** 测试/调试：抢车目标 */
   get stealTarget() { const j = this.byId('gang_steal') as GangSteal; const c = j.targetCar; return c && c.active ? { x: c.x, z: c.z, driver: c.driver } : null }
@@ -656,13 +657,13 @@ export class Jobs {
     for (const j of this.all) if ((j.passive || j === this.active) && j.roles.includes(this.ctx.role.id)) out.push(...(j.poiButtons?.(poi) ?? []))
     return out
   }
-  onPlayerDown() { if (this.active) { const j = this.active; this.active = null; j.stop(this.ctx); this.clearMarkers(); this.toast(`${j.title}中断：你倒下了`, 3) } }
+  onPlayerDown() { if (this.active) { const j = this.active; this.active = null; j.stop(this.ctx); this.clearMarkers(); this.toast(t('{title}中断：你倒下了', { title: j.title }), 3) } }
 
   hudText(): string | null { return this.active?.hudText() ?? null }
   hudCard(): { title: string; desc: string; timer: string } | null {
     const a = this.active; if (!a) return null
-    const t = a.timeLeft?.() ?? null
-    return { title: a.title, desc: a.hudText() ?? '', timer: t === null ? '' : t >= 0 ? `${Math.ceil(t)}s` : `迟到 ${Math.ceil(-t)}s` }
+    const tl = a.timeLeft?.() ?? null
+    return { title: a.title, desc: a.hudText() ?? '', timer: tl === null ? '' : tl >= 0 ? `${Math.ceil(tl)}s` : t('迟到 {s}s', { s: Math.ceil(-tl) }) }
   }
   /** 小地图目标点 */
   get targetPoint(): P2 | null { return this.active?.target?.() ?? this.blue.point ?? this.yellow.point }
@@ -693,7 +694,7 @@ export class Jobs {
     const ctx = this.ctx
     const jobs = this.forRole.map((j) => {
       const a = j.passive ? true : j.available(ctx)
-      return { id: j.id, title: j.title, desc: j.desc, passive: !!j.passive, active: j === this.active, reason: a === true ? null : a === false ? '现在不能开始' : a, status: j.status?.(ctx) ?? null }
+      return { id: j.id, title: j.title, desc: j.desc, passive: !!j.passive, active: j === this.active, reason: a === true ? null : a === false ? t('现在不能开始') : a, status: j.status?.(ctx) ?? null }
     })
     const s = this.stats
     const invest = ctx.role.id === 'gold' ? { total: round2(s.invest.fixed + s.invest.index + s.invest.crypto), assets: ASSETS.map((a) => ({ id: a.id, name: a.name, desc: a.desc, value: s.invest[a.id], change: s.investChange[a.id] })) } : null

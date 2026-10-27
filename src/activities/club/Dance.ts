@@ -1,6 +1,11 @@
 import type { ActivityApi, ActivitySpec } from '../../ui/Activity'
 import { ClubTrack, BEAT, BAR, SONG_BARS, SONG_LEN, sectionOf } from './ClubMusic'
 import { el, btn, injectStyle } from './ui'
+import { t } from '../../i18n'
+
+// 画布文字（update 里局部变量 t 是歌曲时间，故在模块顶层取译文）
+const L_READY = t('准备'), L_DROP = t('高潮！'), L_BUILD = t('渐强…')
+const hitText = (a: number, b: number) => t('命中 {a}/{b}', { a, b })
 
 /**
  * 节奏舞蹈小游戏：四方向箭头下落，←↓↑→ 或 A S W D（也可点击轨道）。
@@ -118,18 +123,18 @@ export function danceSpec(host: DanceHost, seed: number): ActivitySpec {
     const res = scoreOf(chart, maxCombo)
     const extra = host.onFinish(res, api)
     const ov = el('div', 'club-result'), box = el('div', 'box')
-    box.append(el('h3', '', '一曲终了'), el('div', 'grade', res.grade))
-    box.append(el('div', '', `准确率 ${(res.pct * 100).toFixed(1)}% · 得分 ${res.score.toLocaleString()} · 最大连击 ${res.maxCombo}`))
-    box.append(el('div', 'club-note', `Perfect ${res.perfect} · Good ${res.good} · Miss ${res.miss}（共 ${res.total}）`))
+    box.append(el('h3', '', t('一曲终了')), el('div', 'grade', res.grade))
+    box.append(el('div', '', t('准确率 {pct}% · 得分 {score} · 最大连击 {combo}', { pct: (res.pct * 100).toFixed(1), score: res.score.toLocaleString(), combo: res.maxCombo })))
+    box.append(el('div', 'club-note', t('Perfect {p} · Good {g} · Miss {m}（共 {n}）', { p: res.perfect, g: res.good, m: res.miss, n: res.total })))
     for (const l of extra.lines) box.append(el('div', '', l))
     const row = el('div', 'club-row')
     for (const b of extra.buttons) row.append(btn(b.label, b.onClick, { id: b.id }))
-    row.append(btn('离开舞池', () => api.close(), { id: 'dance-close' }))
+    row.append(btn(t('离开舞池'), () => api.close(), { id: 'dance-close' }))
     box.append(row); ov.append(box); api.root.append(ov)
   }
 
   return {
-    id: 'club_dance', title: '舞池', subtitle: '←↓↑→ / WASD · 跟着底鼓踩点', opaque: true, returnToPanel: true,
+    id: 'club_dance', title: t('舞池'), subtitle: t('←↓↑→ / WASD · 跟着底鼓踩点'), opaque: true, returnToPanel: true,
     mount(root, a) {
       api = a
       injectStyle()
@@ -210,13 +215,13 @@ export function danceSpec(host: DanceHost, seed: number): ActivitySpec {
       }
       // HUD 文字
       g.textAlign = 'center'; g.fillStyle = '#fff'
-      if (t < 0 || bar < 2) { g.font = '800 34px system-ui, sans-serif'; g.fillText(t < 0 ? '准备' : `${2 * 4 - Math.floor(t / BEAT)}`, W / 2, H * 0.4) }
+      if (t < 0 || bar < 2) { g.font = '800 34px system-ui, sans-serif'; g.fillText(t < 0 ? L_READY : `${2 * 4 - Math.floor(t / BEAT)}`, W / 2, H * 0.4) }
       if (judgeT > 0) { judgeT -= dt; g.globalAlpha = Math.min(1, judgeT * 3); g.fillStyle = judgeCol; g.font = '900 36px system-ui, sans-serif'; g.fillText(judgeText, W / 2, judgeY - 150); g.globalAlpha = 1 }
       if (combo >= 3) { g.fillStyle = '#fff'; g.font = '800 22px system-ui, sans-serif'; g.fillText(`${combo} COMBO`, W / 2, judgeY - 110) }
       const done = chart.filter((n) => n.hit === 'perfect' || n.hit === 'good').length
       g.textAlign = 'left'; g.font = '700 16px system-ui, sans-serif'; g.fillStyle = '#fff'
-      g.fillText(`命中 ${done}/${chart.length}`, 20, 30)
-      g.fillText(`${sec === 'drop' ? '高潮！' : sec === 'build' ? '渐强…' : ''}`, 20, 54)
+      g.fillText(hitText(done, chart.length), 20, 30)
+      g.fillText(sec === 'drop' ? L_DROP : sec === 'build' ? L_BUILD : '', 20, 54)
       // 进度条
       g.fillStyle = 'rgba(255,255,255,.15)'; g.fillRect(20, H - 12, W - 40, 4)
       g.fillStyle = '#ff8fab'; g.fillRect(20, H - 12, (W - 40) * Math.max(0, Math.min(1, t / SONG_LEN)), 4)

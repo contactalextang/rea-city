@@ -1,5 +1,6 @@
 import type { RoadGraph } from '../world/RoadGraph'
 import { VENUES } from '../data/venues'
+import { t } from '../i18n'
 
 /**
  * 兴趣点（POI）提供接口：世界实现（方格城合成 / 真实新加坡烘焙）只需产出 Poi[]，
@@ -30,9 +31,9 @@ export const POI_COLOR: Record<PoiType, number> = {
 /** CSS 颜色串（小地图 / 手机地图用） */
 export const poiCss = (t: PoiType) => '#' + POI_COLOR[t].toString(16).padStart(6, '0')
 export const POI_LABEL: Record<PoiType, string> = {
-  hawker: '小贩中心', mrt: '地铁站', bus: '巴士站', taxi: '的士站', home: '住家', office: '办公楼',
-  site: '工地', police: '警署', hospital: '医院', shop: '商店', landmark: '地标',
-  casino: '赌场', club: '夜店', race: '赛车', arena: '射击俱乐部',
+  hawker: t('小贩中心'), mrt: t('地铁站'), bus: t('巴士站'), taxi: t('的士站'), home: t('住家'), office: t('办公楼'),
+  site: t('工地'), police: t('警署'), hospital: t('医院'), shop: t('商店'), landmark: t('地标'),
+  casino: t('赌场'), club: t('夜店'), race: t('赛车'), arena: t('射击俱乐部'),
 }
 
 export class PoiRegistry {
@@ -79,10 +80,10 @@ export function gridPois(graph: RoadGraph): Poi[] {
     out.push({ id, type, name, x: door.x - fx * 1.6, z: door.z - fz * 1.6, door: { x: door.x, z: door.z, yaw }, meta })
   }
   // 四个象限各一个家
-  add('home_gang', 'home', '牛车水组屋（黑帮）', 2, 2, 'N')
-  add('home_gold', 'home', 'Marina One 公寓（金领）', 7, 2, 'N')
-  add('home_white', 'home', 'Tiong Bahru 公寓（白领）', 2, 7, 'S')
-  add('home_blue', 'home', 'Jalan Kukoh 组屋（蓝领）', 7, 7, 'S')
+  add('home_gang', 'home', t('牛车水组屋（黑帮）'), 2, 2, 'N')
+  add('home_gold', 'home', t('Marina One 公寓（金领）'), 7, 2, 'N')
+  add('home_white', 'home', t('Tiong Bahru 公寓（白领）'), 2, 7, 'S')
+  add('home_blue', 'home', t('Jalan Kukoh 组屋（蓝领）'), 7, 7, 'S')
   // 小贩中心
   add('hawker_maxwell', 'hawker', 'Maxwell Food Centre', 4, 4, 'E')
   add('hawker_tiongbahru', 'hawker', 'Tiong Bahru Market', 3, 6, 'W')
@@ -94,12 +95,12 @@ export function gridPois(graph: RoadGraph): Poi[] {
   add('office_guoco', 'office', 'Guoco Tower', 5, 4, 'E')
   add('office_oue', 'office', 'OUE Downtown', 6, 6, 'S')
   // 工地
-  add('site_tanjong', 'site', 'Tanjong Pagar 工地', 8, 5, 'E')
+  add('site_tanjong', 'site', t('Tanjong Pagar 工地'), 8, 5, 'E')
   // 的士站
-  add('taxi_chinatown', 'taxi', 'Chinatown Point 的士站', 4, 2, 'S')
-  add('taxi_tanjong', 'taxi', 'Tanjong Pagar Plaza 的士站', 6, 8, 'N')
+  add('taxi_chinatown', 'taxi', t('Chinatown Point 的士站'), 4, 2, 'S')
+  add('taxi_tanjong', 'taxi', t('Tanjong Pagar Plaza 的士站'), 6, 8, 'N')
   // 警署：沿用原医院重生点（路口 (1,1) 东向路段 t=14 → 街区 (1,0) 南侧）
-  add('police_cantonment', 'police', 'Cantonment Complex（警署）', 1, 0, 'S', 14)
+  add('police_cantonment', 'police', t('Cantonment Complex（警署）'), 1, 0, 'S', 14)
   add('hospital_sgh', 'hospital', 'Singapore General Hospital', 0, 4, 'E')
   // 商店与地标
   add('shop_fairprice', 'shop', 'NTUC FairPrice', 5, 7, 'W')

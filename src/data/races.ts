@@ -1,5 +1,6 @@
 import { PITCH, HALF } from '../config'
 import { clampTier } from './tiers'
+import { t } from '../i18n'
 
 /**
  * P10.C 街头赛车路线。
@@ -44,56 +45,56 @@ const leg = (i0: number, j0: number, i1: number, j1: number, u = 0.5) => {
 export const RACE_ROUTES: RaceRouteDef[] = [
   // ---------- sg ----------
   {
-    id: 'sg_marina_gp', world: 'sg', name: '滨海湾街道赛道',
-    desc: '仿 F1 Marina Bay Street Circuit：摩天轮下 Raffles Ave 起跑 → Stamford Rd → North Bridge Rd（政府大厦 / Padang）→ South Bridge Rd 过河 → CBD → Marina Blvd → Bayfront Ave（金沙前）→ Temasek Ave → Raffles Blvd → Republic Blvd 弯回到发车区。',
+    id: 'sg_marina_gp', world: 'sg', name: t('滨海湾街道赛道'),
+    desc: t('仿 F1 Marina Bay Street Circuit：摩天轮下 Raffles Ave 起跑 → Stamford Rd → North Bridge Rd（政府大厦 / Padang）→ South Bridge Rd 过河 → CBD → Marina Blvd → Bayfront Ave（金沙前）→ Temasek Ave → Raffles Blvd → Republic Blvd 弯回到发车区。'),
     loop: true, laps: 2,
     wps: [[1690, -776], [1300, -799], [870, -1051], [300, -500], [1000, 285], [1290, 230], [1440, 0], [1585, -330], [1598, -880], [1700, -975], [1830, -925]],
     entry: 300, prize: 1500, stars: 2, ai: [0.86, 0.92, 0.97],
     legal: { entry: 150, prize: 600 },
   },
   {
-    id: 'sg_marina_pro', world: 'sg', name: '滨海湾大奖赛（高级）',
-    desc: '同一条滨海湾街道赛道，对手是职业车手（更快的车、更狠的弯道），奖金翻几倍。',
+    id: 'sg_marina_pro', world: 'sg', name: t('滨海湾大奖赛（高级）'),
+    desc: t('同一条滨海湾街道赛道，对手是职业车手（更快的车、更狠的弯道），奖金翻几倍。'),
     loop: true, laps: 2,
     wps: [[1690, -776], [1300, -799], [870, -1051], [300, -500], [1000, 285], [1290, 230], [1440, 0], [1585, -330], [1598, -880], [1700, -975], [1830, -925]],
     entry: 1200, prize: 8000, stars: 3, unlock: 'race_pro', ai: [0.95, 1.0, 1.05],
     legal: { entry: 600, prize: 3000 },
   },
   {
-    id: 'sg_shenton_sprint', world: 'sg', name: '申顿道—滨海林荫道冲刺',
-    desc: '乌节路不在地图切片内，改走 CBD 长直主路：Anson Rd → Robinson Rd → Finlayson Green → Marina Blvd 一路冲到滨海南。点到点。',
+    id: 'sg_shenton_sprint', world: 'sg', name: t('申顿道—滨海林荫道冲刺'),
+    desc: t('乌节路不在地图切片内，改走 CBD 长直主路：Anson Rd → Robinson Rd → Finlayson Green → Marina Blvd 一路冲到滨海南。点到点。'),
     loop: false, laps: 1,
     wps: [[-250, 1040], [200, 480], [500, 50], [1000, 285], [1500, 605], [1990, 921]],
     entry: 200, prize: 900, stars: 1, ai: [0.84, 0.9, 0.95],
     legal: { entry: 100, prize: 400 },
   },
   {
-    id: 'sg_ecp_sprint', world: 'sg', name: '东海岸公园大道冲刺',
-    desc: 'Sheares Ave 高架桥北上，接 East Coast Parkway 快速路往东海岸方向全油门。点到点。',
+    id: 'sg_ecp_sprint', world: 'sg', name: t('东海岸公园大道冲刺'),
+    desc: t('Sheares Ave 高架桥北上，接 East Coast Parkway 快速路往东海岸方向全油门。点到点。'),
     loop: false, laps: 1,
     wps: [[1225, 650], [1450, 300], [1640, -150], [1664, -500], [2300, -1335]],
     entry: 250, prize: 1100, stars: 2, minLevel: 2, ai: [0.86, 0.92, 0.98],
     legal: { entry: 120, prize: 500 },
   },
   {
-    id: 'sg_chinatown_night', world: 'sg', name: '牛车水夜跑',
-    desc: '窄街多弯：South Bridge Rd → Neil Rd → Kreta Ayer Rd → Eu Tong Sen St → Temple St，3 圈。',
+    id: 'sg_chinatown_night', world: 'sg', name: t('牛车水夜跑'),
+    desc: t('窄街多弯：South Bridge Rd → Neil Rd → Kreta Ayer Rd → Eu Tong Sen St → Temple St，3 圈。'),
     loop: true, laps: 3,
     wps: [[-200, 170], [-350, 262], [-490, 150], [-480, -50], [-260, -45]],
     entry: 200, prize: 1000, stars: 3, minLevel: 2, ai: [0.85, 0.91, 0.97],
   },
   // ---------- 方格城（?world=grid） ----------
   {
-    id: 'grid_loop', world: 'grid', name: '方格城环线',
-    desc: '东区—北区—西区七个直角弯的街区环线，2 圈。',
+    id: 'grid_loop', world: 'grid', name: t('方格城环线'),
+    desc: t('东区—北区—西区七个直角弯的街区环线，2 圈。'),
     loop: true, laps: 2,
     wps: [leg(9, 3, 9, 8, 0.15), leg(9, 3, 9, 8), leg(9, 8, 5, 8), leg(5, 8, 5, 6), leg(5, 6, 2, 6), leg(2, 6, 2, 1), leg(2, 1, 9, 1), leg(9, 1, 9, 3)],
     entry: 150, prize: 700, stars: 1, ai: [0.84, 0.9, 0.96],
     legal: { entry: 80, prize: 300 },
   },
   {
-    id: 'grid_sprint', world: 'grid', name: '方格城外环冲刺',
-    desc: '沿城市外环跑大半圈到对角，点到点。',
+    id: 'grid_sprint', world: 'grid', name: t('方格城外环冲刺'),
+    desc: t('沿城市外环跑大半圈到对角，点到点。'),
     loop: false, laps: 1,
     wps: [leg(9, 4, 9, 0, 0.05), leg(9, 4, 9, 0), leg(9, 0, 0, 0), leg(0, 0, 0, 10), leg(0, 10, 10, 10, 0.9)],
     entry: 120, prize: 550, stars: 1, ai: [0.84, 0.9, 0.96],
@@ -126,9 +127,9 @@ export const PRIZE_POOL_SHARE = [0.6, 0.3, 0.1, 0]
 export const PRIZE_FIXED_SHARE = [1, 0.4, 0.15, 0]
 /** 对手名单（按难度从低到高） */
 export const RIVALS = [
-  { name: '阿杰', tag: '新手', color: 0xff7a00 },
-  { name: 'Marcus', tag: '老手', color: 0x1f6fff },
-  { name: '"Ghost" 林', tag: '车神', color: 0x23c552 },
+  { name: t('阿杰'), tag: t('新手'), color: 0xff7a00 },
+  { name: 'Marcus', tag: t('老手'), color: 0x1f6fff },
+  { name: t('"Ghost" 林'), tag: t('车神'), color: 0x23c552 },
 ]
 export const routesFor = (world: 'sg' | 'grid') => RACE_ROUTES.filter((r) => r.world === world)
 export const routeById = (id: string) => RACE_ROUTES.find((r) => r.id === id) ?? null

@@ -145,8 +145,8 @@ export class Bot {
     this.goal = { k: 'route', pts: r.pts, i: 0, stageAt: r.pts.findIndex((p) => Math.hypot(p.x - r.stage.x, p.z - r.stage.z) < 12), waitUntil: execAt, site }
     this.state = `T:${r.name}`
   }
-  assignHold(at: Pt, look: Pt) { this.goal = { k: 'hold', at, look }; this.state = 'CT:守点' }
-  assignHunt(w: BotWorld) { this.goal = { k: 'hunt', to: w.map.randomWalkable() }; this.state = '搜索' }
+  assignHold(at: Pt, look: Pt) { this.goal = { k: 'hold', at, look }; this.state = 'CT:守点' }   // i18n-ignore 仅调试 debugState 用
+  assignHunt(w: BotWorld) { this.goal = { k: 'hunt', to: w.map.randomWalkable() }; this.state = '搜索' }   // i18n-ignore 仅调试 debugState 用
 
   private go(w: BotWorld, x: number, z: number): boolean {
     const a = this.a.body
@@ -224,7 +224,7 @@ export class Bot {
           this.shotDist = dist
         }
       }
-      this.state = `交火:${tgt.name}`
+      this.state = `交火:${tgt.name}`   // i18n-ignore 仅调试 debugState 用
       if (wpn.def.kind === 'knife' && dist > 1.5) { moveGoal = false; this.steerTo(w, tgt.body.x, tgt.body.z, out) }
     } else {
       // 失去目标
@@ -387,11 +387,11 @@ export class Bot {
         if (G.i < G.pts.length) {
           const p = G.pts[G.i]
           if (G.i === G.stageAt && w.roundT < G.waitUntil) {
-            if (this.steerTo(w, p.x, p.z, out)) { out.mx = out.mz = 0; this.lookTowards(G.pts[Math.min(G.i + 1, G.pts.length - 1)], dt); this.state = 'T:等待集合' }
+            if (this.steerTo(w, p.x, p.z, out)) { out.mx = out.mz = 0; this.lookTowards(G.pts[Math.min(G.i + 1, G.pts.length - 1)], dt); this.state = 'T:等待集合' }   // i18n-ignore 仅调试 debugState 用
             break
           }
           if (this.steerTo(w, p.x, p.z, out)) G.i++
-          this.state = `T:推进${G.site}`
+          this.state = `T:推进${G.site}`   // i18n-ignore 仅调试 debugState 用
           // 静步接近包点
           out.walk = a.diff >= PRO_TIER && G.i >= G.pts.length - 2 && w.roundT < 60
         } else {
@@ -403,18 +403,18 @@ export class Bot {
       case 'site': {
         if (G.plant && a.hasC4 && !inSite(G.to.x, G.to.z)) G.to = PLANT_SPOTS[G.site][a.id % PLANT_SPOTS[G.site].length]
         if (!G.plant && a.hasC4 && w.bomb.state === 'carried') { G.plant = true; G.to = PLANT_SPOTS[G.site][a.id % PLANT_SPOTS[G.site].length] }
-        this.state = G.plant ? 'T:去下包' : 'T:去控点'
+        this.state = G.plant ? 'T:去下包' : 'T:去控点'   // i18n-ignore 仅调试 debugState 用
         if (this.steerTo(w, G.to.x, G.to.z, out)) {
           out.mx = out.mz = 0
-          if (G.plant && a.hasC4 && inSite(a.body.x, a.body.z)) { a.slot = 'c4'; out.use = true; this.state = 'T:下包中' }
-          else { this.lookTowards(POSTPLANT[G.site][a.id % 3].look, dt); this.state = 'T:控点' }
+          if (G.plant && a.hasC4 && inSite(a.body.x, a.body.z)) { a.slot = 'c4'; out.use = true; this.state = 'T:下包中' }   // i18n-ignore 仅调试 debugState 用
+          else { this.lookTowards(POSTPLANT[G.site][a.id % 3].look, dt); this.state = 'T:控点' }   // i18n-ignore 仅调试 debugState 用
         }
         break
       }
       case 'hold': {
         if (this.steerTo(w, G.at.x, G.at.z, out)) { out.mx = out.mz = 0; this.lookTowards(G.look, dt) }
         else out.walk = false
-        this.state = 'CT:守点'
+        this.state = 'CT:守点'   // i18n-ignore 仅调试 debugState 用
         // CT：收到包点接触 → 回防
         const c = w.contact[a.team]
         if (c && w.time - c.t < 8 && siteNear(G.at.x, G.at.z) !== c.site && Math.random() < 0.02) this.goal = { k: 'retake', site: c.site }
@@ -423,20 +423,20 @@ export class Bot {
       case 'retake': {
         const s = SITES[G.site].center
         if (this.steerTo(w, s.x, s.z, out)) { out.mx = out.mz = 0; this.goal = { k: 'hold', at: HOLDS[G.site][a.id % HOLDS[G.site].length].at, look: HOLDS[G.site][a.id % HOLDS[G.site].length].look } }
-        this.state = `CT:回防 ${G.site}`
+        this.state = `CT:回防 ${G.site}`   // i18n-ignore 仅调试 debugState 用
         break
       }
       case 'defuse': {
         const b = w.bomb
         if (b.state !== 'planted') { this.goal = { k: 'idle' }; break }
-        if (this.steerTo(w, b.pos.x, b.pos.z, out) || Math.hypot(b.pos.x - a.body.x, b.pos.z - a.body.z) < 1.2) { out.mx = out.mz = 0; out.use = true; this.state = 'CT:拆包中'; faceYaw = Math.atan2(-(b.pos.x - a.body.x), -(b.pos.z - a.body.z)) }
-        else this.state = 'CT:去拆包'
+        if (this.steerTo(w, b.pos.x, b.pos.z, out) || Math.hypot(b.pos.x - a.body.x, b.pos.z - a.body.z) < 1.2) { out.mx = out.mz = 0; out.use = true; this.state = 'CT:拆包中'; faceYaw = Math.atan2(-(b.pos.x - a.body.x), -(b.pos.z - a.body.z)) }   // i18n-ignore 仅调试 debugState 用
+        else this.state = 'CT:去拆包'   // i18n-ignore 仅调试 debugState 用
         break
       }
       case 'pickup': {
         const b = w.bomb
         if (b.state !== 'dropped') { this.goal = { k: 'idle' }; break }
-        this.steerTo(w, b.pos.x, b.pos.z, out); this.state = 'T:捡包'
+        this.steerTo(w, b.pos.x, b.pos.z, out); this.state = 'T:捡包'   // i18n-ignore 仅调试 debugState 用
         break
       }
       case 'follow': {
@@ -444,18 +444,18 @@ export class Bot {
         const d = Math.hypot(p.x - a.body.x, p.z - a.body.z)
         if (d > 4) this.steerTo(w, p.x, p.z, out)
         else this.lookTowards({ x: a.body.x - Math.sin(w.player.yaw) * 10, z: a.body.z - Math.cos(w.player.yaw) * 10 }, dt)
-        this.state = '跟随玩家'
+        this.state = '跟随玩家'   // i18n-ignore 仅调试 debugState 用
         break
       }
-      case 'stay': this.lookTowards(G.look, dt); this.state = '原地守点'; break
+      case 'stay': this.lookTowards(G.look, dt); this.state = '原地守点'; break   // i18n-ignore 仅调试 debugState 用
       case 'chase': {
         if (w.time > G.until || this.steerTo(w, G.to.x, G.to.z, out)) this.goal = { k: 'idle' }
-        this.state = '追击'
+        this.state = '追击'   // i18n-ignore 仅调试 debugState 用
         break
       }
       case 'retreat': {
         if (w.time > G.until || this.steerTo(w, G.to.x, G.to.z, out)) this.goal = { k: 'idle' }
-        this.state = '撤退'
+        this.state = '撤退'   // i18n-ignore 仅调试 debugState 用
         break
       }
       case 'hunt': {

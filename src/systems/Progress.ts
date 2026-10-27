@@ -2,6 +2,7 @@ import type { Ctx, Subsystem, AppView, PurchaseKind } from '../core/Context'
 import type { PanelButton } from '../ui/Panels'
 import type { Poi } from './Poi'
 import { onCashFlow } from './Wallet'
+import { t } from '../i18n'
 import { tierReward } from '../data/tiers'
 import { MAX_LEVEL, XP, xpFor, titleFor, nextUnlocks, ACHIEVEMENTS, type AchievementId } from '../data/progression'
 
@@ -264,27 +265,27 @@ export class Progress implements Subsystem<ProgressSave> {
     const next = nextUnlocks(role, this.level).slice(0, 3)
     return {
       lines: [
-        `Lv${this.level} ${this.title}${this.ctx.clock.day === this.buffDay && this.buffMul > 1 ? ` · 今日 XP ×${this.buffMul}` : ''}`,
-        `净资产 ${usd(this.host.netWorth())} · 产业 ${this.host.bizCount()} 个`,
-        need ? `距 Lv${this.level + 1} 还差 ${Math.ceil(need - this.xp)} XP` : '已满级',
+        `Lv${this.level} ${this.title}${this.ctx.clock.day === this.buffDay && this.buffMul > 1 ? ' · ' + t('今日 XP ×{m}', { m: this.buffMul }) : ''}`,
+        t('净资产 {nw} · 产业 {n} 个', { nw: usd(this.host.netWorth()), n: this.host.bizCount() }),
+        need ? t('距 Lv{lv} 还差 {xp} XP', { lv: this.level + 1, xp: Math.ceil(need - this.xp) }) : t('已满级'),
       ],
-      bars: [{ label: '经验', pct: this.pct, text: need ? `${Math.floor(this.xp)} / ${need}` : 'MAX' }],
+      bars: [{ label: t('经验'), pct: this.pct, text: need ? `${Math.floor(this.xp)} / ${need}` : 'MAX' }],
       sections: [
-        { title: '下一个解锁', items: next.length ? next.map((u) => ({ title: u.label, value: `Lv${u.level}`, tone: 'locked' as const })) : [{ title: '没有更多等级门槛了' }] },
-        { title: '终身统计', items: [
-          { title: '累计收入', value: usd(s.earned) }, { title: '累计花费', value: usd(s.spent) },
-          { title: '产业收入', value: usd(s.bizIncome) }, { title: '净资产峰值', value: usd(s.peakNetWorth) },
-          { title: '里程', value: `${s.distanceKm.toFixed(1)} km` }, { title: '的士趟数', value: `${s.trips}` },
-          { title: '叫车出行', value: `${s.rides} 次`, desc: s.rides ? `车费累计 ${usd(s.rideFares)}` : undefined },
-          { title: '被捕次数', value: `${s.arrests}` }, { title: '游戏天数', value: `${s.daysPlayed}` },
+        { title: t('下一个解锁'), items: next.length ? next.map((u) => ({ title: u.label, value: `Lv${u.level}`, tone: 'locked' as const })) : [{ title: t('没有更多等级门槛了') }] },
+        { title: t('终身统计'), items: [
+          { title: t('累计收入'), value: usd(s.earned) }, { title: t('累计花费'), value: usd(s.spent) },
+          { title: t('产业收入'), value: usd(s.bizIncome) }, { title: t('净资产峰值'), value: usd(s.peakNetWorth) },
+          { title: t('里程'), value: `${s.distanceKm.toFixed(1)} km` }, { title: t('的士趟数'), value: `${s.trips}` },
+          { title: t('叫车出行'), value: t('{n} 次', { n: s.rides }), desc: s.rides ? t('车费累计 {v}', { v: usd(s.rideFares) }) : undefined },
+          { title: t('被捕次数'), value: `${s.arrests}` }, { title: t('游戏天数'), value: `${s.daysPlayed}` },
         ] },
-        { title: '娱乐', items: [
-          { title: '赌博净输赢', value: `${s.gambleNet < 0 ? '-' : ''}${usd(Math.abs(s.gambleNet))}`, desc: `${s.gambleRounds} 局 · 单局最多赢 ${usd(s.gambleBestWin)}` },
-          { title: '赛车', value: `${s.raceWins} 冠 / ${s.races} 场` },
-          { title: '射击比赛', value: `${s.matchWins} 胜 / ${s.matches} 场`, desc: `击杀 ${s.kills} · 爆头 ${s.headshots} · 最佳连胜 ${s.matchBestStreak}` },
-          { title: '约会', value: `${s.dates} 次`, desc: s.lovers.length ? `恋人 ${s.lovers.length} 位` : undefined },
+        { title: t('娱乐'), items: [
+          { title: t('赌博净输赢'), value: `${s.gambleNet < 0 ? '-' : ''}${usd(Math.abs(s.gambleNet))}`, desc: t('{n} 局 · 单局最多赢 {v}', { n: s.gambleRounds, v: usd(s.gambleBestWin) }) },
+          { title: t('赛车'), value: t('{w} 冠 / {n} 场', { w: s.raceWins, n: s.races }) },
+          { title: t('射击比赛'), value: t('{w} 胜 / {n} 场', { w: s.matchWins, n: s.matches }), desc: t('击杀 {k} · 爆头 {h} · 最佳连胜 {s}', { k: s.kills, h: s.headshots, s: s.matchBestStreak }) },
+          { title: t('约会'), value: t('{n} 次', { n: s.dates }), desc: s.lovers.length ? t('恋人 {n} 位', { n: s.lovers.length }) : undefined },
         ] },
-        { title: `成就 ${this.achievements.size}/${ACHIEVEMENTS.length}`, items: ACHIEVEMENTS.map((a) => {
+        { title: t('成就 {a}/{b}', { a: this.achievements.size, b: ACHIEVEMENTS.length }), items: ACHIEVEMENTS.map((a) => {
           const got = this.achievements.has(a.id)
           return { title: `${got ? '★' : '☆'} ${a.name}`, desc: a.desc, tone: got ? 'owned' as const : 'locked' as const }
         }) },

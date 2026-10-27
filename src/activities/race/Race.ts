@@ -10,6 +10,7 @@ import { RIVALS, PRIZE_POOL_SHARE, PRIZE_FIXED_SHARE, betOdds, effectiveAi, race
 import { tierReward } from '../../data/tiers'
 import { pointAt, project, vmaxAt, type BuiltRoute } from './Route'
 import { makeRacer, driveAI, resetOnRoute, type Racer } from './RaceAI'
+import { t } from '../../i18n'
 
 export type RaceMode = 'street' | 'legal'
 export interface RaceOptions { mode: RaceMode; rent: boolean; bet: number; /** 对手级别 T1–T10 */ tier: number }
@@ -103,7 +104,7 @@ export class RaceSession {
     pointAt(route, rows[0], P)
     const lat = Math.min(2.4, Math.max(1.3, P.hw))
     this.slots = [{ s: rows[0], lat: -lat }, { s: rows[0], lat }, { s: rows[1], lat: -lat }, { s: rows[1], lat }]
-    this.player = makeRacer('你', '', true, 1)
+    this.player = makeRacer(t('你'), '', true, 1)
     this.player.v = car
     const order = [2, 1, 0]   // AI 难度索引 → 槽位 0 / 2 / 3
     const aiSlots = [0, 2, 3]
@@ -132,7 +133,7 @@ export class RaceSession {
     game.law.trafficExempt = true
     // 街头赛：非黑帮身份在路线中段放一辆巡逻警车（被它近距离看到 → 1 星通缉）
     if (opts.mode === 'street' && game.ctx.role.id !== 'gang') this.placePatrol()
-    game.hud.toast(`${def.name} · ${opts.mode === 'legal' ? '合法赛道日（封路）' : '街头赛'} · 就位`, 2)
+    game.hud.toast(t('{name} · {mode} · 就位', { name: def.name, mode: opts.mode === 'legal' ? t('合法赛道日（封路）') : t('街头赛') }), 2)
   }
 
   get ctx(): Ctx { return this.game.ctx }
@@ -245,7 +246,7 @@ export class RaceSession {
     const inCar = pl.vehicle === me.v && !!me.v && !me.v.wrecked
     if (!inCar) {
       this.outT += dt
-      if (this.outT >= OUT_OF_CAR_LIMIT) { this.abort('离开赛车超过 15 秒'); return }
+      if (this.outT >= OUT_OF_CAR_LIMIT) { this.abort(t('离开赛车超过 15 秒')); return }
     } else this.outT = 0
     const v = me.v!
     // 赛车加固（与 AI 相同）：未报废时缓慢回血
@@ -262,7 +263,7 @@ export class RaceSession {
       if (me.nextCp >= this.totalCps) { this.finish(); return }
       if (route.loop && me.nextCp % route.cps.length === 0) {
         const lap = me.nextCp / route.cps.length
-        this.game.hud.toast(`第 ${lap + 1}/${this.def.laps} 圈${lap + 1 === this.def.laps ? ' · 最后一圈！' : ''}`, 1.6)
+        this.game.hud.toast(lap + 1 === this.def.laps ? t('第 {lap}/{laps} 圈 · 最后一圈！', { lap: lap + 1, laps: this.def.laps }) : t('第 {lap}/{laps} 圈', { lap: lap + 1, laps: this.def.laps }), 1.6)
       }
     }
     // 进度 = 下一检查点进度 − 剩余距离（只能逐个过检查点，错过要回头）
@@ -319,7 +320,7 @@ export class RaceSession {
     const st = this.standings()
     return {
       route: this.def.id, mode: this.opts.mode, tier: this.opts.tier, place, prize, betWon, time: this.raceT, aborted, reason,
-      standings: st.map((r, i) => ({ name: r.isPlayer ? '你' : `${r.name}（${r.tag}）`, place: r.isPlayer && aborted ? 0 : i + 1, time: r.finished ? +r.finishTime.toFixed(2) : null, progress: Math.round(r.progress) })),
+      standings: st.map((r, i) => ({ name: r.isPlayer ? t('你') : t('{name}（{tag}）', { name: r.name, tag: r.tag }), place: r.isPlayer && aborted ? 0 : i + 1, time: r.finished ? +r.finishTime.toFixed(2) : null, progress: Math.round(r.progress) })),
     }
   }
 
@@ -333,7 +334,7 @@ export class RaceSession {
     this.result = this.makeResult(0, 0, 0, true, reason)
     this.ctx.events.emit('raceDone', { route: this.def.id, place: 0, prize: 0 })
     this.game.law.trafficExempt = false
-    this.game.hud.toast(`比赛放弃：${reason}`, 3)
+    this.game.hud.toast(t('比赛放弃：{reason}', { reason }), 3)
     this.onEnd?.(this.result)
     this.dispose()
   }
@@ -349,7 +350,7 @@ export class RaceSession {
     if (this.rental) {
       if (pl.vehicle === this.rental) pl.exit(g.world)
       this.rental.deactivate()
-      g.hud.toast('租来的跑车已归还', 2)
+      g.hud.toast(t('租来的跑车已归还'), 2)
     }
     if (this.patrol && this.patrol.driver !== 'police') this.patrol.deactivate()
     this.car.damageMul = this.prevDamageMul
@@ -383,7 +384,7 @@ export class RaceSession {
       if (Math.hypot(v.x - px, v.z - pz) > SPOT_DIST || !lineClear(ctx, v.x, v.z, px, pz)) continue
       this.spotted = true
       this.game.law.addCrime(1, ctx.time)
-      this.game.hud.toast('被巡警发现非法飙车！通缉 1 星', 3)
+      this.game.hud.toast(t('被巡警发现非法飙车！通缉 1 星'), 3)
       if (v === this.patrol) this.game.policeAI.start(v, ctx.graph.nearestLane(v.x, v.z, Math.sin(v.yaw), Math.cos(v.yaw)).edge, 1)
       break
     }
@@ -417,26 +418,26 @@ export class RaceSession {
 
   hudCard() {
     const def = this.def, me = this.player
-    const title = `${this.opts.mode === 'legal' ? '赛道日' : '街头赛'} · ${def.name}`
-    if (this.phase === 'grid') return { title, desc: '起跑格就位，油门已锁', timer: 'READY' }
-    if (this.phase === 'countdown') return { title, desc: '倒计时，准备起步', timer: String(Math.max(1, Math.ceil(COUNT_T - this.phaseT))) }
+    const title = `${this.opts.mode === 'legal' ? t('赛道日') : t('街头赛')} · ${def.name}`
+    if (this.phase === 'grid') return { title, desc: t('起跑格就位，油门已锁'), timer: 'READY' }
+    if (this.phase === 'countdown') return { title, desc: t('倒计时，准备起步'), timer: String(Math.max(1, Math.ceil(COUNT_T - this.phaseT))) }
     if (this.phase === 'done' && this.result) {
       const r = this.result
-      return { title, desc: `完赛 第 ${r.place} 名 · 奖金 $${r.prize.toLocaleString()}${r.betWon ? ` · 赢注 $${r.betWon.toLocaleString()}` : ''}`, timer: fmt(r.time) }
+      return { title, desc: t('完赛 第 {place} 名 · 奖金 ${prize}', { place: r.place, prize: r.prize.toLocaleString() }) + (r.betWon ? t(' · 赢注 ${n}', { n: r.betWon.toLocaleString() }) : ''), timer: fmt(r.time) }
     }
     const M = this.route.cps.length
     const lap = Math.min(def.laps, Math.floor(me.nextCp / M) + 1)
     const gap = this.gapAhead()
     const parts = [
-      this.route.loop ? `圈 ${lap}/${def.laps}` : '',
-      `检查点 ${Math.min(me.nextCp + 1, this.totalCps)}/${this.totalCps}`,
-      `第 ${this.place}/${this.racers.length} 名`,
-      gap === null ? '领跑' : `前车 +${gap.toFixed(1)} s`,
+      this.route.loop ? t('圈 {lap}/{laps}', { lap, laps: def.laps }) : '',
+      t('检查点 {n}/{total}', { n: Math.min(me.nextCp + 1, this.totalCps), total: this.totalCps }),
+      t('第 {place}/{n} 名', { place: this.place, n: this.racers.length }),
+      gap === null ? t('领跑') : t('前车 +{gap} s', { gap: gap.toFixed(1) }),
     ].filter(Boolean)
     let sub: string | undefined
-    if (this.outT > 0) sub = `回到赛车！${Math.ceil(OUT_OF_CAR_LIMIT - this.outT)} s 后判弃赛`
-    else if (this.missed) sub = '错过检查点！掉头回到品红光柱'
-    else if (this.spotted) sub = '被警察盯上了'
+    if (this.outT > 0) sub = t('回到赛车！{n} s 后判弃赛', { n: Math.ceil(OUT_OF_CAR_LIMIT - this.outT) })
+    else if (this.missed) sub = t('错过检查点！掉头回到品红光柱')
+    else if (this.spotted) sub = t('被警察盯上了')
     return { title, desc: parts.join(' · '), timer: fmt(this.raceT), sub }
   }
 

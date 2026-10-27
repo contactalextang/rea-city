@@ -16,6 +16,7 @@ import { RouletteTable } from './Roulette'
 import { SicboTable } from './Sicbo'
 import { BaccaratTable } from './Baccarat'
 import { SlotsTable } from './Slots'
+import { t } from '../../i18n'
 
 export const CASINO_POI = 'casino_mbs'
 
@@ -57,7 +58,7 @@ export class Casino implements CasinoHost {
   hallLock(h: HallDef): string | null {
     if (!h.unlock) return null
     const role = this.ctx.role.id
-    return isUnlocked(role, this.level, h.unlock) ? null : `需要 Lv${unlockLevel(role, h.unlock)}（当前 Lv${this.level}）`
+    return isUnlocked(role, this.level, h.unlock) ? null : t('需要 Lv{need}（当前 Lv{cur}）', { need: unlockLevel(role, h.unlock), cur: this.level })
   }
   get hall(): HallDef {
     const h = hallById(this.hallId)
@@ -80,7 +81,7 @@ export class Casino implements CasinoHost {
         onClick: () => { this.openGame(g.id, true) },
       })
     }
-    out.push({ label: '换筹码 / 选赌厅', note: `当前：${hall.name}`, onClick: () => { this.openCashier(true) } })
+    out.push({ label: t('换筹码 / 选赌厅'), note: t('当前：{name}', { name: hall.name }), onClick: () => { this.openCashier(true) } })
     return out
   }
 
@@ -92,7 +93,7 @@ export class Casino implements CasinoHost {
     const spec: ActivitySpec = {
       id: `casino:${id}`,
       title: `${gameName(id)} · ${hall.name}`,
-      subtitle: `滨海湾金沙 · 每局 ${money(hall.min)}–${money(hall.max)}`,
+      subtitle: t('滨海湾金沙 · 每局 {min}–{max}', { min: money(hall.min), max: money(hall.max) }),
       opaque: true,
       returnToPanel: fromPanel,
       mount: (_root, api) => {
@@ -101,7 +102,7 @@ export class Casino implements CasinoHost {
       },
       update: (dt, input, ptr) => { table?.frame(dt, input, ptr) },
       onEscape: () => {
-        if (table?.inRound) { table.notice('本局进行中，结束后再离开', 1.8); return true }
+        if (table?.inRound) { table.notice(t('本局进行中，结束后再离开'), 1.8); return true }
         return false
       },
       onClose: () => {
@@ -115,7 +116,7 @@ export class Casino implements CasinoHost {
 
   openCashier(fromPanel = false): boolean {
     const spec: ActivitySpec = {
-      id: 'casino:cashier', title: '换筹码 · 选赌厅', subtitle: '滨海湾金沙', returnToPanel: fromPanel,
+      id: 'casino:cashier', title: t('换筹码 · 选赌厅'), subtitle: t('滨海湾金沙'), returnToPanel: fromPanel,
       mount: (root) => {
         const render = () => {
           root.innerHTML = ''
@@ -123,7 +124,7 @@ export class Casino implements CasinoHost {
           wrap.style.cssText = 'max-width:880px;margin:24px auto;padding:0 16px;display:flex;flex-direction:column;gap:14px'
           const info = document.createElement('div')
           info.style.cssText = 'opacity:.85;font-size:14px;line-height:1.6'
-          info.textContent = `筹码按现金结算：下注时从现金扣除，结算后返还到现金。今日净输赢 ${this.signed(this.todayNet)} · 当前赌厅：${this.hall.name}`
+          info.textContent = t('筹码按现金结算：下注时从现金扣除，结算后返还到现金。今日净输赢 {net} · 当前赌厅：{hall}', { net: this.signed(this.todayNet), hall: this.hall.name })
           wrap.appendChild(info)
           const row = document.createElement('div')
           row.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px'
@@ -134,11 +135,11 @@ export class Casino implements CasinoHost {
             card.dataset.hall = h.id
             card.style.cssText = `border:2px solid ${cur ? '#ffd33d' : 'rgba(255,255,255,.2)'};border-radius:14px;padding:16px;background:rgba(255,255,255,.06);opacity:${lock ? 0.55 : 1}`
             card.innerHTML = `<div style="font-size:20px;font-weight:800">${h.name}</div>
-              <div style="margin:6px 0;color:#7ee787;font-weight:700">每局 ${money(h.min)}–${money(h.max)}</div>
-              <div style="font-size:13px;opacity:.8">筹码：${h.chips.map((c) => money(c)).join(' / ')}</div>
-              <div style="font-size:13px;margin-top:6px;color:#ffd33d">${lock ? '🔒 ' + lock : cur ? '当前所在' : '可进入'}</div>`
+              <div style="margin:6px 0;color:#7ee787;font-weight:700">${t('每局 {min}–{max}', { min: money(h.min), max: money(h.max) })}</div>
+              <div style="font-size:13px;opacity:.8">${t('筹码：{list}', { list: h.chips.map((c) => money(c)).join(' / ') })}</div>
+              <div style="font-size:13px;margin-top:6px;color:#ffd33d">${lock ? '🔒 ' + lock : cur ? t('当前所在') : t('可进入')}</div>`
             const b = document.createElement('button')
-            b.className = 'pbtn'; b.textContent = cur ? '已选择' : lock ? '未解锁' : '进入此厅'
+            b.className = 'pbtn'; b.textContent = cur ? t('已选择') : lock ? t('未解锁') : t('进入此厅')
             b.disabled = !!lock || cur
             b.style.marginTop = '10px'
             b.addEventListener('click', () => { if (this.setHall(h.id)) { this.sfx.chip(); render() } })
@@ -148,7 +149,7 @@ export class Casino implements CasinoHost {
           wrap.appendChild(row)
           const tip = document.createElement('div')
           tip.style.cssText = 'font-size:12px;opacity:.6;line-height:1.6'
-          tip.textContent = '高额厅 Lv6、VIP 厅 Lv10 解锁。理性娱乐：每个游戏都有庄家优势，长期下注必然亏损。'
+          tip.textContent = t('高额厅 Lv6、VIP 厅 Lv10 解锁。理性娱乐：每个游戏都有庄家优势，长期下注必然亏损。')
           wrap.appendChild(tip)
           root.appendChild(wrap)
         }
@@ -173,8 +174,8 @@ export class Casino implements CasinoHost {
     this.ctx.events.emit('gambled', { game, bet: stake, net })
     if (net < 0) this.lossStreak++
     else if (net > 0) this.lossStreak = 0
-    if (net < 0 && this.lossStreak % 5 === 0) api.toast(`已连输 ${this.lossStreak} 局\n适度娱乐，理性消费`, 3.2)
-    this.pushLog(`${gameName(game)} 押 ${money(stake)} → ${this.signed(net)}`)
+    if (net < 0 && this.lossStreak % 5 === 0) api.toast(t('已连输 {n} 局\n适度娱乐，理性消费', { n: this.lossStreak }), 3.2)
+    this.pushLog(t('{game} 押 {bet} → {net}', { game: gameName(game), bet: money(stake), net: this.signed(net) }))
     api.skipTime(ROUND_MIN[game] / 60)
   }
 
@@ -189,32 +190,32 @@ export class Casino implements CasinoHost {
     const rounds = all.reduce((a, s) => a + s.rounds, 0), wag = all.reduce((a, s) => a + s.wagered, 0), net = all.reduce((a, s) => a + s.net, 0)
     return {
       lines: [
-        `当前赌厅：${this.hall.name}（${money(this.hall.min)}–${money(this.hall.max)}）`,
-        `终身 ${rounds} 局 · 总下注 ${money(wag)} · 净输赢 ${this.signed(Math.round(net * 100) / 100)}`,
-        `今日净输赢 ${this.signed(this.todayNet)}`,
+        t('当前赌厅：{name}（{min}–{max}）', { name: this.hall.name, min: money(this.hall.min), max: money(this.hall.max) }),
+        t('终身 {n} 局 · 总下注 {bet} · 净输赢 {net}', { n: rounds, bet: money(wag), net: this.signed(Math.round(net * 100) / 100) }),
+        t('今日净输赢 {net}', { net: this.signed(this.todayNet) }),
       ],
       sections: [
         ...this.game.venueSections(CASINO_POI),
         {
-          title: '各游戏',
+          title: t('各游戏'),
           items: CASINO_GAMES.map((g) => {
             const s = this.stats[g.id]
             return {
               title: g.name,
               value: s ? this.signed(s.net) : '—',
-              desc: s ? `${s.rounds} 局 · 下注 ${money(s.wagered)} · 实际返还率 ${s.wagered ? ((1 + s.net / s.wagered) * 100).toFixed(1) : '—'}% · 单局最多赢 ${money(s.best)}` : g.desc,
+              desc: s ? t('{n} 局 · 下注 {bet} · 实际返还率 {rtp}% · 单局最多赢 {best}', { n: s.rounds, bet: money(s.wagered), rtp: s.wagered ? ((1 + s.net / s.wagered) * 100).toFixed(1) : '—', best: money(s.best) }) : g.desc,
             }
           }),
         },
         {
-          title: '赌厅',
+          title: t('赌厅'),
           items: HALLS.map((h) => {
             const lock = this.hallLock(h)
-            return { title: h.name, value: `${money(h.min)}–${money(h.max)}`, status: lock ?? (this.hall.id === h.id ? '当前' : '已解锁'), tone: lock ? 'locked' as const : this.hall.id === h.id ? 'owned' as const : undefined }
+            return { title: h.name, value: `${money(h.min)}–${money(h.max)}`, status: lock ?? (this.hall.id === h.id ? t('当前') : t('已解锁')), tone: lock ? 'locked' as const : this.hall.id === h.id ? 'owned' as const : undefined }
           }),
         },
       ],
-      log: this.log.length ? this.log : ['理性娱乐：每个游戏都有庄家优势，长期必输。'],
+      log: this.log.length ? this.log : [t('理性娱乐：每个游戏都有庄家优势，长期必输。')],
     }
   }
 

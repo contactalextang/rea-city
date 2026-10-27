@@ -1,4 +1,5 @@
 import type { Ctx, AppView } from '../core/Context'
+import { t } from '../i18n'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -12,8 +13,8 @@ export type CashCat =
   | 'gamble' | 'entertain' | 'race' | 'arena' | 'date' | 'other'
 export const CASH_CATS: readonly CashCat[] = ['food', 'transport', 'rent', 'job', 'biz', 'shop', 'fine', 'medical', 'gamble', 'entertain', 'race', 'arena', 'date', 'other']
 export const CASH_CAT_LABEL: Record<CashCat, string> = {
-  food: '餐饮', transport: '交通', rent: '房租', job: '工作', biz: '产业', shop: '购物', fine: '罚款', medical: '医疗',
-  gamble: '赌博', entertain: '娱乐', race: '赛车', arena: '射击比赛', date: '约会', other: '其他',
+  food: t('餐饮'), transport: t('交通'), rent: t('房租'), job: t('工作'), biz: t('产业'), shop: t('购物'), fine: t('罚款'), medical: t('医疗'),
+  gamble: t('赌博'), entertain: t('娱乐'), race: t('赛车'), arena: t('射击比赛'), date: t('约会'), other: t('其他'),
 }
 /** 手机钱包页单独列出的娱乐类别 */
 export const FUN_CATS: readonly CashCat[] = ['gamble', 'entertain', 'race', 'arena', 'date']
@@ -120,16 +121,16 @@ export class Wallet {
     const today = ledgerToday(this.ctx), total = ledgerTotal()
     const net = (f?: CatFlow) => (f ? f.in - f.out : 0)
     const item = (cat: CashCat) => {
-      const t = today[cat], a = total[cat]
-      return { title: CASH_CAT_LABEL[cat], value: `今日 ${usd(net(t))}`, desc: `今日 +${usd(t?.in ?? 0)} / −${usd(t?.out ?? 0)} · 累计 ${usd(net(a))}（+${usd(a?.in ?? 0)} / −${usd(a?.out ?? 0)}）` }
+      const d = today[cat], a = total[cat]
+      return { title: CASH_CAT_LABEL[cat], value: t('今日 {n}', { n: usd(net(d)) }), desc: t('今日 +{tin} / −{tout} · 累计 {net}（+{ain} / −{aout}）', { tin: usd(d?.in ?? 0), tout: usd(d?.out ?? 0), net: usd(net(a)), ain: usd(a?.in ?? 0), aout: usd(a?.out ?? 0) }) }
     }
     const used = CASH_CATS.filter((c) => !FUN_CATS.includes(c) && (today[c]?.in || today[c]?.out))
     const funNet = FUN_CATS.reduce((s, c) => s + net(total[c]), 0)
     return {
-      lines: [`现金 ${usd(this.cash)} · 净资产 ${usd(this.netWorth())}`, `娱乐累计净收支 ${usd(funNet)}`],
+      lines: [t('现金 {cash} · 净资产 {net}', { cash: usd(this.cash), net: usd(this.netWorth()) }), t('娱乐累计净收支 {n}', { n: usd(funNet) })],
       sections: [
-        { title: '娱乐 / 赌博 / 比赛', items: FUN_CATS.map(item) },
-        { title: '今日其他收支', items: used.length ? used.map(item) : [{ title: '今天还没有其他收支' }] },
+        { title: t('娱乐 / 赌博 / 比赛'), items: FUN_CATS.map(item) },
+        { title: t('今日其他收支'), items: used.length ? used.map(item) : [{ title: t('今天还没有其他收支') }] },
       ],
     }
   }

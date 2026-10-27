@@ -8,6 +8,7 @@ import { venueOf, venueOpen } from '../../data/venues'
 import { DRINKS, npcById, type NpcDef } from '../../data/dates'
 import { danceSpec, fakeResult, type DanceResult } from './Dance'
 import type { Relations } from './Relations'
+import { t } from '../../i18n'
 
 export const CLUB_ID = 'club_clarke_quay'
 /** VIP 卡座最低消费（全额转为当晚酒水额度） */
@@ -63,32 +64,32 @@ export class Club {
   buyTicket(): boolean {
     if (this.entered) return true
     const p = this.ticketPrice()
-    if (p > 0 && !spend(this.ctx, p, 'entertain:club')) { this.toast('钱不够买门票'); return false }
+    if (p > 0 && !spend(this.ctx, p, 'entertain:club')) { this.toast(t('钱不够买门票')); return false }
     this.entryNight = this.night
-    this.toast(p ? `门票 $${p} · 欢迎来到克拉码头` : '你在嘉宾名单上 · 免费入场')
+    this.toast(p ? t('门票 ${p} · 欢迎来到克拉码头', { p }) : t('你在嘉宾名单上 · 免费入场'))
     return true
   }
   buyVip(): boolean {
-    if (!this.vipUnlocked) { this.toast('VIP 卡座需要 Lv3'); return false }
+    if (!this.vipUnlocked) { this.toast(t('VIP 卡座需要 Lv3')); return false }
     if (this.vipTonight) return true
-    if (!spend(this.ctx, VIP_MIN, 'entertain:vip')) { this.toast(`VIP 卡座最低消费 $${VIP_MIN}`); return false }
+    if (!spend(this.ctx, VIP_MIN, 'entertain:vip')) { this.toast(t('VIP 卡座最低消费 ${n}', { n: VIP_MIN })); return false }
     this.vipNight = this.night; this.vipCredit = VIP_MIN
-    this.toast(`入座 VIP 卡座 · 酒水额度 $${VIP_MIN}`, 3)
+    this.toast(t('入座 VIP 卡座 · 酒水额度 ${n}', { n: VIP_MIN }), 3)
     return true
   }
   /** 点一杯：先扣 VIP 额度；发 drank 事件（心情由事件处理） */
   order(id: string): boolean {
     const d = DRINKS.find((x) => x.id === id); if (!d) return false
-    if (d.vipOnly && !this.vipTonight) { this.toast('香槟塔只在 VIP 卡座供应'); return false }
-    if (d.units > 0 && this.drunk >= DRUNK_CUTOFF) { this.toast('酒保：你今晚喝得够多了，来杯水吧'); return false }
+    if (d.vipOnly && !this.vipTonight) { this.toast(t('香槟塔只在 VIP 卡座供应')); return false }
+    if (d.units > 0 && this.drunk >= DRUNK_CUTOFF) { this.toast(t('酒保：你今晚喝得够多了，来杯水吧')); return false }
     const fromCredit = Math.min(this.vipCredit, d.price)
     const cash = d.price - fromCredit
-    if (cash > 0 && !spend(this.ctx, cash, 'entertain:drink')) { this.toast('钱不够'); return false }
+    if (cash > 0 && !spend(this.ctx, cash, 'entertain:drink')) { this.toast(t('钱不够')); return false }
     this.vipCredit -= fromCredit
     this.drunk = Math.round((this.drunk + d.units) * 100) / 100
     this.ctx.events.emit('drank', { n: 1 })
-    const lvl = this.drunk >= 6 ? '天旋地转' : this.drunk >= 4 ? '醉醺醺' : this.drunk >= DRUNK_LIMIT ? '微醺（别开车）' : d.units ? '有点上头' : '清醒'
-    this.toast(`${d.name}${fromCredit ? '（VIP 额度）' : ''} · ${lvl}`)
+    const lvl = this.drunk >= 6 ? t('天旋地转') : this.drunk >= 4 ? t('醉醺醺') : this.drunk >= DRUNK_LIMIT ? t('微醺（别开车）') : d.units ? t('有点上头') : t('清醒')
+    this.toast(d.name + (fromCredit ? t('（VIP 额度）') : '') + ' · ' + lvl)
     return true
   }
 
@@ -133,13 +134,13 @@ export class Club {
         api.skipTime(0.25)
         const { mood, attracted } = this.settleDance(res)
         const lines: string[] = []
-        if (mood) lines.push(`跳得尽兴 · 心情 +${mood}`)
+        if (mood) lines.push(t('跳得尽兴 · 心情 +{n}', { n: mood }))
         const buttons: { label: string; onClick: () => void; id?: string }[] = []
         if (attracted) {
-          lines.push(`${this.rel.rel[attracted.id]?.met ? attracted.name : '有人'}被你的舞姿吸引，朝你走了过来……`)
-          buttons.push({ label: `和 ${this.rel.rel[attracted.id]?.met ? attracted.name : 'TA'} 聊聊`, id: 'dance-talk', onClick: () => { api.close(); this.talkTo(attracted, true) } })
-        } else if (res.pct >= 0.7) lines.push('全场为你欢呼，可惜今晚没什么熟面孔。')
-        else lines.push('再练练，舞跳得好会有人来搭讪哦。')
+          lines.push(this.rel.rel[attracted.id]?.met ? t('{name}被你的舞姿吸引，朝你走了过来……', { name: attracted.name }) : t('有人被你的舞姿吸引，朝你走了过来……'))
+          buttons.push({ label: t('和 {name} 聊聊', { name: this.rel.rel[attracted.id]?.met ? attracted.name : 'TA' }), id: 'dance-talk', onClick: () => { api.close(); this.talkTo(attracted, true) } })
+        } else if (res.pct >= 0.7) lines.push(t('全场为你欢呼，可惜今晚没什么熟面孔。'))
+        else lines.push(t('再练练，舞跳得好会有人来搭讪哦。'))
         return { lines, buttons }
       },
     }, (this.ctx.clock.day * 7 + this.dances) | 0))
@@ -161,24 +162,24 @@ export class Club {
     const out: PanelButton[] = []
     if (!this.entered) {
       const p = this.ticketPrice()
-      out.push({ label: '买票进场', note: `${p ? `$${p}` : '免费'}${this.weekend ? ' · 周末' : ''}${this.level >= 5 ? ` · Lv${this.level} 优惠` : ''}`, onClick: () => { this.buyTicket(); this.refresh() } })
+      out.push({ label: t('买票进场'), note: (p ? `$${p}` : t('免费')) + (this.weekend ? t(' · 周末') : '') + (this.level >= 5 ? t(' · Lv{n} 优惠', { n: this.level }) : ''), onClick: () => { this.buyTicket(); this.refresh() } })
       return out
     }
     for (const d of DRINKS) {
       if (d.vipOnly && !this.vipTonight) continue
-      out.push({ label: `点一杯 ${d.name}`, note: `$${d.price}${this.vipTonight && this.vipCredit > 0 ? `（额度 $${this.vipCredit}）` : ''} · ${d.desc}`, disabled: d.units > 0 && this.drunk >= DRUNK_CUTOFF, onClick: () => { this.order(d.id); this.refresh() } })
+      out.push({ label: t('点一杯 {drink}', { drink: d.name }), note: `$${d.price}` + (this.vipTonight && this.vipCredit > 0 ? t('（额度 ${n}）', { n: this.vipCredit }) : '') + ` · ${d.desc}`, disabled: d.units > 0 && this.drunk >= DRUNK_CUTOFF, onClick: () => { this.order(d.id); this.refresh() } })
     }
-    out.push({ label: '下舞池跳舞', note: '节奏小游戏 · 约 60 秒', onClick: () => { this.openDance() } })
+    out.push({ label: t('下舞池跳舞'), note: t('节奏小游戏 · 约 60 秒'), onClick: () => { this.openDance() } })
     const here = this.rel.presentAt(poi)
-    out.push({ label: '四处看看 / 搭讪', note: here.length ? `今晚有 ${here.length} 个人值得认识` : '人不多', onClick: () => {
+    out.push({ label: t('四处看看 / 搭讪'), note: here.length ? t('今晚有 {n} 个人值得认识', { n: here.length }) : t('人不多'), onClick: () => {
       const n = this.lookAround()
-      if (!n) { this.toast('转了一圈，今晚没遇到感兴趣的人'); return }
+      if (!n) { this.toast(t('转了一圈，今晚没遇到感兴趣的人')); return }
       this.talkTo(n)
     } })
     const att = this.attracted && this.attracted.night === this.night ? npcById(this.attracted.npc) : null
-    if (att && here.includes(att)) out.push({ label: `${this.rel.rel[att.id]?.met ? att.name : '刚才看你跳舞的人'} 在等你`, note: '被你的舞姿吸引', onClick: () => { this.talkTo(att, true) } })
+    if (att && here.includes(att)) out.push({ label: this.rel.rel[att.id]?.met ? t('{name} 在等你', { name: att.name }) : t('刚才看你跳舞的人 在等你'), note: t('被你的舞姿吸引'), onClick: () => { this.talkTo(att, true) } })
     for (const n of here) if (this.rel.rel[n.id]?.met && n !== att) out.push(this.rel.talkButton(n, 'club'))
-    if (!this.vipTonight) out.push({ label: 'VIP 卡座', note: this.vipUnlocked ? `最低消费 $${VIP_MIN}（全额转酒水额度）· 好感加成` : '需要 Lv3', disabled: !this.vipUnlocked, onClick: () => { this.buyVip(); this.refresh() } })
+    if (!this.vipTonight) out.push({ label: t('VIP 卡座'), note: this.vipUnlocked ? t('最低消费 ${n}（全额转酒水额度）· 好感加成', { n: VIP_MIN }) : t('需要 Lv3'), disabled: !this.vipUnlocked, onClick: () => { this.buyVip(); this.refresh() } })
     return out
   }
 
@@ -192,7 +193,7 @@ export class Club {
     if (dh > 0 && this.drunk > 0) this.drunk = Math.max(0, this.drunk - DECAY_PER_HOUR * dh)
     this.t += dt
     const inV = this.ctx.player.inVehicle
-    if (inV && !this.wasInVehicle && this.drunk >= DRUNK_LIMIT) this.toast('你喝了酒还开车——小心被查酒驾！', 3)
+    if (inV && !this.wasInVehicle && this.drunk >= DRUNK_LIMIT) this.toast(t('你喝了酒还开车——小心被查酒驾！'), 3)
     this.wasInVehicle = inV
     this.applyFx()
   }

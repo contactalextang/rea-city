@@ -2,6 +2,7 @@ import { wrapAngle, VEHICLE_PARAMS } from '../../config'
 import type { RoadGraph, RoadEdge, P2 } from '../../world/RoadGraph'
 import { steerFactor } from '../../physics/ArcadeVehicle'
 import { SG_BLOCKED_EDGES, type RaceRouteDef } from '../../data/races'
+import { t } from '../../i18n'
 
 /** 赛道采样点：位置、弧长、可用半宽（离赛车线中心能偏多少）、单位方向、基准限速（满速线，AI 再乘水平系数） */
 export interface RoutePoint { x: number; z: number; s: number; hw: number; dx: number; dz: number; vmax: number }
@@ -121,7 +122,7 @@ function cornerSpeed(kappa: number, maxSteer: number) {
  */
 export function buildRoute(g: RoadGraph, def: RaceRouteDef): BuiltRoute | string {
   const wps = def.wps, n = wps.length
-  if (n < 2) return '途经点不足'
+  if (n < 2) return t('途经点不足')
   const heading = (i: number): P2 => {
     const w = wps[i]
     if (w.length >= 4) return { x: w[2], z: w[3] }
@@ -135,7 +136,7 @@ export function buildRoute(g: RoadGraph, def: RaceRouteDef): BuiltRoute | string
   for (const te of seq) {
     if (path[path.length - 1] === te) continue
     const chain = edgePath(g, path[path.length - 1], te, def.world === 'sg' ? SG_BLOCKED_EDGES : undefined)
-    if (!chain) return `途经点不连通（边 ${te.id}）`
+    if (!chain) return t('途经点不连通（边 {id}）', { id: te.id })
     path.push(...chain)
   }
   if (def.loop && path.length > 1 && path[path.length - 1] === path[0]) path.pop()
@@ -172,7 +173,7 @@ export function buildRoute(g: RoadGraph, def: RaceRouteDef): BuiltRoute | string
     const i1 = nearestIdx(last[0], last[1], i0 + 10)
     pts = pts.slice(i0, i1 + 1)
   }
-  if (pts.length < 20) return '路线太短'
+  if (pts.length < 20) return t('路线太短')
 
   // 弧长与方向
   const N = pts.length
