@@ -7,6 +7,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173",
     "check": "tsc --noEmit",
+    "test": "node --test --experimental-transform-types --no-warnings scripts/test/*.test.ts",
     "econ:sim": "node --import ./scripts/lib/ts-resolve.mjs scripts/test/econ-sim.ts",
     "casino:sim": "node scripts/casino-sim.ts",
     "ride:sim": "node --experimental-transform-types --no-warnings scripts/test/ride-sim.ts",

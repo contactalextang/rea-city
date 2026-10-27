@@ -115,7 +115,7 @@
 - [x] AIR.0 基础层：src/world/Airfield.ts（布局常量、patchAirfieldGraph 堤道 2 条单行边 + 陆侧路、4 个 airport POI、常驻碰撞体 'airfield'、AirfieldSurface 地表分类、空域）；SgWorld 南墙开口、海面 8 km、update 带高度（>60 m 区块半径 3）；ChunkManager.update(radius)；PoiType 'airport'；Plugin 新钩子与 Game 调用点；Player.mount；Save.saveSpot；叫车「日常」加机场；en/aviation.ts。验收：叫 Grab 到机场 6.3 km 落在航站楼门口；从城市步行穿过墙口沿堤道上岛；交通车开上堤道与岛；单测 18/18、ride-sim 25398 通过、i18n 0 缺。
 - [ ] AIR.1 资源打包（待用户下载免费 GLB 到 data/assets-eval/threejsassets/airfield/）
 - [ ] AIR.2 机场场景网格 + 跑道着色器 + 小地图叠加
-- [~] AIR.3 飞行物理 ArcadeFlight.ts + flight.test.ts
+- [x] AIR.3 飞行物理：src/physics/ArcadeFlight.ts（纯函数、不依赖 three；机体轴前 +z 上 +y 右 −x，heading 同车辆 yaw、右转减小；pitch 抬头正、roll 右翼下正；stepFlight 自动拆子步，返回 touchdown/liftoff/stallStart，接地分级由调用方 classifyTouchdown + 地表决定；地面襟翼不自动放）。scripts/test/flight.test.ts 13 项：滑跑 281 m 离地 31.4 m/s、爬升 6.8 m/s、定高 60 s 偏差 0.18 m、24 m/s 拉满杆失速并低头、45° 坡度半径 300 m、松杆 4 s 改平、确定性与子步长。`npm test` 跑全部单测 31/31。
 - [ ] AIR.4 驾驶接入（Aircraft、aviation 插件、HeightField、Camera.updateAir、触屏、音频）
 - [ ] AIR.5a 经济数据 / AIR.5b 飞行工作
 - [ ] AIR.6 收尾 / AIR.V 终验
