@@ -46,6 +46,16 @@ export interface LifeStats {
   /** P11.B 手机叫车次数 / 车费累计 */
   rides: number
   rideFares: number
+  // ---- Phase AIR（flightTakeoff / flightLanded / aircraftCrashed / flightFlyby / jobDone '*_air_*' 累计；旧存档缺省为 0） ----
+  /** 起飞次数、安全落地次数、空中航程 km */
+  flights: number
+  landings: number
+  flightKm: number
+  /** 黄油落地（下沉率 < 1 m/s）次数、坠毁次数、低空掠过金沙次数、完成飞行工作次数 */
+  butters: number
+  airCrashes: number
+  mbsFlybys: number
+  airJobs: number
 }
 export interface ProgressSave {
   level: number
@@ -74,7 +84,10 @@ const defaultStats = (): LifeStats => ({
   earned: 0, spent: 0, bizIncome: 0, distanceKm: 0, trips: 0, arrests: 0, daysPlayed: 1, peakNetWorth: 0, bought: {},
   gambleNet: 0, gambleRounds: 0, gambleBestWin: 0, races: 0, raceWins: 0, matches: 0, matchWins: 0, matchStreak: 0, matchBestStreak: 0, raceTierBest: 0, matchTierBest: 0,
   kills: 0, headshots: 0, dates: 0, lovers: [], drinks: 0, rides: 0, rideFares: 0,
+  flights: 0, landings: 0, flightKm: 0, butters: 0, airCrashes: 0, mbsFlybys: 0, airJobs: 0,
 })
+/** 黄油落地：接地下沉率高于此值（m/s，负数向下） */
+const BUTTER_VY = -1
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`
 
 /**
@@ -106,7 +119,19 @@ export class Progress implements Subsystem<ProgressSave> {
     ev.on('jobDone', ({ job, amount, base }) => {
       this.addXp((base ?? amount) * XP.perJobDollar)   // addXp 自己乘心情倍率：按标价算，避免重复计
       if (job === 'blue_taxi') this.stats.trips++
+      if (/^(gang|gold|white|blue)_air_/.test(job)) { this.stats.airJobs++; this.check() }
     })
+    // ---- Phase AIR 飞行 ----
+    ev.on('flightTakeoff', () => { this.stats.flights++ })
+    ev.on('flightLanded', ({ vy, distKm }) => {
+      const st = this.stats
+      st.landings++; st.flightKm = round2(st.flightKm + Math.max(0, distKm))
+      if (vy > BUTTER_VY) st.butters++
+      this.addXp(XP.flightLanding)
+      this.check()
+    })
+    ev.on('aircraftCrashed', () => { this.stats.airCrashes++; this.check() })
+    ev.on('flightFlyby', ({ landmark }) => { if (landmark === 'mbs') { this.stats.mbsFlybys++; this.check() } })
     ev.on('ate', () => this.addXp(XP.ate))
     ev.on('slept', ({ day, xpMul }) => {
       if (xpMul && xpMul > 1) { this.buffDay = day; this.buffMul = xpMul }
@@ -248,6 +273,12 @@ export class Progress implements Subsystem<ProgressSave> {
       arena_legend: s.matchTierBest >= 10,
       lover: s.lovers.length >= 1,
       no_drive: s.rides >= 10,
+      first_flight: s.flights >= 1 && s.landings >= 1,
+      butter: s.butters >= 1,
+      mbs_flyby: s.mbsFlybys >= 1,
+      air_jobs_20: s.airJobs >= 20,
+      buy_plane: (s.bought.aircraft ?? 0) >= 1,
+      air_crash: s.airCrashes >= 1,
     }
     for (const a of ACHIEVEMENTS) {
       if (!cond[a.id] || this.achievements.has(a.id)) continue
@@ -285,6 +316,10 @@ export class Progress implements Subsystem<ProgressSave> {
           { title: t('射击比赛'), value: t('{w} 胜 / {n} 场', { w: s.matchWins, n: s.matches }), desc: t('击杀 {k} · 爆头 {h} · 最佳连胜 {s}', { k: s.kills, h: s.headshots, s: s.matchBestStreak }) },
           { title: t('约会'), value: t('{n} 次', { n: s.dates }), desc: s.lovers.length ? t('恋人 {n} 位', { n: s.lovers.length }) : undefined },
         ] },
+        ...(s.flights || s.airJobs ? [{ title: t('飞行'), items: [
+          { title: t('起飞 / 落地'), value: `${s.flights} / ${s.landings}`, desc: t('空中航程 {km} km · 黄油落地 {b} 次 · 坠毁 {c} 次', { km: s.flightKm.toFixed(1), b: s.butters, c: s.airCrashes }) },
+          { title: t('飞行工作'), value: t('{n} 单', { n: s.airJobs }) },
+        ] }] : []),
         { title: t('成就 {a}/{b}', { a: this.achievements.size, b: ACHIEVEMENTS.length }), items: ACHIEVEMENTS.map((a) => {
           const got = this.achievements.has(a.id)
           return { title: `${got ? '★' : '☆'} ${a.name}`, desc: a.desc, tone: got ? 'owned' as const : 'locked' as const }

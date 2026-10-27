@@ -55,6 +55,11 @@ export const BIZ_TYPES: BizType[] = [
   { id: 'biz_rental', name: t('商铺出租'), roles: ['gold'], poiType: 'shop', level: 1, tiers: [tt(8000, 2000)], manager: mgr(8000), risk: SAFE, maxOwned: 3, desc: t('买下店面收租') },
   { id: 'biz_office', name: t('写字楼股份'), roles: ['gold'], poiType: 'office', level: 5, tiers: [tt(15000, 3600)], manager: mgr(15000), risk: SAFE, maxOwned: 2, desc: t('甲级写字楼的一成股份') },
   { id: 'biz_landmark', name: t('地标项目'), roles: ['gold'], poiType: 'landmark', level: 12, tiers: [tt(250000, 35000)], manager: mgr(250000), risk: SAFE, maxOwned: 1, desc: t('参股城市地标综合体') },
+  // ---- Phase AIR 机场产业（poiType 'airport'：航站楼 / 机库 / 货运站 / 塔台 4 处，每处至多一个） ----
+  { id: 'biz_air_cargo', name: t('机场货运'), roles: ['blue'], poiType: 'airport', level: 6, tiers: [tt(8000, 1500), tt(20000, 3500)], manager: mgr(8000), risk: SAFE, maxOwned: 1, desc: t('承包机场的小件货运，拉货装机按件收钱') },
+  { id: 'biz_air_tours', name: t('观光飞行社'), roles: ['white'], poiType: 'airport', level: 8, tiers: [tt(15000, 2800), tt(30000, 6000)], manager: mgr(15000), risk: SAFE, maxOwned: 1, desc: t('卖滨海湾空中观光套票，游客排队上飞机') },
+  { id: 'biz_air_charter', name: t('公务包机'), roles: ['gold'], poiType: 'airport', level: 10, tiers: [tt(120000, 18000)], manager: mgr(120000), risk: SAFE, maxOwned: 1, desc: t('给老板们包机往返邻国谈生意') },
+  { id: 'biz_air_smuggle', name: t('走私航线'), roles: ['gang'], poiType: 'airport', level: 10, tiers: [tt(20000, 5000), tt(60000, 12000)], manager: mgr(20000), risk: { ...GANG_RISK, heatOnBuy: 0.6 }, maxOwned: 1, desc: t('货运单上写的是榴莲，箱子里装的是什么别问') },
 ]
 
 export const bizType = (id: string) => BIZ_TYPES.find((b) => b.id === id) ?? null

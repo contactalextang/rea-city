@@ -59,6 +59,8 @@ export class Quests {
   timer = 0
   missionCar: Vehicle
   private resolved: Record<string, string> = {}
+  /** 接支线时挂起的帝国线进度（支线结束后原样恢复；不进存档，读档后帝国线从头轮询） */
+  private suspended: { q: QuestDef; step: number; progress: number; resolved: Record<string, string> } | null = null
   private giverMarkers = new Map<string, Marker>()
   private targetMarker = new Marker(TARGET_COLOR)
   /** 事件步骤（吃/睡/打卡…）的就近指引重算计时 */
@@ -157,11 +159,13 @@ export class Quests {
     if (q.giver === 'auto') return null
     return typeof q.giver === 'string' ? this.ctx.pois.byId(q.giver) : this.ctx.pois.byType(q.giver.type)[0] ?? null
   }
-  /** 黄柱：未完成、前置已满足、当前没有任务在进行时显示 */
+  /** 支线可在帝国线进行中接取（帝国线挂起）；帝国线步骤多为轮询条件，挂起不丢进度 */
+  private canInterrupt(q: QuestDef) { return q.tier === 'side' && this.active?.tier === 'empire' && !this.suspended }
+  /** 黄柱：未完成、前置已满足、当前没有任务在进行（或支线可打断帝国线）时显示 */
   private refreshGivers() {
     for (const q of this.defs) {
       const m = this.giverMarkers.get(q.id); if (!m) continue
-      const show = !this.active && !this.done.has(q.id) && this.requiresOk(q)
+      const show = (!this.active || this.canInterrupt(q)) && !this.done.has(q.id) && this.requiresOk(q)
       m.set(show ? this.giverPoi(q)?.door ?? null : null)
     }
   }
@@ -179,7 +183,10 @@ export class Quests {
   }
 
   begin(q: QuestDef) {
-    if (this.active) this.end('fail')
+    if (this.active && this.canInterrupt(q)) {
+      this.suspended = { q: this.active, step: this.step, progress: this.progress, resolved: this.resolved }
+      this.active = null; this.targetMarker.set(null)
+    } else if (this.active) this.end('fail')
     this.active = q; this.step = 0; this.progress = 0; this.result = 'none'
     this.timer = q.timeLimit ?? 0; this.resolved = {}
     this.toast(t('{title}：{intro}', { title: q.title, intro: q.intro }), 4)
@@ -336,6 +343,12 @@ export class Quests {
     this.active = null; this.step = 0; this.progress = 0
     this.targetMarker.set(null)
     if (this.missionCar.active && this.ctx.player.vehicle !== this.missionCar) this.missionCar.deactivate()
+    const sus = this.suspended
+    if (sus) {
+      this.suspended = null
+      this.active = sus.q; this.step = sus.step; this.progress = sus.progress; this.resolved = sus.resolved; this.timer = sus.q.timeLimit ?? 0
+      this.enterStep()
+    }
     this.refreshGivers()
   }
   onPlayerDown() { if (this.active?.timeLimit) this.fail(t('你倒下了')) }
@@ -353,6 +366,11 @@ export class Quests {
       // 故事线刚通关（结果卡片消失后）→ 接上帝国线
       if (!this.active && this.allDone && !this.empireDone()) this.autoStart()
       return
+    }
+    for (const g of this.defs) {
+      if (!this.canInterrupt(g)) continue
+      const p = this.giverMarkers.get(g.id)?.point
+      if (p && Math.hypot(px - p.x, pz - p.z) < 4) { this.begin(g); return }
     }
     const q = this.active
     if (q.timeLimit) { this.timer -= dt; if (this.timer <= 0) { this.fail(t('超时')); return } }

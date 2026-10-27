@@ -5,7 +5,7 @@ import { charge } from './Wallet'
 import { lineClear } from '../entities/PoliceAI'
 import { t } from '../i18n'
 
-export type CrimeKind = 'shoot' | 'carjack' | 'hitPed' | 'hitPolice' | 'wreck' | 'shootVehicle' | 'hitVehicle'
+export type CrimeKind = 'shoot' | 'carjack' | 'hitPed' | 'hitPolice' | 'wreck' | 'shootVehicle' | 'hitVehicle' | 'airspace'
 export type TrafficKind = 'speeding' | 'redLight' | 'collision' | 'hitPedTraffic'
 
 export const DEMERIT_LIMIT = 24
@@ -62,6 +62,12 @@ export const DRUNK_DRIVING = { fine: 2000, points: 12, spotDist: 40, minSpeed: 3
 const CRIME_LABEL: Partial<Record<CrimeKind, string>> = { carjack: t('抢车'), wreck: t('毁车'), shoot: t('开枪'), shootVehicle: t('开枪') }
 
 /**
+ * Phase AIR 空域违规（低空飞越 CBD / 降落在马路上）：casual 档不管；relaxed / real 档记热度（全身份，累计满 1 星才出警，
+ * real 档 chaseMinCrime = 0 立即出警），同类违规 AIRSPACE_COOLDOWN 秒内只记一次。
+ */
+export const AIRSPACE_COOLDOWN = 30
+
+/**
  * 执法系统（取代 Wanted）：
  * - pursuitLevel 0~5 浮点热度，floor 为星级；decayDelay 秒无事件且 decayPoliceDist 内无警车则衰减
  * - 犯罪型：通缉身份累加热度并出警（宽松档小额事件攒够 1 星才出警）；其他身份降级为交通执法
@@ -97,6 +103,9 @@ export class Law {
   private drunkScan = 0
   /** 累计酒驾次数（调试 / 统计） */
   drunkTickets = 0
+  /** 空域违规：各原因（'cbd' / 'road'）上次记热度的时刻；累计次数 */
+  private airspaceAt = new Map<string, number>()
+  airspaceCount = 0
 
   setToast(fn: (text: string, seconds?: number) => void) { this.toastFn = fn }
 
@@ -114,8 +123,25 @@ export class Law {
     if (this.stars > before) this.flash = 1
   }
 
+  /**
+   * 空域违规（航空插件调用）：casual 档忽略；同一原因冷却 AIRSPACE_COOLDOWN 秒；返回是否记了热度。
+   * weight 0.3–0.5；按通缉逻辑累加（不开罚单、不扣驾照分）。
+   */
+  airspace(reason: string, weight: number, ctx: Ctx): boolean {
+    const tune = lawTuning(ctx)
+    if (tune.lenient) return false
+    const last = this.airspaceAt.get(reason) ?? -Infinity
+    if (ctx.time - last < AIRSPACE_COOLDOWN) return false
+    this.airspaceAt.set(reason, ctx.time)
+    this.airspaceCount++
+    this.addCrime(weight, ctx.time, tune.chaseMinCrime)
+    this.toastFn(reason === 'road' ? t('在马路上降落 · 违反航空管制') : t('低空飞越市区 · 违反空域管制'), 3)
+    return true
+  }
+
   /** 犯罪型事件：按身份路由 */
   crime(kind: CrimeKind, weight: number, ctx: Ctx) {
+    if (kind === 'airspace') { this.airspace('cbd', weight, ctx); return }
     const tune = lawTuning(ctx)
     if (tune.lenient && (kind === 'carjack' || kind === 'wreck' || kind === 'hitVehicle' || (kind === 'shoot' && weight < 0.1))) return
     if (ctx.role.systems.wanted) { this.addCrime(weight, ctx.time, tune.chaseMinCrime); return }

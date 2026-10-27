@@ -27,6 +27,9 @@ export function categorize(tag: string): CashCat {
   if (/^(gang|gold|white|blue)_/.test(tag) || tag === 'salary' || tag === 'site' || tag === 'taxiTip') return 'job'
   if (/^(biz|bizTier|manager|bizAuto|bizCollect|bizRaid)$/.test(head)) return 'biz'
   if (tag === 'mrt' || tag === 'taxiRent' || tag === 'bus' || tag === 'taxi') return 'transport'
+  // Phase AIR：租机 / 保险自付 / 维修 → 交通；其余 plane_*（买飞机，商店 id）→ 购物；飞行工作 '<role>_air_*' 已在上面归 job
+  if (tag === 'plane_rent' || tag === 'plane_insurance' || tag === 'plane_repair') return 'transport'
+  if (/^plane_/.test(tag)) return 'shop'
   if (/^(car|home|upg)_/.test(tag)) return 'shop'
   if (tag === 'meal' || tag === 'snack') return 'food'
   return 'other'

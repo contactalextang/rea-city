@@ -4,6 +4,10 @@ import { t } from '../i18n'
 import type { PoiType } from '../systems/Poi'
 import type { PurchaseKind } from '../core/Context'
 
+/** 机场 POI id（与 world/Airfield.ts 的 AIRPORT_POI / HANGAR_POI 一致；数据层不引 world 模块） */
+const AIRPORT_POI = 'airport_marina_south'
+const HANGAR_POI = 'airport_hangar'
+
 /** POI 引用：具体 id，或按类型就近挑一个 */
 export type PoiRef = string | { type: PoiType }
 
@@ -49,8 +53,8 @@ export interface QuestDef {
   next?: string
   /** 需先完成的任务 id */
   requires?: string
-  /** story（缺省）= 故事线，allDone 只算它；empire = 帝国线，故事线全部完成后自动接上 */
-  tier?: 'story' | 'empire'
+  /** story（缺省）= 故事线，allDone 只算它；empire = 帝国线，故事线全部完成后自动接上；side = 支线（Phase AIR，POI 接取，不计入 allDone / empireDone） */
+  tier?: 'story' | 'empire' | 'side'
 }
 
 export const QUESTS: QuestDef[] = [
@@ -217,6 +221,44 @@ export const QUESTS: QuestDef[] = [
       { kind: 'level', level: 12, label: t('升到 Lv12 解锁地标项目') },
       { kind: 'ownBiz', type: 'biz_landmark', count: 1, label: t('到地标门口参股地标项目') },
       { kind: 'netWorth', amount: 5000000, label: t('净资产做到 $5,000,000') },
+    ],
+  },
+
+  // ---------- 支线（Phase AIR）：航站楼门口黄柱接取，每身份一条「蓝天之上」 ----------
+  {
+    id: 'side_air_gang', title: t('蓝天之上'), roles: ['gang'], giver: AIRPORT_POI, tier: 'side', reward: 1000, requires: 'ob_gang',
+    intro: t('老大想要一条"不走海关"的路：去机场开一单空投，再给自己弄架飞机。'),
+    steps: [
+      { kind: 'goto', poi: HANGAR_POI, label: t('去机库（飞行俱乐部）门口') },
+      { kind: 'job', job: 'gang_air_drop', count: 1, label: t('手机「飞行」或机库面板接一单「空投」，回跑道落地结算') },
+      { kind: 'buy', itemKind: 'aircraft', label: t('手机「商店」买下一架自己的飞机') },
+    ],
+  },
+  {
+    id: 'side_air_blue', title: t('蓝天之上'), roles: ['blue'], giver: AIRPORT_POI, tier: 'side', reward: 1000, requires: 'ob_blue',
+    intro: t('跑了这么多年的士，换个方向跑：带游客从天上看狮城。'),
+    steps: [
+      { kind: 'goto', poi: HANGAR_POI, label: t('去机库（飞行俱乐部）门口') },
+      { kind: 'job', job: 'blue_air_tour', count: 1, label: t('手机「飞行」或机库面板接一单「观光载客」，回跑道落地结算') },
+      { kind: 'buy', itemKind: 'aircraft', label: t('手机「商店」买下一架自己的飞机') },
+    ],
+  },
+  {
+    id: 'side_air_white', title: t('蓝天之上'), roles: ['white'], giver: AIRPORT_POI, tier: 'side', reward: 1000, requires: 'ob_white',
+    intro: t('市场部要一组天际线航拍大片，预算够，你会开飞机吗？'),
+    steps: [
+      { kind: 'goto', poi: HANGAR_POI, label: t('去机库（飞行俱乐部）门口') },
+      { kind: 'job', job: 'white_air_photo', count: 1, label: t('手机「飞行」或机库面板接一单「航拍」，回跑道落地结算') },
+      { kind: 'buy', itemKind: 'aircraft', label: t('手机「商店」买下一架自己的飞机') },
+    ],
+  },
+  {
+    id: 'side_air_gold', title: t('蓝天之上'), roles: ['gold'], giver: AIRPORT_POI, tier: 'side', reward: 1000, requires: 'ob_gold',
+    intro: t('客户要在天上看他的楼盘。开一趟商务包机，然后给自己添一架私人飞机。'),
+    steps: [
+      { kind: 'goto', poi: HANGAR_POI, label: t('去机库（飞行俱乐部）门口') },
+      { kind: 'job', job: 'gold_air_charter', count: 1, label: t('手机「飞行」或机库面板接一单「商务包机」，回跑道落地结算') },
+      { kind: 'buy', itemKind: 'aircraft', label: t('手机「商店」买下一架自己的飞机') },
     ],
   },
 ]

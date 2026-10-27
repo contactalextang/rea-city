@@ -33,6 +33,9 @@ export const XP = {
   perKill: 3,
   killCap: 60,
   dated: 20,
+  // ---- Phase AIR ----
+  /** 每次安全落地（跑道或迫降） */
+  flightLanding: 15,
 } as const
 
 /** 每身份 6 个头衔，每 5 级换一个：Lv1–4 / 5–9 / 10–14 / 15–19 / 20–24 / 25–30 */
@@ -52,7 +55,8 @@ export const titleFor = (role: RoleId, level: number) => {
  * 表里没有某身份的条目 = 该身份对这个物品没有等级门槛（能不能买由物品自己的 roles 决定）。
  * 商店物品 id：car_used / car_taxi / car_sports / car_super、home_hdb / home_shophouse / home_condo / home_penthouse、
  *   upg_armor / upg_pistol / upg_engine / upg_ergo / upg_ridehail / upg_bloomberg（只有带等级的列在下面）。
- * 产业 id：biz_protect / biz_chop / biz_gamble、biz_hawker / biz_fleet、biz_startup / biz_cafe、biz_rental / biz_office / biz_landmark。
+ * 产业 id：biz_protect / biz_chop / biz_gamble、biz_hawker / biz_fleet、biz_startup / biz_cafe、biz_rental / biz_office / biz_landmark，
+ *   机场：biz_air_cargo / biz_air_tours / biz_air_charter / biz_air_smuggle。
  */
 export interface Unlock { level: number; roles: RoleId[]; id: string; label: string }
 const ALL_ROLES: RoleId[] = ['gang', 'gold', 'white', 'blue']
@@ -79,6 +83,17 @@ export const UNLOCKS: Unlock[] = [
   { level: 6, roles: ALL_ROLES, id: 'casino_high', label: t('高额赌桌') },
   { level: 10, roles: ALL_ROLES, id: 'casino_vip', label: t('VIP 赌厅') },
   { level: 12, roles: ALL_ROLES, id: 'arena_pro', label: t('职业难度 Bot') },
+  // ---- Phase AIR（租机按钮 / 飞行工作读 air_rent；飞机与航电走商店；机场产业走产业） ----
+  { level: 3, roles: ALL_ROLES, id: 'air_rent', label: t('机库租机与飞行工作') },
+  { level: 6, roles: ['gang', 'white', 'blue'], id: 'plane_cessna', label: t('二手 Cessna 172') },
+  { level: 4, roles: ['gold'], id: 'plane_cessna', label: t('二手 Cessna 172') },
+  { level: 6, roles: ALL_ROLES, id: 'upg_avionics', label: t('航电升级') },
+  { level: 10, roles: ALL_ROLES, id: 'plane_cessna_turbo', label: t('Cessna 涡轮改装版') },
+  { level: 12, roles: ['gold'], id: 'plane_cessna_vip', label: t('Cessna VIP 金色涂装') },
+  { level: 6, roles: ['blue'], id: 'biz_air_cargo', label: t('机场货运') },
+  { level: 8, roles: ['white'], id: 'biz_air_tours', label: t('观光飞行社') },
+  { level: 10, roles: ['gold'], id: 'biz_air_charter', label: t('公务包机') },
+  { level: 10, roles: ['gang'], id: 'biz_air_smuggle', label: t('走私航线') },
 ]
 
 /** 该身份买 id 需要的等级（无门槛 = 1） */
@@ -92,11 +107,12 @@ export const isUnlocked = (role: RoleId, level: number, id: string) => level >= 
 export const nextUnlocks = (role: RoleId, level: number) =>
   UNLOCKS.filter((u) => u.roles.includes(role) && u.level > level).sort((a, b) => a.level - b.level)
 
-/** 成就（12 + 8 个 P10 娱乐）：条件由 Progress.check 判断 */
+/** 成就（12 + 11 个 P10 娱乐 + 6 个 Phase AIR 飞行）：条件由 Progress.check 判断 */
 export type AchievementId =
   | 'first_buy' | 'first_biz' | 'biz_3' | 'nw_10k' | 'nw_100k' | 'nw_1m'
   | 'lv_10' | 'lv_20' | 'taxi_100' | 'survive_raid' | 'buy_car' | 'two_homes'
   | 'first_bet' | 'high_roller' | 'race_win' | 'race_10' | 'arena_win' | 'streak_5' | 'headshot_king' | 'lover' | 'no_drive' | 'race_legend' | 'arena_legend'
+  | 'first_flight' | 'butter' | 'mbs_flyby' | 'air_jobs_20' | 'buy_plane' | 'air_crash'
 export const ACHIEVEMENTS: { id: AchievementId; name: string; desc: string }[] = [
   { id: 'first_buy', name: t('第一笔消费'), desc: t('在商店买下第一件东西') },
   { id: 'first_biz', name: t('开门营业'), desc: t('拥有第一个产业') },
@@ -121,4 +137,11 @@ export const ACHIEVEMENTS: { id: AchievementId; name: string; desc: string }[] =
   { id: 'race_legend', name: t('传奇车手'), desc: t('在 T10 传奇难度赢下一场赛车') },
   { id: 'arena_legend', name: t('传奇枪手'), desc: t('在 T10 传奇难度赢下一局射击比赛') },
   { id: 'no_drive', name: t('不想开车'), desc: t('用手机叫车（Taxi / Grab）出行 10 次') },
+  // ---- Phase AIR ----
+  { id: 'first_flight', name: t('首飞'), desc: t('驾驶飞机起飞并安全落地') },
+  { id: 'butter', name: t('黄油落地'), desc: t('以低于 1 m/s 的下沉率接地') },
+  { id: 'mbs_flyby', name: t('掠过金沙'), desc: t('在 250 m 以下飞过金沙酒店') },
+  { id: 'air_jobs_20', name: t('机长'), desc: t('完成 20 次飞行工作') },
+  { id: 'buy_plane', name: t('有机一族'), desc: t('买下自己的飞机') },
+  { id: 'air_crash', name: t('机毁人亡'), desc: t('驾驶的飞机坠毁') },
 ]

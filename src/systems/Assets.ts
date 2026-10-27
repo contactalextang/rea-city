@@ -38,6 +38,17 @@ export interface AssetsHost {
   refresh?(): void
 }
 
+/**
+ * Phase AIR：航空插件安装后注入（方格城没有机场 → null，飞机与航电在商店隐藏）。
+ * 自有飞机的位置 / 报废状态由插件存档（plugins.aviation），这里只记「拥有」。
+ */
+export interface AircraftHost {
+  /** 自有飞机当前状态（停机位 / 报废待修…）；没有这架 → null */
+  info(id: string): { status: string; wrecked: boolean } | null
+}
+/** 只在有机场的世界出售的物品 */
+const AIR_ONLY = new Set(['upg_avionics'])
+
 const empty = (): AssetsSave => ({ owned: [], primaryHome: null, garage: [], activeCar: null })
 const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
 /** 门口购买房产的最大距离（调试 buy 也要站在门口） */
@@ -51,6 +62,8 @@ export class Assets implements Subsystem<AssetsSave> {
   private s: AssetsSave = empty()
   /** 当前取出的那辆车（与 s.activeCar 对应） */
   private activeVehicle: Vehicle | null = null
+  /** 航空插件（有机场时）；见 AircraftHost */
+  aircraftHost: AircraftHost | null = null
 
   constructor(private ctx: Ctx, private host: AssetsHost) {
     if (ctx.role.id === 'gold') host.spawner.claimOwnCar()
@@ -64,7 +77,7 @@ export class Assets implements Subsystem<AssetsSave> {
     return null
   }
   /** 商店里对本世界可见的物品（隐藏物品、找不到 POI 的房产不列） */
-  get catalog() { return SHOP.filter((it) => !it.hidden && (it.kind !== 'property' || this.propPoi(it))) }
+  get catalog() { return SHOP.filter((it) => !it.hidden && (it.kind !== 'property' || this.propPoi(it)) && ((it.kind !== 'aircraft' && !AIR_ONLY.has(it.id)) || !!this.aircraftHost)) }
   /** 是否拥有某物品（商店 id） */
   owns(id: string) { return this.s.owned.includes(id) }
   /** 自有房产里坐落在 poiId 的那一处 */
@@ -126,12 +139,13 @@ export class Assets implements Subsystem<AssetsSave> {
       const pl = this.ctx.player
       if (!atDoor && Math.hypot(pl.x - p.door.x, pl.z - p.door.z) > DOOR_DIST) return fail(t('房产要到门口购买：{name}', { name: p.name }))
     }
+    if ((it.kind === 'aircraft' || AIR_ONLY.has(it.id)) && !this.aircraftHost) return fail(t('这座城市没有机场'))
     if (!spend(this.ctx, it.price, it.id)) return fail(t('钱不够：「{name}」要 {price}，还差 {short}', { name: it.name, price: usd(it.price), short: usd(it.price - this.ctx.player.money) }))
     this.s.owned.push(id)
     if (it.kind === 'vehicle') this.s.garage.push({ id, health: 100 })
     this.recompute()
     this.ctx.events.emit('purchased', { kind: it.kind, id, cost: it.price })
-    const where = it.kind === 'vehicle' ? t(' · 已停进车库，到家门口取车') : it.kind === 'property' ? t(' · 门口可设为主住所') : ''
+    const where = it.kind === 'vehicle' ? t(' · 已停进车库，到家门口取车') : it.kind === 'property' ? t(' · 门口可设为主住所') : it.kind === 'aircraft' ? t(' · 停在滨海南机场机库') : ''
     this.host.toast(t('买下「{name}」 −{price}', { name: it.name, price: usd(it.price) }) + where, 3.5)
     this.host.save()
     return true
@@ -256,6 +270,12 @@ export class Assets implements Subsystem<AssetsSave> {
     }
     const cat = this.catalog
     const group = (k: ShopItem['kind']) => cat.filter((it) => it.kind === k).map(item)
+    const planes = group('aircraft').map((a, i) => {
+      const it = cat.filter((x) => x.kind === 'aircraft')[i]
+      const st = this.owns(it.id) ? this.aircraftHost?.info(it.id) : null
+      if (st) { a.status = st.status; a.tone = st.wrecked ? undefined : 'owned' }
+      return a
+    })
     const garage: AppItem[] = this.s.garage.map((c) => {
       const it = shopItem(c.id)
       return { title: it?.name ?? c.id, value: t('车况 {n}%', { n: c.health }), status: this.s.activeCar === c.id ? t('已取出 · 停在 {home} 附近', { home }) : t('在车库（到住所门口取车）'), tone: 'owned' }
@@ -267,6 +287,7 @@ export class Assets implements Subsystem<AssetsSave> {
         { title: t('车辆'), items: group('vehicle') },
         { title: t('房产（到门口购买）'), items: group('property') },
         { title: t('升级'), items: group('upgrade') },
+        ...(planes.length ? [{ title: t('飞机（停在机库）'), items: planes }] : []),
         { title: t('车库'), items: garage },
       ],
     }

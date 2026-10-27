@@ -3,7 +3,7 @@ import type { Game } from '../../core/Game'
 import type { SgWorld } from '../../world/SgWorld'
 import type { AABB } from '../../world/Colliders'
 import { circleBody } from '../../physics/Collision'
-import { stepFlight, airspeed, heading, pitch, roll, right, classifyTouchdown, type FlightInput, type TouchdownGrade } from '../../physics/ArcadeFlight'
+import { stepFlight, airspeed, heading, pitch, roll, right, classifyTouchdown, type FlightInput, type FlightParams, type TouchdownGrade } from '../../physics/ArcadeFlight'
 import { AIRCRAFT_RADIUS, type Aircraft } from '../../entities/Aircraft'
 import { HeightField } from '../../world/HeightField'
 import { AIRSPACE, inAirspace } from '../../world/Airfield'
@@ -46,6 +46,8 @@ export interface FlightHooks {
   onLanded(ac: Aircraft, grade: TouchdownGrade): void
   /** 驾驶中被外部传送强制下机（空中的飞机由调用方移除） */
   onDropped(ac: Aircraft, airborne: boolean): void
+  /** AIR.5：这架飞机自己的飞行参数（涡轮改装等；缺省 = FLIGHT_PARAMS.cessna） */
+  params?(ac: Aircraft): FlightParams | undefined
 }
 
 export interface TouchdownInfo { vy: number; rollDeg: number; pitchDeg: number; grade: TouchdownGrade; surface: string; x: number; z: number; t: number }
@@ -257,7 +259,7 @@ export class FlightControl {
 
     // ---- 物理 ----
     const x0 = b.x, z0 = b.z
-    const res = stepFlight(b, inp, dt, undefined, { groundY: 0, autoLevel: true })
+    const res = stepFlight(b, inp, dt, this.hooks.params?.(a), { groundY: 0, autoLevel: true })
     if (!b.onGround) this.distM += Math.hypot(b.x - x0, b.z - z0)
     if (res.liftoff) {
       this.takeoffAt = game.time; this.distM = 0

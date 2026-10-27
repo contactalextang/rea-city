@@ -17,6 +17,9 @@ const CSS = /* i18n-ignore：CSS */ `
 #flight-hud .fh-warn { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); text-align: center; font: 800 26px -apple-system, "PingFang SC", sans-serif; letter-spacing: 2px; }
 #flight-hud .fh-warn .red { color: #ff4d4d; animation: fhblink .5s steps(2) infinite; }
 #flight-hud .fh-warn .amber { color: #ffb020; font-size: 18px; }
+#flight-hud .fh-info { position: absolute; left: 16px; bottom: 218px; font: 600 12px -apple-system, "PingFang SC", sans-serif; background: rgba(6,12,24,.55); border: 1px solid rgba(90,209,255,.45); border-radius: 8px; padding: 4px 10px; color: #bfefff; display: none; }
+#flight-hud .fh-info.on { display: block; }
+body.touch #flight-hud .fh-info { left: 50%; transform: translateX(-50%); bottom: auto; top: calc(86px + env(safe-area-inset-top)); font-size: 11px; }
 @keyframes fhblink { 50% { opacity: .25; } }
 body.touch #flight-hud .fh-panel { left: 50%; bottom: auto; top: calc(56px + env(safe-area-inset-top)); transform: translateX(-50%); grid-template-columns: repeat(6, auto); gap: 0 10px; min-width: 0; padding: 4px 10px; font-size: 11px; }
 body.touch #flight-hud .fh-panel .v { font-size: 13px; }
@@ -50,6 +53,8 @@ export class FlightHud {
   private vals: Record<string, HTMLElement> = {}
   private thr: HTMLDivElement
   private warn: HTMLDivElement
+  private info: HTMLDivElement
+  private lastInfo = ''
   private last = ''
   private lastWarn = ''
   private shown = false
@@ -69,7 +74,8 @@ export class FlightHud {
     const keys = document.createElement('div'); keys.className = 'fh-keys'
     keys.textContent = touch ? '' : t('W/S 俯仰 · A/D 横滚 · Q/E 方向舵 · Shift/Ctrl 油门 · Space 刹车 · V 视角 · F 下机（停稳后）')
     this.warn = document.createElement('div'); this.warn.className = 'fh-warn'
-    this.root.append(panel, keys, this.warn)
+    this.info = document.createElement('div'); this.info.className = 'fh-info'
+    this.root.append(panel, keys, this.warn, this.info)
     ;(document.getElementById('hud') ?? document.body).appendChild(this.root)
   }
 
@@ -77,7 +83,16 @@ export class FlightHud {
     if (on === this.shown) return
     this.shown = on
     this.root.classList.toggle('on', on)
-    if (!on) { this.last = ''; this.lastWarn = ''; this.warn.innerHTML = '' }
+    if (!on) { this.last = ''; this.lastWarn = ''; this.warn.innerHTML = ''; this.setInfo(null) }
+  }
+
+  /** AIR.5 航电信息行（下滑道指示 / 定高）；null 隐藏 */
+  setInfo(text: string | null) {
+    const v = text ?? ''
+    if (v === this.lastInfo) return
+    this.lastInfo = v
+    this.info.textContent = v
+    this.info.classList.toggle('on', !!v)
   }
 
   update(s: FlightHudState) {

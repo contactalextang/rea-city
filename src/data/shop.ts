@@ -4,13 +4,19 @@ import type { VehicleKind } from '../config'
 import type { CarModel } from '../entities/Vehicle'
 
 /**
- * 商店目录（P8.2）：车辆 4、房产 4、升级 6。
+ * 商店目录（P8.2）：车辆 4、房产 4、升级 7、飞机 3（Phase AIR）。
  * 等级门槛只在 progression.UNLOCKS 里写（这里不写 level），身份限制写在物品的 roles 里（空 = 所有身份）。
  */
-export type ShopKind = 'vehicle' | 'property' | 'upgrade'
+export type ShopKind = 'vehicle' | 'property' | 'upgrade' | 'aircraft'
 
 /** 升级效果（与 Assets.AssetEffects 同名字段；倍率相乘、armor 相加） */
 export interface ShopEffect { accelMul?: number; maxFwdMul?: number; armor?: number; dmgMul?: number; needsMul?: number; taxiTipMul?: number }
+
+/**
+ * Phase AIR 飞机：paint 机身漆色；tune 推力 / 极速倍率（乘到 ArcadeFlight.FLIGHT_PARAMS.cessna 的 thrust / vMax）；
+ * payMul 包机等飞行工作报酬倍率（金领 VIP 涂装）。买下后不进车库，由航空插件停到机库停机位。
+ */
+export interface AircraftPreset { paint: number; tune?: { thrust: number; vmax: number }; payMul?: number }
 
 /** 车辆外观与调校：kind 决定基础手感（config.VEHICLE_PARAMS），tune 为这辆车自己的加速/极速倍率 */
 export interface VehiclePreset { kind: VehicleKind; model: CarModel; color: number; tune?: { accel: number; maxFwd: number } }
@@ -30,6 +36,8 @@ export interface ShopItem {
   /** 在此房产睡觉：饥饿扣多少、次日 XP 倍率 */
   rest?: { hunger: number; xpMul: number }
   effect?: ShopEffect
+  /** 飞机外观 / 调校（kind 'aircraft'） */
+  aircraft?: AircraftPreset
   /** 不在商店出售（金领开局自带的豪车） */
   hidden?: boolean
 }
@@ -67,6 +75,14 @@ export const SHOP: ShopItem[] = [
   { id: 'upg_ergo', name: t('人体工学装备'), kind: 'upgrade', price: 400, roles: [], desc: t('饥饿与精力消耗 ×0.85。'), effect: { needsMul: 0.85 } },
   { id: 'upg_ridehail', name: t('网约车 App'), kind: 'upgrade', price: 600, roles: ['blue'], desc: t('的士小费 ×1.2。'), effect: { taxiTipMul: 1.2 } },
   { id: 'upg_bloomberg', name: t('彭博终端'), kind: 'upgrade', price: 5000, roles: ['gold'], desc: t('提前看到市场事件。') },
+  { id: 'upg_avionics', name: t('航电升级'), kind: 'upgrade', price: 6000, roles: [], desc: t('飞行 HUD 加下滑道指示，T 键定高定向。') },
+  // ---- 飞机（Phase AIR：停在滨海南机场机库，标签前缀 plane_） ----
+  { id: 'plane_cessna', name: t('二手 Cessna 172'), kind: 'aircraft', price: 48000, roles: [], desc: t('飞行俱乐部转手的教练机，停在机库停机位，随取随飞。'),
+    aircraft: { paint: 0x2f6f4f } },
+  { id: 'plane_cessna_turbo', name: t('Cessna 涡轮改装版'), kind: 'aircraft', price: 95000, roles: [], desc: t('涡轮增压改装：推力 ×1.25、极速 ×1.12。'),
+    aircraft: { paint: 0x1c1f26, tune: { thrust: 1.25, vmax: 1.12 } } },
+  { id: 'plane_cessna_vip', name: t('Cessna VIP 金色涂装'), kind: 'aircraft', price: 180000, roles: ['gold'], desc: t('金色涂装的 VIP 座舱：推力 ×1.25、极速 ×1.12，商务包机报酬 +20%。'),
+    aircraft: { paint: 0xd4a72c, tune: { thrust: 1.25, vmax: 1.12 }, payMul: 1.2 } },
 ]
 
 export const SHOP_BY_ID = new Map(SHOP.map((s) => [s.id, s]))

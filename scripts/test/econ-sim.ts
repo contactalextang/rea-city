@@ -5,6 +5,7 @@
 // 随机事件按期望值折算（景气 / 低迷对称抵消；黑帮突袭 / 查封、被捕按频率扣），结果确定、可断言。
 // 心情（P10）：mood 0–100，<30 工资 / XP ×0.85、>75 ×1.1；清醒时 3/h 衰减到 40 为止，上班 / 被捕扣、吃饭 / 睡觉 / 娱乐加（同 Needs.wireMood）。
 // 娱乐消费（P10）：每游戏天睡前（一晚花费 ≤ 现金 4%）出去玩一晚，21 点后夜店 / 赌场轮流、更早只去赌场，夜店 / 赌场轮流，按期望花费与心情计。
+// 飞行工作（Phase AIR.5）：Lv3 起、每游戏日至多 FLIGHT_JOBS_PER_DAY 单、白天、比本身份主业 $/秒 划算时才飞（ECON_AIR=0 关闭对照）。
 // 断言：首个产业 ≤ 13 真实分钟；中期目标（见 MID）落在 42–78 分钟（60 ± 30%）。
 import { GAME_HOUR_SEC } from '../../src/config.ts'
 import { BIZ_TYPES, BIZ_RESALE, COLLECT_BONUS, type BizType } from '../../src/data/business.ts'
@@ -15,6 +16,7 @@ import { XP, xpFor, MAX_LEVEL, unlockLevel } from '../../src/data/progression.ts
 import { ROLES, type RoleId } from '../../src/data/roles.ts'
 import { MOOD } from '../../src/data/mood.ts'
 import { DRINKS } from '../../src/data/dates.ts'
+import { FLIGHT_PAY, FLIGHT_JOB_SEC, FLIGHT_JOBS_PER_DAY, RENT_PRICE, ROLE_FLIGHT_JOB, GRADE_MUL } from '../../src/activities/aviation/missions/params.ts'
 
 // ---------- 典型玩家假设（真实秒） ----------
 const A = {
@@ -61,6 +63,24 @@ const FUN = {
   casino: { cost: 20 * 20 * 0.027, mood: Math.round(20 * (0.45 * MOOD.gambleWin + 0.55 * MOOD.gambleLose * 0.5)), xp: 20 * XP.gambleRound },
 }
 
+// ---------- 飞行工作（Phase AIR.5：Lv3 起租机，机库接单；每游戏日至多 FLIGHT_JOBS_PER_DAY 单） ----------
+const AIR = {
+  /** 典型玩家每单期望报酬（落地多为 normal，偶有 perfect / hard → 均值 ≈ ×1.0） */
+  pay: {
+    tour: FLIGHT_PAY.tour.base + FLIGHT_PAY.tour.comfortMax * 0.7 + FLIGHT_PAY.tour.timeMax * 0.5,
+    photo: FLIGHT_PAY.photo.perShot * FLIGHT_PAY.photo.shots * 0.85,
+    drop: FLIGHT_PAY.drop.perHit * FLIGHT_PAY.drop.packages * 0.7,
+    charter: FLIGHT_PAY.charter.base,
+  },
+  gradeMul: 0.6 * GRADE_MUL.normal + 0.25 * GRADE_MUL.perfect + 0.15 * GRADE_MUL.hard,
+  /** 去机场 / 回城的路程（叫车或开车走堤道，单程约 2.5 km） */
+  travelSec: 150,
+  /** 白天才飞（08–20 点） */
+  hours: [8, 20] as const,
+  /** 每 20 单坠毁一次（租机保险自付） */
+  crashEvery: 20,
+}
+
 /** 中期目标（任一满足）：产业升到 T3 / 买下该身份对应的房产；金领产业只有一档，以第二级产业「写字楼股份」代替 T3 */
 const MID: Record<RoleId, { tier3?: string; biz?: string; property: string; label: string }> = {
   gang: { tier3: 'biz_protect', property: 'home_shophouse', label: '保护费 T3 / 店屋' },
@@ -93,7 +113,9 @@ function simulate(role: RoleId): Result {
   let nw60 = 0, nw180 = 0, level60 = 1, day60 = 0, job60 = 0, jobTotal = 0
   let lastCollect = 0, lastBust = 0
   let shiftDay = -1, otDone = 0
+  let airDay = -1, airToday = 0, rentDay = -1, airJobs = 0, airIncome = 0
   let assetValue = 0
+  let lastWhere = ''
 
   const hour = () => abs % 24
   const day = () => Math.floor(abs / 24) + 1
@@ -207,9 +229,46 @@ function simulate(role: RoleId): Result {
     spendSec(FUN.sec); cash -= kind.cost; funSpent += kind.cost; addMood(kind.mood); addXp(kind.xp)
   }
 
+  /** 本身份此刻主业的 $/真实秒（白领上班时间外无活可干 = 0） */
+  const mainRate = () => {
+    switch (role) {
+      case 'gang': return Math.max(...[A.steal, A.protect, A.wreck].map((j) => j.pay / j.sec))
+      case 'gold': return A.meeting.pay / A.meeting.sec
+      case 'blue': return energy >= 15 ? ECONOMY.siteWage / A.siteClickSec : 0
+      default: return 0
+    }
+  }
+  /** 飞行工作一单（等级够、今天还有名额、白天、付得起租机）：去机场 → 租机 → 飞一单 → 回城；返回是否飞了 */
+  const flightJob = (): boolean => {
+    const h = hour()
+    if (level < unlockLevel(role, 'air_rent') || h < AIR.hours[0] || h >= AIR.hours[1]) return false
+    if (airDay !== day()) { airDay = day(); airToday = 0 }
+    if (airToday >= FLIGHT_JOBS_PER_DAY) return false
+    const kind = ROLE_FLIGHT_JOB[role]
+    const rent = rentDay === day() ? 0 : RENT_PRICE
+    if (cash - A.reserve < rent + 50) return false
+    // 金领 / 白领：不错过 09:00 打卡与加班窗口
+    const sec = FLIGHT_JOB_SEC[kind] + (airToday === 0 ? AIR.travelSec * 2 : 0)
+    if ((role === 'gold' || role === 'white') && shiftDay !== day() && h < 9.5 && h + sec / GAME_HOUR_SEC > 9) return false
+    if (role === 'white' && h >= JOB_PARAMS.overtime.from - sec / GAME_HOUR_SEC && h < JOB_PARAMS.overtime.to) return false
+    // 只在比本身份主业划算时飞（$/真实秒，按一天飞满 FLIGHT_JOBS_PER_DAY 单摊上往返路程与租金）：蓝领工地 4 s 一小时，飞行赚不过它
+    // ECON_AIR=always：压力测试，能飞就飞；ECON_AIR=0：关闭飞行（对照）
+    const N = FLIGHT_JOBS_PER_DAY
+    const rate = (N * AIR.pay[kind] * AIR.gradeMul - RENT_PRICE) / (N * FLIGHT_JOB_SEC[kind] + AIR.travelSec * 2)
+    if (process.env.ECON_AIR !== 'always' && rate <= mainRate()) return false
+    cash -= rent; rentDay = day(); airToday++; airJobs++
+    spendSec(sec); hunger -= 4; energy -= 6
+    const pay = AIR.pay[kind] * AIR.gradeMul
+    earn(pay); airIncome += pay * mul(); addXp(XP.flightLanding)
+    if (airJobs % AIR.crashEvery === 0) cash -= 2000
+    lastWhere = 'airport'
+    return true
+  }
+
   /** 一次工作动作（按身份选最赚钱的） */
   const work = () => {
     const h = hour()
+    if (process.env.ECON_AIR !== '0' && flightJob()) return
     switch (role) {
       case 'gang': {
         const best = [A.steal, A.protect, A.wreck].sort((a, b) => b.pay / b.sec - a.pay / a.sec)[0]
@@ -243,7 +302,6 @@ function simulate(role: RoleId): Result {
     }
   }
 
-  let lastWhere = ''
   while (sec < 180 * 60) {
     hunger = Math.max(0, hunger); energy = Math.max(0, energy)
     if (hunger < A.eatBelow) { eat(); lastWhere = 'eat'; continue }
@@ -257,6 +315,7 @@ function simulate(role: RoleId): Result {
     work()
   }
   console.log(`  [mood] ${role}: 平均 ${(moodSum / moodSamples).toFixed(1)} · <30 占比 ${(moodLow / moodSamples * 100).toFixed(1)}% · >75 占比 ${(moodHigh / moodSamples * 100).toFixed(1)}% · 结束 ${mood.toFixed(0)} · 娱乐 ${funNights} 晚（夜店 ${clubNights}）共 $${Math.round(funSpent)}（均 $${funNights ? Math.round(funSpent / funNights) : 0}/晚）`)
+  console.log(`  [air] ${role}: 飞行工作 ${airJobs} 单 · 收入 $${Math.round(airIncome)}`)
   return { day60, job60, role, firstBiz, mid, midWhat, nw60, nw180, level60, level180: level, biz180: biz.map((b) => `${b.t.name}T${b.tier}${b.manager ? '+经理' : ''}`).join(' ') }
 }
 
