@@ -78,8 +78,17 @@ export interface GameEvents {
   drank: { n: number }
   /** P11.B 手机叫车到达：kind = 'taxi' | 'grab'，fare = 车费，distM = 路程，dest = 目的地 POI id（或标签） */
   rideTaken: { kind: 'taxi' | 'grab'; fare: number; distM: number; dest: string }
+  // ---- Phase AIR 飞行（activities/aviation 发出；aircraft = Aircraft.id，租机 'rental'；owner 'rent' 租机 / 'own' 自有） ----
+  /** 飞机离地 */
+  flightTakeoff: { aircraft: string; owner: 'rent' | 'own'; x: number; z: number }
+  /** 飞机接地（非坠毁）：grade 落地评级，surface 'runway' 跑道 / 'land' 迫降；airTime 本次离地秒数，distKm 空中水平航程 */
+  flightLanded: { aircraft: string; owner: 'rent' | 'own'; grade: 'perfect' | 'normal' | 'hard'; surface: 'runway' | 'land'; vy: number; x: number; z: number; airTime: number; distKm: number }
+  /** 飞机坠毁（之后玩家 health = 0 → WASTED） */
+  aircraftCrashed: { aircraft: string; owner: 'rent' | 'own'; reason: 'building' | 'touchdown' | 'water' | 'wingtip' | 'vehicle'; x: number; z: number }
+  /** AIR.5 低空掠过地标（landmark 'mbs' = 金沙；成就用） */
+  flightFlyby: { landmark: string }
 }
-export type PurchaseKind = 'vehicle' | 'property' | 'upgrade' | 'biz' | 'bizTier' | 'manager'
+export type PurchaseKind = 'vehicle' | 'property' | 'upgrade' | 'aircraft' | 'biz' | 'bizTier' | 'manager'
 
 /**
  * 子系统契约（Assets / Business 等）：由 Game 每帧 update、把 poiButtons 注册给 Interactions、

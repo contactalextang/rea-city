@@ -31,7 +31,8 @@ export const PARKING: Rect = { minX: 1600, maxX: 1700, minZ: 1724, maxZ: 1762 }
 /** 塔台（套件模型，缩放到约 30 m 高） */
 export const TOWER = { x: 1760, z: 1790, size: 9, h: 30 }
 /** 机库：门朝南（+z）开向停机坪；x 为中心 */
-export const HANGAR = { w: 30, d: 25, h: 12, minZ: 1805 }
+// AIR.2：按 AIR.1 套件机库模型（30 宽 × 19.08 高 × 27.10 深）改为 h 19、d 27；南缘仍对齐停机坪北缘 1830（minZ 1805 → 1803）
+export const HANGAR = { w: 30, d: 27, h: 19, minZ: 1803 }
 export const HANGAR_XS = [1395, 1445, 1495, 1545]
 export const hangarRect = (i: number): Rect => ({ minX: HANGAR_XS[i] - HANGAR.w / 2, maxX: HANGAR_XS[i] + HANGAR.w / 2, minZ: HANGAR.minZ, maxZ: HANGAR.minZ + HANGAR.d })
 /** 停机位：各机库门前，机头朝南对着滑行道 */
@@ -192,3 +193,23 @@ export class AirfieldSurface {
     return 'land'
   }
 }
+
+// ---- AIR.2 场景网格补充布局（AirfieldMesh / RunwayShader / 小地图叠加层共用；不影响路网与碰撞） ----
+
+/** 堤道两条单行边的中线折线（与 patchAirfieldGraph 里的 pts 一致）：南行在东侧、北行在西侧 */
+export const CAUSEWAY_SB = [1551.4, CITY_EDGE_Z, 1547.5, 1395, 1546, 1420, 1546, 1690, 1542, 1708, 1538, LANDSIDE_ROAD.z]
+export const CAUSEWAY_NB = [1524.01, CITY_EDGE_Z, 1528.5, 1395, 1530, 1420, 1530, 1690, 1534, 1708, 1538, LANDSIDE_ROAD.z]
+/** 机场道路车道宽（与路网补丁 laneW 一致）；堤道每向 2 车道，陆侧路每向 1 车道 */
+export const AIR_LANE_W = 3.3
+/** 堤道中央分隔带的 z 范围（两条中线平行段） */
+export const CAUSEWAY_MEDIAN = { z0: 1386, z1: 1686 }
+/** 联络道等待线（hold short）位置：跑道北缘外 15 m */
+export const HOLD_SHORT_Z = RUNWAY.z - RUNWAY.width / 2 - 15
+/** 航站楼前广场（人行道高度 0.12，航站楼立在上面） */
+export const TERMINAL_PLAZA: Rect = { minX: 1380, maxX: 1520, minZ: 1721.3, maxZ: 1764 }
+/** 空侧服务区（机库 / 塔台所在的混凝土地坪，接停机坪北缘） */
+export const SERVICE_AREA: Rect = { minX: APRON.minX, maxX: APRON.maxX, minZ: 1764, maxZ: APRON.minZ }
+/** 停车场入口车道（陆侧路南侧的 x 范围） */
+export const PARKING_ENTRY = { x0: 1640, x1: 1660 }
+/** 风向袋位置（跑道两侧草地） */
+export const WINDSOCKS = [{ x: 1250, z: 1942 }, { x: 1750, z: 2020 }]

@@ -1,6 +1,13 @@
 import type { P2 } from '../world/RoadGraph'
 import { poiCss, type Poi, type PoiType } from '../systems/Poi'
 import { TARGET_CSS } from '../world/Marker'
+import {
+  AIRFIELD_MAP_RECT, APRON, CAUSEWAY_DECK, CONNECTORS, HANGAR_XS, hangarRect, ISLAND, LANDSIDE_ROAD, PARKING, RUNWAY, SERVICE_AREA,
+  TAXIWAY, TERMINAL, TERMINAL_PLAZA, TOWER,
+} from '../world/Airfield'
+
+/** 海面色（与城市底图 minimap.png 里的水面同色）：底图之外的区域都画成海 */
+const SEA_CSS = 'rgb(58,110,165)'
 
 const MINOR = new Set<PoiType>(['bus', 'taxi'])
 /** P10 娱乐场馆：小地图上画大点 */
@@ -20,6 +27,60 @@ export const minimapNav: { target: { dist: number; angle: number } | null } = { 
 /** 预烘焙底图：1 px/m，图片左上角对应世界 (minX, minZ) */
 export interface MinimapImageSource { image: HTMLImageElement | HTMLCanvasElement; minX: number; minZ: number }
 
+/**
+ * AIR.2 机场叠加层：按 Airfield 常量运行时画一张 1 px/m 的 canvas（覆盖 AIRFIELD_MAP_RECT），
+ * 配色沿用城市底图：草地 / 铺装灰 / 路面深灰 / 建筑浅灰；海面透明（下面是海色背景）。只在 sg 世界且机场接入时使用。
+ */
+export function airfieldMinimapLayer(): MinimapImageSource {
+  const R = AIRFIELD_MAP_RECT
+  const c = document.createElement('canvas')
+  c.width = Math.ceil(R.maxX - R.minX); c.height = Math.ceil(R.maxZ - R.minZ)
+  const g = c.getContext('2d')!
+  g.translate(-R.minX, -R.minZ)
+  const rect = (x0: number, z0: number, x1: number, z1: number, css: string) => { g.fillStyle = css; g.fillRect(x0, z0, x1 - x0, z1 - z0) }
+  const GRASS = 'rgb(79,122,58)', PAVE = 'rgb(140,138,132)', ROAD = 'rgb(92,92,99)', CASING = 'rgb(122,127,138)', BLD = 'rgb(157,157,152)', RUNWAY_CSS = 'rgb(74,74,80)'
+  // 岛（倒角 24 m）+ 护岸浅边
+  const I = ISLAND, C = 24
+  g.beginPath()
+  g.moveTo(I.minX + C, I.minZ); g.lineTo(I.maxX - C, I.minZ); g.lineTo(I.maxX, I.minZ + C); g.lineTo(I.maxX, I.maxZ - C)
+  g.lineTo(I.maxX - C, I.maxZ); g.lineTo(I.minX + C, I.maxZ); g.lineTo(I.minX, I.maxZ - C); g.lineTo(I.minX, I.minZ + C); g.closePath()
+  g.fillStyle = GRASS; g.fill()
+  g.lineWidth = 3; g.strokeStyle = 'rgb(138,133,114)'; g.stroke()
+  // 堤道（桥面多边形，外描边当路缘）
+  g.beginPath()
+  for (let i = 0; i < CAUSEWAY_DECK.length; i += 2) i ? g.lineTo(CAUSEWAY_DECK[i], CAUSEWAY_DECK[i + 1]) : g.moveTo(CAUSEWAY_DECK[i], CAUSEWAY_DECK[i + 1])
+  g.closePath()
+  g.fillStyle = ROAD; g.fill(); g.lineWidth = 2; g.strokeStyle = CASING; g.stroke()
+  // 陆侧路 / 停车场 / 前广场
+  const L = LANDSIDE_ROAD
+  rect(L.x0, L.z - 6.3, L.x1, L.z + 6.3, CASING)
+  rect(L.x0, L.z - 3.3, L.x1, L.z + 3.3, ROAD)
+  rect(CAUSEWAY_DECK[8], CAUSEWAY_DECK[7], CAUSEWAY_DECK[6], L.z, ROAD)
+  rect(TERMINAL_PLAZA.minX, TERMINAL_PLAZA.minZ, TERMINAL_PLAZA.maxX, TERMINAL_PLAZA.maxZ, CASING)
+  rect(PARKING.minX, PARKING.minZ, PARKING.maxX, PARKING.maxZ, ROAD)
+  // 空侧铺装：服务区、停机坪、滑行道、联络道、跑道
+  const T = TAXIWAY, hw = T.width / 2
+  rect(SERVICE_AREA.minX, SERVICE_AREA.minZ, SERVICE_AREA.maxX, SERVICE_AREA.maxZ, PAVE)
+  rect(APRON.minX, APRON.minZ, APRON.maxX, APRON.maxZ, PAVE)
+  rect(T.x0 - hw, T.z - hw, T.x1 + hw, T.z + hw, PAVE)
+  for (const cx of CONNECTORS) rect(cx - hw, T.z, cx + hw, RUNWAY.z, PAVE)
+  rect(RUNWAY.x0, RUNWAY.z - RUNWAY.width / 2, RUNWAY.x1, RUNWAY.z + RUNWAY.width / 2, RUNWAY_CSS)
+  // 跑道中线虚线 + 两端入口白条
+  g.fillStyle = 'rgba(255,255,255,.85)'
+  for (let x = RUNWAY.x0 + 72; x < RUNWAY.x1 - 72; x += 50) g.fillRect(x, RUNWAY.z - 1, 30, 2)
+  g.fillRect(RUNWAY.x0 + 6, RUNWAY.z - 20, 30, 40); g.fillRect(RUNWAY.x1 - 36, RUNWAY.z - 20, 30, 40)
+  // 滑行道黄中线
+  g.fillStyle = 'rgba(224,192,96,.9)'
+  g.fillRect(T.x0, T.z - 0.75, T.x1 - T.x0, 1.5)
+  for (const cx of CONNECTORS) g.fillRect(cx - 0.75, T.z, 1.5, RUNWAY.z - RUNWAY.width / 2 - T.z)
+  // 建筑：航站楼、机库、塔台
+  rect(TERMINAL.minX, TERMINAL.minZ, TERMINAL.maxX, TERMINAL.maxZ, BLD)
+  for (let i = 0; i < HANGAR_XS.length; i++) { const h = hangarRect(i); rect(h.minX, h.minZ, h.maxX, h.maxZ, BLD) }
+  const s = TOWER.size / 2
+  rect(TOWER.x - s, TOWER.z - s, TOWER.x + s, TOWER.z + s, BLD)
+  return { image: c, minX: R.minX, minZ: R.minZ }
+}
+
 /** 右下角圆形小地图：静态城市底图 + 玩家箭头 + 任务/警车/任务车标记，随朝向旋转；目标在视野外时圆边画箭头 + 距离 */
 export class Minimap {
   private canvas = document.getElementById('minimap') as HTMLCanvasElement
@@ -37,13 +98,25 @@ export class Minimap {
   private owned: P2[] = []
   /** 最近一次 draw 传入的插件导航折线（大地图沿用） */
   private path: P2[] | null = null
+  /** AIR.2 叠加层（机场岛）与「底图 ∪ 叠加层」的范围（手机大地图按它缩放） */
+  private overlay: MinimapImageSource | null
+  private ext: { minX: number; minZ: number; w: number; h: number }
 
-  /** 底图来源：方格城由 GridWorld 合成 canvas，真实城市用预烘焙 PNG；scale = 圆形小地图 px/m */
-  constructor(source: MinimapImageSource, scale = 0.75) {
+  /** 底图来源：方格城由 GridWorld 合成 canvas，真实城市用预烘焙 PNG；scale = 圆形小地图 px/m；
+   *  overlay = 底图外的叠加层（1 px/m）；'airfield' = 由 Airfield 常量现画机场岛（sg 世界机场接入时） */
+  constructor(source: MinimapImageSource, scale = 0.75, overlay: MinimapImageSource | 'airfield' | null = null) {
+    if (overlay === 'airfield') overlay = airfieldMinimapLayer()
     this.base = source.image
     this.minX = source.minX; this.minZ = source.minZ
     this.baseW = source.image.width; this.baseH = source.image.height
     this.scale = scale
+    this.overlay = overlay
+    let minX = this.minX, minZ = this.minZ, maxX = this.minX + this.baseW, maxZ = this.minZ + this.baseH
+    if (overlay) {
+      minX = Math.min(minX, overlay.minX); minZ = Math.min(minZ, overlay.minZ)
+      maxX = Math.max(maxX, overlay.minX + overlay.image.width); maxZ = Math.max(maxZ, overlay.minZ + overlay.image.height)
+    }
+    this.ext = { minX, minZ, w: maxX - minX, h: maxZ - minZ }
   }
 
   /** 按 devicePixelRatio 调整画布像素尺寸（CSS 尺寸不变），高分屏不发糊 */
@@ -64,11 +137,12 @@ export class Minimap {
     g.clearRect(0, 0, S, S)
     g.save()
     g.beginPath(); g.arc(R, R, R - 2, 0, Math.PI * 2); g.clip()
-    g.fillStyle = '#2f5d8a'; g.fillRect(0, 0, S, S)
+    g.fillStyle = SEA_CSS; g.fillRect(0, 0, S, S)
     g.translate(R, R)
     g.rotate(yaw + Math.PI)
     g.scale(this.scale, this.scale)
     g.drawImage(this.base, -(px - this.minX), -(pz - this.minZ))
+    if (this.overlay) g.drawImage(this.overlay.image, -(px - this.overlay.minX), -(pz - this.overlay.minZ))
     // 插件导航折线（赛道线）：世界坐标，相对玩家；屏幕上约 3.5 px 宽 + 深色描边
     if (path && path.length > 1) this.strokePath(g, path, (p) => p.x - px, (p) => p.z - pz, 1 / this.scale)
     const dot = (p: P2, color: string, r: number, ring = false) => {
@@ -170,11 +244,16 @@ export class Minimap {
   drawLarge(canvas: HTMLCanvasElement, px: number, pz: number, yaw: number, police: P2[], pois: Poi[]) {
     const g = canvas.getContext('2d')!
     const S = canvas.width
-    const k = S / Math.max(this.baseW, this.baseH)
+    const E = this.ext
+    const k = S / Math.max(E.w, E.h)
+    const X = (x: number) => (x - E.minX) * k, Z = (z: number) => (z - E.minZ) * k
     g.clearRect(0, 0, S, S)
     g.fillStyle = '#1a1f2e'; g.fillRect(0, 0, S, S)
-    g.drawImage(this.base, 0, 0, this.baseW * k, this.baseH * k)
-    const X = (x: number) => (x - this.minX) * k, Z = (z: number) => (z - this.minZ) * k
+    // 地图范围内（底图 ∪ 叠加层）先铺海色，底图外的海面不再是深色空白
+    g.fillStyle = SEA_CSS; g.fillRect(0, 0, E.w * k, E.h * k)
+    g.drawImage(this.base, X(this.minX), Z(this.minZ), this.baseW * k, this.baseH * k)
+    const ov = this.overlay
+    if (ov) g.drawImage(ov.image, X(ov.minX), Z(ov.minZ), ov.image.width * k, ov.image.height * k)
     g.font = '10px -apple-system, "PingFang SC", Arial, sans-serif'
     g.textBaseline = 'middle'
     // POI 多时（真实城市）只给主要地点写名字，巴士/的士站画小点

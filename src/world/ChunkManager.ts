@@ -116,8 +116,8 @@ export class ChunkManager {
   /** 目标集合里的块是否全部构建完成 */
   get idle() { return this.wanted.every((k) => this.built.has(k)) && this.decoded.size === 0 }
 
-  /** radius：加载半径（块），默认 LOAD_RADIUS；高空飞行时调大（卸载半径随之 +1） */
-  update(px: number, pz: number, radius = LOAD_RADIUS) {
+  /** radius：加载半径（块），默认 LOAD_RADIUS；高空飞行时调大（卸载半径随之 +1）；noDetail = 高空（>150 m）跳过 BuildingDetail 细节件 */
+  update(px: number, pz: number, radius = LOAD_RADIUS, noDetail = false) {
     const [ci, cj] = chunkIndexOf(px, pz, this.manifest.grid)
     const center = `${ci}_${cj}_${radius}`
     if (center !== this.lastCenter) {
@@ -142,7 +142,7 @@ export class ChunkManager {
       built = true
       break
     }
-    this.detail.update(ci, cj, FACADE.on, built)
+    this.detail.update(ci, cj, FACADE.on && !noDetail, built)
     if (FACADE.on !== this.facadeOn) {
       this.facadeOn = FACADE.on
       for (const b of this.built.values()) for (const m of b.meshes) if (m.name.startsWith('bld:')) m.material = this.bldMat

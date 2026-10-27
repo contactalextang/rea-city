@@ -12,6 +12,7 @@ import { Landmarks, skylineHidden } from './Landmarks'
 import { Signage, type NamedGraphData } from './Signage'
 import type { WorldSource } from './WorldSource'
 import type { Poi } from '../systems/Poi'
+import { AirfieldMesh } from './AirfieldMesh'
 import { addAirfieldColliders, airfieldPois, AirfieldSurface, patchAirfieldGraph, WALL_GAP } from './Airfield'
 
 /**
@@ -34,6 +35,8 @@ const SEA_COLOR = 0x2f5d8a
 const SEA_MARGIN = 8000
 /** 高于此高度（m）区块加载半径 2 → 3 */
 const HIGH_ALT = 60
+/** 高于此高度（m）跳过建筑细节件（女儿墙 / 空调外机等，高空看不清） */
+const DETAIL_ALT = 150
 
 async function fetchJson<T>(url: string): Promise<T> {
   const r = await fetch(url).catch((e) => { throw new Error(`SgWorld: 请求失败 ${url}: ${e}`) })
@@ -74,6 +77,8 @@ export class SgWorld implements WorldSource {
   signs: Signage | null = null
   /** Phase AIR 滨海南机场是否接入（路网补丁成功） */
   airfield = false
+  /** AIR.2 机场场景网格（airfield 为真时在 attach 里挂上） */
+  airfieldMesh: AirfieldMesh | null = null
   /** 地表类型（跑道 / 铺装 / 陆地 / 水面），飞机接地判定用 */
   surface!: AirfieldSurface
   /** 天际线里因地标替换丢弃的三角数 */
@@ -222,10 +227,18 @@ export class SgWorld implements WorldSource {
     // 地标（须在 DayNight.attachWorld 之前：它在那时读取 scene.userData.windows）
     this.landmarks = new Landmarks(this.landuse?.water ?? null)
     this.landmarks.attach(scene)
+    // AIR.2 机场网格（同样须在 DayNight.attachWorld 之前：夜间发光材质推进 scene.userData.windows）
+    if (this.airfield) {
+      // 高空远看时岛面（−0.12）与海面（−0.2）只差 8 cm：海面在深度上推后，岛面 / 城市地面稳赢
+      const seaMat = sea.material as THREE.MeshLambertMaterial
+      seaMat.polygonOffset = true; seaMat.polygonOffsetFactor = 1; seaMat.polygonOffsetUnits = 4
+      this.airfieldMesh = new AirfieldMesh({ roadMat: this.chunks.roadMat, walkMat: this.chunks.walkMat, marks: this.marks })
+      this.airfieldMesh.attach(scene)
+    }
   }
 
   update(px: number, pz: number, dt: number, py = 0) {
-    this.chunks.update(px, pz, py > HIGH_ALT ? 3 : undefined)
+    this.chunks.update(px, pz, py > HIGH_ALT ? 3 : undefined, py > DETAIL_ALT)
     this.props.update(dt)
     this.landmarks?.update(dt)
     if (!this.firstLoadedAt && this.chunks.idle && this.chunks.stats.loaded > 0) this.firstLoadedAt = performance.now()
@@ -244,6 +257,7 @@ export class SgWorld implements WorldSource {
   }
 
   dispose() {
+    this.airfieldMesh?.dispose()
     this.chunks.dispose()
     this.landmarks?.dispose()
     this.props.dispose()

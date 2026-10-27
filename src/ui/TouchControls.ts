@@ -22,6 +22,8 @@ export interface TouchState {
   inVehicle: boolean
   canInteract: boolean
   hasGun: boolean
+  /** Phase AIR 驾驶飞机：跑键 → 油门+、开火键 → 油门−、跳键 → 刹车、F → 下机、新增视角键（KeyV）、隐藏喇叭；摇杆管俯仰 / 横滚 */
+  flying?: boolean
 }
 
 const CSS = /* i18n-ignore：CSS 注释 */ `
@@ -65,6 +67,8 @@ export class TouchControls {
   /** 按下中的按钮：pointerId → 键码 */
   private held = new Map<number, string>()
   private shown = false
+  /** 飞行布局（摇杆推到底不自动按 Shift，开火键不触发瞄准） */
+  private flying = false
 
   constructor(private input: Input, private host: TouchHost) {
     const style = document.createElement('style'); style.textContent = CSS; document.head.appendChild(style)
@@ -81,6 +85,7 @@ export class TouchControls {
       ['e', t('交互'), 'KeyE', 92, 22],
       ['horn', t('喇叭'), 'KeyH', 166, 22],
       ['run', t('跑'), 'ShiftLeft', 18, 96],
+      ['view', t('视角'), 'KeyV', 166, 96],
     ]
     for (const [id, label, code, right, bottom] of act) {
       const b = this.button(id, label, code, 'act')
@@ -125,7 +130,7 @@ export class TouchControls {
       const code = b.dataset.code!
       this.held.set(e.pointerId, code)
       this.input.setVirtual(code, true)
-      if (code === 'ControlLeft') this.host.aim(true)
+      if (code === 'ControlLeft' && !this.flying) this.host.aim(true)
       b.classList.add('on')
       return
     }
@@ -154,7 +159,7 @@ export class TouchControls {
       this.input.stickX = dx * k
       this.input.stickY = -dy * k
       // 推到底自动奔跑（另有“跑”键按住时不覆盖）
-      if (![...this.held.values()].includes('ShiftLeft')) this.input.setVirtual('ShiftLeft', len > 0.92)
+      if (!this.flying && ![...this.held.values()].includes('ShiftLeft')) this.input.setVirtual('ShiftLeft', len > 0.92)
     } else if (e.pointerId === this.lookId) {
       this.input.addLook((e.clientX - this.lookX) * LOOK_K, (e.clientY - this.lookY) * LOOK_K)
       this.lookX = e.clientX; this.lookY = e.clientY
@@ -201,11 +206,20 @@ export class TouchControls {
     }
     if (!s.show) return
     const b = this.btns
-    b.fire.classList.toggle('hide', !s.hasGun || s.inVehicle)
-    b.horn.classList.toggle('hide', !s.inVehicle)
-    b.run.classList.toggle('hide', s.inVehicle)
-    b.f.textContent = s.inVehicle ? t('下车') : t('上车')
-    b.jump.textContent = s.inVehicle ? t('手刹') : t('跳')
+    const fly = !!s.flying
+    if (fly !== this.flying) {
+      this.flying = fly
+      // 切换布局时松开摇杆带出的自动奔跑 Shift（否则进飞机后会一直加油门）
+      if (![...this.held.values()].includes('ShiftLeft')) this.input.setVirtual('ShiftLeft', false)
+    }
+    b.fire.classList.toggle('hide', fly ? false : !s.hasGun || s.inVehicle)
+    b.horn.classList.toggle('hide', fly || !s.inVehicle)
+    b.run.classList.toggle('hide', !fly && s.inVehicle)
+    b.view.classList.toggle('hide', !fly)
+    b.f.textContent = fly ? t('下机') : s.inVehicle ? t('下车') : t('上车')
+    b.jump.textContent = fly ? t('刹车') : s.inVehicle ? t('手刹') : t('跳')
+    b.run.textContent = fly ? t('油门+') : t('跑')
+    b.fire.textContent = fly ? t('油门−') : t('开火')
     b.e.classList.toggle('hl', s.canInteract)
   }
 }

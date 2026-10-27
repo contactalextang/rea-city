@@ -14,6 +14,9 @@ export class Audio {
   private ac: AudioContext | null = null
   private engine: OscillatorNode | null = null
   private engineGain: GainNode | null = null
+  private engineLp: BiquadFilterNode | null = null
+  /** Phase AIR：发动机音色（aviation 插件驾驶飞机时设 'plane'：活塞螺旋桨更低沉、随油门变化大、几乎不随速度变化） */
+  engineKind: 'car' | 'plane' = 'car'
   private siren: OscillatorNode | null = null
   private sirenGain: GainNode | null = null
   private noise: AudioBuffer | null = null
@@ -57,6 +60,7 @@ export class Audio {
       this.master = master
       this.engine = ac.createOscillator(); this.engine.type = 'sawtooth'
       const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400
+      this.engineLp = lp
       this.engineGain = ac.createGain(); this.engineGain.gain.value = 0
       this.engine.connect(lp).connect(this.engineGain).connect(master); this.engine.start()
       this.siren = ac.createOscillator(); this.siren.type = 'square'
@@ -91,9 +95,12 @@ export class Audio {
   update(time: number, inVehicle: boolean, speed: number, throttle: number, stars: number, policeDist: number) {
     if (!this.ac) return
     const t = this.ac.currentTime
-    const rpm = inVehicle ? 55 + Math.abs(speed) * 3.2 + Math.abs(throttle) * 12 : 0
-    this.engine!.frequency.setTargetAtTime(Math.max(40, rpm), t, 0.08)
-    this.engineGain!.gain.setTargetAtTime(inVehicle ? 0.09 + Math.abs(throttle) * 0.05 : 0, t, 0.1)
+    const plane = this.engineKind === 'plane'
+    // 飞机：转速主要跟油门（怠速 ~45 Hz → 满油门 ~120 Hz），低通更开、音量随油门
+    const rpm = !inVehicle ? 0 : plane ? 45 + Math.abs(throttle) * 75 + Math.min(Math.abs(speed), 70) * 0.15 : 55 + Math.abs(speed) * 3.2 + Math.abs(throttle) * 12
+    this.engine!.frequency.setTargetAtTime(Math.max(40, rpm), t, plane ? 0.25 : 0.08)
+    this.engineLp?.frequency.setTargetAtTime(plane ? 650 + Math.abs(throttle) * 500 : 400, t, 0.2)
+    this.engineGain!.gain.setTargetAtTime(!inVehicle ? 0 : plane ? 0.06 + Math.abs(throttle) * 0.07 : 0.09 + Math.abs(throttle) * 0.05, t, 0.1)
     const sirenOn = stars > 0 && policeDist < 160
     const vol = sirenOn ? 0.035 * (1 - Math.min(1, policeDist / 160)) + 0.005 : 0
     this.sirenGain!.gain.setTargetAtTime(vol, t, 0.1)
@@ -229,7 +236,7 @@ export class Audio {
     const pl = ctx.player, px = pl.worldX, pz = pl.worldZ
     const now = this.ac.currentTime
     const rainy = this.rainLevel > 0.15
-    this.music?.update({ inVehicle: pl.inVehicle, hour: ctx.clock.hour, rain: this.rainLevel, stars: ctx.law.policeStars })
+    this.music?.update({ inVehicle: pl.inVehicle || pl.piloting, hour: ctx.clock.hour, rain: this.rainLevel, stars: ctx.law.policeStars })
     this.ambT -= dt
     if (this.ambT <= 0) {
       this.ambT = 0.25
@@ -244,7 +251,7 @@ export class Audio {
       this.trafficGain?.gain.setTargetAtTime(0.02 + busy * 0.07, now, 0.8)
       // 最近信号灯路口（20 m 内）
       this.nearSignal = null
-      if (!pl.inVehicle) {
+      if (pl.onFoot) {
         let best = 20
         for (const id of ctx.signals.nodeIds) {
           const node = ctx.graph.nodes[id]

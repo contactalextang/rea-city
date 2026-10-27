@@ -13,13 +13,14 @@ export interface Settings {
   fx: FxQuality              // 后期画质：high（GTAO+泛光+调色）/ low（半分辨率泛光+调色）/ off（直出，仍 AgX）
   brightness: number         // 画面亮度倍率 0.7–1.6（乘到曝光；?bright=1.2）
   lang: Lang                 // 界面语言（?lang=en；默认跟浏览器；切换后重载页面，见 i18n/index.ts）
+  invertPitch: boolean       // Phase AIR 飞行俯仰反转（默认 W = 推杆机头向下；?invertPitch=1 反转）
 }
 export const BRIGHTNESS_MIN = 0.7, BRIGHTNESS_MAX = 1.6
 export const clampBrightness = (n: number) => Math.min(BRIGHTNESS_MAX, Math.max(BRIGHTNESS_MIN, n))
 export type FxQuality = 'high' | 'low' | 'off'
 export type LawStrictness = 'casual' | 'relaxed' | 'real'
 
-export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'gltf', shadows: true, music: true, role: DEFAULT_ROLE, lawStrictness: 'casual', fx: 'high', brightness: 1, lang }
+export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'gltf', shadows: true, music: true, role: DEFAULT_ROLE, lawStrictness: 'casual', fx: 'high', brightness: 1, lang, invertPitch: false }
 const KEY = 'rea.settings'
 
 const parseBool = (v: string) => !(v === '0' || v === 'false' || v === 'off' || v === 'no')
@@ -61,5 +62,6 @@ function apply(s: Settings, src: Record<string, unknown>) {
   // ?bright=1.2 是 ?brightness=1.2 的简写
   for (const v of [src.brightness, src.bright]) if (v !== undefined && v !== '') { const n = Number(v); if (Number.isFinite(n)) s.brightness = clampBrightness(n) }
   if (isLang(src.lang)) s.lang = src.lang
+  if (src.invertPitch !== undefined) s.invertPitch = typeof src.invertPitch === 'boolean' ? src.invertPitch : parseBool(String(src.invertPitch))
   if (src.shadows !== undefined) s.shadows = typeof src.shadows === 'boolean' ? src.shadows : parseBool(String(src.shadows))
 }

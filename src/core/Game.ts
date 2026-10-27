@@ -293,7 +293,8 @@ export class Game {
       : { beams: false, labelDist: Infinity, smallTypes: [], atDoor: false })
     this.poiMarkers.attach(this.scene)
     const b = src.bounds
-    this.minimap = new Minimap({ image: src.minimapBase(), minX: b.minX, minZ: b.minZ }, sg ? 0.5 : 0.75)
+    // AIR.2：sg 世界接入机场时叠加机场岛图层（底图外画海色）
+    this.minimap = new Minimap({ image: src.minimapBase(), minX: b.minX, minZ: b.minZ }, sg ? 0.5 : 0.75, sg && (src as { airfield?: boolean }).airfield ? 'airfield' : null)
     // 红绿灯灯具：真实城市的对象由 PropMeshes 持有（mesh 随区块增删更换，每帧读 .mesh）
     this.signalLights = (this.scene.userData.signalLights as SignalLights | undefined) ?? null
 
@@ -511,6 +512,7 @@ export class Game {
         inVehicle: this.player.inVehicle,
         canInteract: !!this.interactions.near || this.jobs.canBoardTaxi,
         hasGun: this.role.systems.gun,
+        flying: this.plugins.some((pl) => pl.controlMode?.() === 'fly'),
       })
       if (hudEl && (hudEl.style.visibility === 'hidden') !== uiOpen) hudEl.style.visibility = uiOpen ? 'hidden' : ''
       if (uiOpen && this.creatorUi) {
