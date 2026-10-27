@@ -1,4 +1,4 @@
-// 经济平衡模拟（P8.4）：node scripts/test/econ-sim.ts（Node 22 原生跑 .ts；npm run econ:sim）
+// 经济平衡模拟（P8.4）：node --import ./scripts/lib/ts-resolve.mjs scripts/test/econ-sim.ts（Node 22 原生跑 .ts；npm run econ:sim）
 // 按身份模拟一个「典型玩家」：一直打本身份最赚钱的工，饿了吃、困了 / 夜深了回家睡；
 // 一有钱就买回本最快的产业动作（新开 / 升档 / 雇经理），每隔一阵绕一圈收钱柜。
 // 数值全部取自 src/data/*（产业、商店、工资、工作参数、XP 与解锁门槛），真实秒 ↔ 游戏小时用 GAME_HOUR_SEC。

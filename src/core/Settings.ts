@@ -1,4 +1,5 @@
 import { DEFAULT_ROLE, isRoleId, type RoleId } from '../data/roles'
+import { lang, isLang, type Lang } from '../i18n'
 
 /** 运行时设置：localStorage 持久化，URL 查询参数优先覆盖（如 ?world=grid&chars=box&shadows=0&role=white&law=real） */
 export interface Settings {
@@ -11,13 +12,14 @@ export interface Settings {
   lawStrictness: LawStrictness   // 执法松紧：casual 默认畅玩（只管严重犯罪）/ relaxed 宽松 / real 接近真实（见 systems/Law.ts LAW_TUNING）
   fx: FxQuality              // 后期画质：high（GTAO+泛光+调色）/ low（半分辨率泛光+调色）/ off（直出，仍 AgX）
   brightness: number         // 画面亮度倍率 0.7–1.6（乘到曝光；?bright=1.2）
+  lang: Lang                 // 界面语言（?lang=en；默认跟浏览器；切换后重载页面，见 i18n/index.ts）
 }
 export const BRIGHTNESS_MIN = 0.7, BRIGHTNESS_MAX = 1.6
 export const clampBrightness = (n: number) => Math.min(BRIGHTNESS_MAX, Math.max(BRIGHTNESS_MIN, n))
 export type FxQuality = 'high' | 'low' | 'off'
 export type LawStrictness = 'casual' | 'relaxed' | 'real'
 
-export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'gltf', shadows: true, music: true, role: DEFAULT_ROLE, lawStrictness: 'casual', fx: 'high', brightness: 1 }
+export const DEFAULT_SETTINGS: Settings = { world: 'sg', timeSpeed: 1, chars: 'gltf', shadows: true, music: true, role: DEFAULT_ROLE, lawStrictness: 'casual', fx: 'high', brightness: 1, lang }
 const KEY = 'rea.settings'
 
 const parseBool = (v: string) => !(v === '0' || v === 'false' || v === 'off' || v === 'no')
@@ -58,5 +60,6 @@ function apply(s: Settings, src: Record<string, unknown>) {
   if (src.fx === 'high' || src.fx === 'low' || src.fx === 'off') s.fx = src.fx
   // ?bright=1.2 是 ?brightness=1.2 的简写
   for (const v of [src.brightness, src.bright]) if (v !== undefined && v !== '') { const n = Number(v); if (Number.isFinite(n)) s.brightness = clampBrightness(n) }
+  if (isLang(src.lang)) s.lang = src.lang
   if (src.shadows !== undefined) s.shadows = typeof src.shadows === 'boolean' ? src.shadows : parseBool(String(src.shadows))
 }

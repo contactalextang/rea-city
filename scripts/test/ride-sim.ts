@@ -1,16 +1,7 @@
 // 叫车计价与拒绝分支单测（P11.B）：node --experimental-transform-types scripts/test/ride-sim.ts（npm run ride:sim）
 // 直接调用 src/systems/Ride.ts 的纯函数（与游戏同一份代码）；打印 2 / 8 / 15 km 在 14:00 与 19:00 的报价表，然后逐项断言。
-// src 里的相对导入不带扩展名（vite 风格），先注册解析钩子补 .ts；Jobs.ts 有参数属性，需要 --experimental-transform-types。
-import { register } from 'node:module'
-
-const hook = `
-export async function resolve(spec, ctx, next) {
-  if ((spec.startsWith('./') || spec.startsWith('../')) && !/\\.[cm]?[jt]s$/.test(spec)) {
-    try { return await next(spec + '.ts', ctx) } catch {}
-  }
-  return next(spec, ctx)
-}`
-register('data:text/javascript,' + encodeURIComponent(hook), import.meta.url)
+// src 里的相对导入不带扩展名（vite 风格），先注册解析钩子（scripts/lib/ts-resolve.mjs）补 .ts / index.ts；Jobs.ts 有参数属性，需要 --experimental-transform-types。
+await import('../lib/ts-resolve.mjs')
 
 const R = await import('../../src/systems/Ride.ts')
 const { taxiFare, isTaxiPeak } = await import('../../src/systems/Jobs.ts')

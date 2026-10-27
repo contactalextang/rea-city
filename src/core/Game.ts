@@ -46,6 +46,7 @@ import { Assets } from '../systems/Assets'
 import { Business } from '../systems/Business'
 import { ACHIEVEMENTS } from '../data/progression'
 import { saveSettings } from './Settings'
+import { lang, isLang, type Lang } from '../i18n'
 import { PostFX } from './PostFX'
 import { cine } from './Cine'
 import type { FxQuality } from './Settings'
@@ -146,6 +147,7 @@ export class Game {
   private bootAt = performance.now()
   private readyAt = 0
   state: State = 'intro'
+  private langSw = document.getElementById('lang-sw')!
   stateTimer = 0
   time = 0
   hospital: P2 = { x: 0, z: 0 }
@@ -197,6 +199,12 @@ export class Game {
     this.renderer.domElement.className = 'game'
     container.appendChild(this.renderer.domElement)
     this.input.bindPointerLock(document.body)   // 覆盖层上点击也能开始并锁定鼠标
+    // 语言按钮（开局右上角 + 手机设置）：mousedown 不冒泡到 body，免得被当成「点击开始」
+    for (const b of document.querySelectorAll<HTMLButtonElement>('[data-lang]')) {
+      b.classList.toggle('on', b.dataset.lang === lang)
+      b.addEventListener('mousedown', (e) => e.stopPropagation())
+      b.addEventListener('click', (e) => { e.stopPropagation(); if (isLang(b.dataset.lang)) this.setLang(b.dataset.lang) })
+    }
     if (this.input.touch) {
       this.touchUi = new TouchControls(this.input, { fullscreen: () => this.toggleFullscreen(), aim: (on) => { this.forceAim = on } })
       document.body.classList.add('touch')
@@ -409,6 +417,16 @@ export class Game {
     if (persist) { saveSettings(this.settings); this.hud.toast(`画质：${q === 'high' ? '高' : q === 'low' ? '低' : '关（无后期）'}`) }
   }
 
+  /** 切换界面语言：存设置（已开玩则顺便存档）后重载页面，所有文字按新语言重建 */
+  setLang(l: Lang) {
+    if (l === lang) return
+    this.settings.lang = l
+    saveSettings(this.settings)
+    if (this.state !== 'intro' && this.state !== 'creator') this.saveGame(false)
+    const q = new URLSearchParams(location.search); q.delete('lang')
+    location.replace(location.pathname + (q.toString() ? `?${q}` : '') + location.hash)
+  }
+
   private toggleFullscreen() {
     // iPad Safari 只有 webkit 前缀版；iPhone 完全没有元素全屏 API，只能添加到主屏幕
     const doc = document as Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void }
@@ -481,6 +499,7 @@ export class Game {
       requestAnimationFrame(loop)
       const dt = Math.min(0.1, (now - this.last) / 1000)
       this.last = now
+      this.langSw.style.display = this.state === 'intro' || this.state === 'creator' ? '' : 'none'
       if (!this.ready) { this.fitViewport(); return }   // 世界加载中：只显示覆盖层
       const hudEl = document.getElementById('hud')
       const uiOpen = !!this.creatorUi?.isOpen || this.state === 'activity' || this.state === 'arena'

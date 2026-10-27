@@ -1,17 +1,8 @@
 // 赌场赔率模拟（P10.B）：node scripts/casino-sim.ts [每项局数=100000]（npm run casino:sim）
 // 直接调用 src/activities/casino/rules.ts 的纯函数规则引擎（与游戏 UI 同一份代码），每个游戏 / 下注方式跑 N 局，
 // 打印 RTP、庄家优势、标准误与理论值，断言 |模拟 − 理论| < 4 个标准误，以及理论值落在规定区间。
-// src 里的相对导入不带扩展名（vite 风格），这里先注册一个解析钩子补 .ts，再动态导入。
-import { register } from 'node:module'
-
-const hook = `
-export async function resolve(spec, ctx, next) {
-  if ((spec.startsWith('./') || spec.startsWith('../')) && !/\\.[cm]?[jt]s$/.test(spec)) {
-    try { return await next(spec + '.ts', ctx) } catch {}
-  }
-  return next(spec, ctx)
-}`
-register('data:text/javascript,' + encodeURIComponent(hook), import.meta.url)
+// src 里的相对导入不带扩展名（vite 风格），这里先注册解析钩子（scripts/lib/ts-resolve.mjs）补 .ts / index.ts，再动态导入。
+await import('./lib/ts-resolve.mjs')
 
 const { simulate, SIM_STRATEGIES } = await import('../src/activities/casino/sim.ts')
 const { slotTheoryRtp } = await import('../src/activities/casino/rules.ts')

@@ -106,7 +106,7 @@ const paintBlk = (blk: string, color: string): Painter => (c, w, h) => {
   fitText(c, blk, w / 2, h / 2 + 2, w - 8, 54, '900')
 }
 
-/** 店屋招牌：虚构中英文店名（无真实商标） */
+/** 店屋招牌：虚构中英文店名（无真实商标）；招牌是街景实物，不随界面语言变（i18n-ignore-file） */
 const SHOPS: [string, string, string, string][] = [
   // 中文, 英文, 底色, 字色
   ['海南鸡饭', 'Hainanese Chicken Rice', '#b3171d', '#ffd84a'],

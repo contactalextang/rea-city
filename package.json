@@ -7,7 +7,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173",
     "check": "tsc --noEmit",
-    "econ:sim": "node scripts/test/econ-sim.ts",
+    "econ:sim": "node --import ./scripts/lib/ts-resolve.mjs scripts/test/econ-sim.ts",
     "casino:sim": "node scripts/casino-sim.ts",
     "ride:sim": "node --experimental-transform-types --no-warnings scripts/test/ride-sim.ts",
     "geo:download": "node scripts/geo/00-download.ts",
@@ -25,7 +25,8 @@
     "char:build": "node scripts/char/build.ts",
     "props:build": "node scripts/props/build.ts",
     "lut:build": "node scripts/lut/build.ts",
-    "deploy:cf": "npm run build && wrangler deploy"
+    "deploy:cf": "npm run build && wrangler deploy",
+    "i18n:check": "node scripts/i18n-check.ts"
   },
   "keywords": [],
   "author": "",
