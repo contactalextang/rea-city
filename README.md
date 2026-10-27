@@ -43,6 +43,8 @@ node --test scripts/test/*.test.ts   # 单元测试（碰撞、分块编解码�
 | `lang=zh\|en` | 界面语言（默认跟浏览器语言；开局右上角或手机设置「语言 / Language」可切换，切换后页面重载、存档保留）。新增界面文字一律写 `t('中文')` 并在 `src/i18n/en/` 补英文，`npm run i18n:check` 检查 |
 | `timeSpeed=N` | 游戏时钟倍速 |
 | `bright=0.7–1.6` | 画面亮度倍率（默认 1，乘到曝光上；夜里嫌暗可以调高，例如 `?bright=1.2`）。手机设置页的「亮度」滑杆（70–160%）是同一个设置 |
+| `air=0` | 不加载滨海南机场（填海岛、堤道、航空插件都不出现；排查或对比开销用） |
+| `invertPitch=1` | 飞行俯仰反转（默认 W = 推杆、机头向下） |
 | `racedbg=1` | 赛车 AI 调试：每帧记录 AI 决策文字（`__game.plug.race.state().ai[i].dbg`） |
 
 ## 部署（Cloudflare Workers 静态资源）
@@ -72,6 +74,8 @@ npm run deploy:cf      # 构建 + 上传；自定义域 rea.alextang.dev 由 rou
 | 鼠标 | 转动视角（点击画面锁定指针，Esc 解锁） |
 | 鼠标左键 / 左 Ctrl | 手枪射击（**仅黑帮身份**；锁定指针时自动过肩瞄准） |
 | Esc | 关闭面板 / 解锁鼠标；建角色界面中返回 |
+
+**开飞机**（Phase AIR）：机库或停机位旁按 F 登机。W / S 俯仰（W 推杆机头向下，`?invertPitch=1` 反转），A / D 横滚（地面兼作前轮转向），Q / E 方向舵，Shift / Ctrl 加减油门，Space 刹车（任务中为拍照 / 投放），V 追尾 / 座舱视角，T 定高定向（装了航电，手动操作即断开）。地面且速度 < 3 m/s 时按 F 下机。
 
 **触屏手机**（自动识别粗指针设备；桌面可用 `?touch=1` 强制开启）：左半屏浮动摇杆移动 / 驾驶（推到底奔跑），右半屏拖动转视角；右下角「上车/下车」「交互」「跳/手刹」「跑」「开火」（黑帮，按住时过肩瞄准）「喇叭」（驾驶时）；顶部「手机」「任务」「全屏」。手机抽屉右上角 × 关闭。竞技场 FPS 暂不支持触屏。
 
@@ -155,6 +159,17 @@ npm run deploy:cf      # 构建 + 上传；自定义域 rea.alextang.dev 由 rou
 - **心情**：0–100，开局 70。清醒时每小时降 3，自然衰减降到 40 就停。心情低于 30 时工资和 XP ×0.85，高于 75 时 ×1.1。上班、被捕、倒下扣心情；吃饭、睡觉（醒来至少 50）、喝酒、跳舞、赌赢、赛车完赛或夺冠、射击比赛、约会加心情。左上角和手机状态页都会显示。手机「钱包」页可以看各娱乐类别今天和累计的收支。
 - **夜景亮度**：场馆大多夜里营业。觉得画面太暗，可以加 `?bright=1.2`（范围 0.7–1.6），或者在手机设置页拖「亮度」滑杆。
 
+### 机场与飞行（Phase AIR）
+
+城市南边海上的虚构填海机场「滨海南机场」（跑道 09/27，长 1200 m），从 Marina Coastal Drive 南端走堤道上岛，叫车「出行」页可以直接去。航站楼、机库、塔台都是 airport 类 POI。
+
+- **租机 / 买飞机**：Lv3 起在机库租 Cessna（$300/次，坠毁另扣 $2,000）。商店「飞机」栏：Cessna $48k（Lv6，金领 Lv4）、涡轮版 $95k（Lv10，推力 ×1.25）、VIP 版 $180k（金领 Lv12，包机报酬 ×1.2）、航电升级 $6k（下滑道 / 中线指示 + T 定高）。自有飞机停在机位并进存档；报废后在机库按买价 5% 维修，迫降在外的可拖回。
+- **飞行**：街机固定翼（Vr 28 m/s，失速 24，巡航 55，极速 75，升限 1200 m），撞楼、坠海、重着陆算坠毁（WASTED 流程）；允许在马路或公园迫降。接地按下沉率分完美 / 正常 / 重着陆。空域 x −4200..4600、z −3000..3600，飞出前自动掉头。
+- **飞行工作**（手机「飞行」或机库面板接单，每游戏日最多 2 单，回跑道落地才结算，落地质量 ×1.2 / 1.0 / 0.7）：蓝领观光载客穿地标门；白领航拍（Space 拍照）；黑帮空投（抛物线投放）；金领商务包机。
+- **产业**：机场货运（蓝领）、观光飞行社（白领）、公务包机（金领）、走私航线（黑帮，有风险）。
+- **支线「蓝天之上」**：航站楼门口黄柱接，每身份一条；帝国线进行中也能接（帝国线暂时挂起，支线结束后按原进度恢复）。
+- **执法**：`law=relaxed|real` 下低空（< 120 m）飞越 CBD、降落在马路上会记通缉热度；默认畅玩档不管。
+
 ### 存档
 
 在家睡觉会自动存档，住家面板也可手动存档；手机里有「存档 / 读档 / 重新开始」。存档、角色外观、设置分别保存在 localStorage。
@@ -186,6 +201,8 @@ npm run deploy:cf      # 构建 + 上传；自定义域 rea.alextang.dev 由 rou
 
 角色资产：`npm run char:build` 把 Quaternius Ultimate Modular Men / Women（放在 `data/assets-eval/`）打包成 `public/assets/characters/characters.glb` + `catalog.json`（46 个部件、24 段动画、14 个预设），说明见 `scripts/char/README.md`。
 
+机场模型：`npm run airfield:build` 把 threejsassets「Airfield — Small Airport Kit」的 22 个免费 GLB（放在 `data/assets-eval/threejsassets/airfield/`，需登录下载）打包成 `public/assets/airfield/airfield.glb`（meshopt 压缩，约 1.2 MB；`--inspect` 打印各模型尺寸）。
+
 道具模型：`npm run props:build` 把 threejsassets.com 免费模型（Draco GLB，放在 `data/assets-eval/threejsassets/`，需登录下载）解压合并成 `public/assets/props/props.glb`（运行时不需要 Draco 解码器）。
 
 ## 代码结构
@@ -197,12 +214,13 @@ src/
   world/       WorldSource（世界数据源接口）
                SgWorld、ChunkManager、ChunkFormat、BuildingMesh、PropMeshes、RoadMarkings、Landmarks、Signage、TextAtlas   真实新加坡
                GridWorld、CityGenerator、GridGraph                                                                            方格城
+               Airfield、AirfieldMesh、AirfieldModels、RunwayShader、HeightField                                                  滨海南机场
                RoadGraph、Pathfinder、Colliders（多边形 + 空间哈希 + 射线）、PoiMarkers、Marker
-  physics/     ArcadeVehicle（街机车辆）、Collision
-  entities/    Player、Vehicle（轿车/MPV/SUV/跑车/巴士）、Pedestrians、TrafficAI、PoliceAI
+  physics/     ArcadeVehicle（街机车辆）、ArcadeFlight（街机固定翼）、Collision
+  entities/    Player、Aircraft、Vehicle（轿车/MPV/SUV/跑车/巴士）、Pedestrians、TrafficAI、PoliceAI
   characters/  CharacterLibrary、CharacterInstance、CharacterSpec、presets   骨骼角色运行时
   systems/     Clock、DayNight、Weather、Signals、Law、Needs、Poi、Interactions、Jobs、Quests、Save、Spawner、Weapon、Audio、Wallet、NightLights
-  activities/  Plugin（娱乐插件接口）+ casino / club / race / arena 四个玩法插件
+  activities/  Plugin（娱乐插件接口）+ casino / club / race / arena / aviation 五个玩法插件
   data/        roles、jobs、quests、menus、venues、casino、dates、races、arena、mood   身份、工作、任务、菜单、场馆、娱乐与经济参数
   ui/          Hud、Minimap、Phone、Panels、Creator（建角色界面）、Activity（娱乐小游戏的全屏宿主）
   dev/         worldViewer、charsViewer、creatorViewer   开发工具页脚本
@@ -232,6 +250,7 @@ launcher/                  macOS 桌面启动器
 - 时间与天气：`clock.set(hour)`、`clock.skip(h)`、`weather.set('clear'|'cloudy'|'storm')`、`dayNight`
 - 生活系统：`needs.set(h, e)`、`interact(poiId)`、`panel.choose(i)`、`phone.show('work')`、`jobs.start(id)` / `jobs.state`、`quests.*`、`save()` / `load()`
 - 执法与信号：`law.crime()` / `law.traffic()`、`signals.*`
+- 飞行：`plug.aviation.rent()` / `board()` / `place(x, y, z, spd, hdg)` / `autopilot(...)` / `state` / `jobs` / `start(id)` / `autofly()` / `own(id)` / `lineUp()`；`window.__airfield`（机场网格统计）
 - 截图辅助：`camShot([dx,dy,dz,lx,ly,lz])`（相对玩家的相机位置与注视点）、`gatherPeds(r)`、`creator.state()`
 
 ## 桌面启动器（macOS）
@@ -249,4 +268,5 @@ launcher/make-app.sh launcher/icon-mac-1024.png /Applications
 - Contains information from the Land Transport Authority (LTA DataMall), Urban Redevelopment Authority (URA), Housing & Development Board (HDB) and National Environment Agency (NEA), accessed from data.gov.sg / LTA DataMall, made available under the [Singapore Open Data Licence v1.0](https://data.gov.sg/open-data-licence)。本项目与上述机构无关，亦不代表其背书。
 - 角色模型：Quaternius — Ultimate Modular Men / Women，CC0 1.0（原文见 `public/assets/characters/LICENSE-quaternius.txt`）。
 - 行道树模型：threejsassets.com — Shade Tree / Metropolis Street Tree 01，Free Commercial License（不得单独再分发模型文件，见 `public/assets/props/LICENSE-threejsassets.txt`）。
+- 机场模型：threejsassets.com — Airfield — Small Airport Kit 免费部分（塔台、Cessna、机库、灯具、标牌等），Free Commercial License（不得单独再分发模型文件，见 `public/assets/airfield/LICENSE-threejsassets.txt`；仓库若公开须排除 `public/assets/props/` 与 `public/assets/airfield/`）。
 - 其余几何（建筑、车辆、地标、其余道具）、音效（WebAudio 合成）与代码均为本项目原创。
