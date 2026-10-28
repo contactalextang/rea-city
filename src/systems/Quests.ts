@@ -68,6 +68,14 @@ export class Quests {
   private result: 'none' | 'win' | 'fail' = 'none'
   resultTimer = 0
   toast: (s: string, sec?: number) => void = () => {}
+  /**
+   * 剧情过场钩子（Game 接 StoryCard）：返回 true = 会播过场，播完调 done；false / 未设 = 照原逻辑。
+   * intro 只在 begin()（真正新开始）时调用，读档恢复进行中的任务不调。
+   */
+  onIntro?: (q: QuestDef, done: () => void) => boolean
+  onOutro?: (q: QuestDef, done: () => void) => boolean
+  /** 正在等 intro 过场播完的任务：期间不计时（timeLimit 在过场结束后才开始） */
+  private introFor: QuestDef | null = null
   private src: QuestSources = {}
   private pollTimer = 0
 
@@ -121,7 +129,7 @@ export class Quests {
   /** 读档/开局：恢复进度并自动接新手任务 */
   init(save?: QuestsSave | null) {
     this.done = new Set(save?.done ?? [])
-    this.active = null; this.resolved = {}
+    this.active = null; this.resolved = {}; this.introFor = null
     const a = save?.active
     const def = a ? this.byId(a.id) : null
     if (a && def && !this.done.has(def.id)) {
@@ -189,7 +197,14 @@ export class Quests {
     } else if (this.active) this.end('fail')
     this.active = q; this.step = 0; this.progress = 0; this.result = 'none'
     this.timer = q.timeLimit ?? 0; this.resolved = {}
-    this.toast(t('{title}：{intro}', { title: q.title, intro: q.intro }), 4)
+    const go = () => {
+      if (this.introFor === q) this.introFor = null
+      if (this.active !== q) return
+      this.timer = q.timeLimit ?? 0
+      this.toast(t('{title}：{intro}', { title: q.title, intro: q.intro }), 4)
+    }
+    this.introFor = q
+    if (!this.onIntro?.(q, go)) go()
     this.enterStep()
     this.refreshGivers()
   }
@@ -327,7 +342,9 @@ export class Quests {
     this.done.add(q.id)
     this.ctx.player.money = Math.round((this.ctx.player.money + q.reward) * 100) / 100
     const last = q.tier === 'empire' && this.empireDone()
-    this.toast(last ? t('帝国建成！「{title}」+{reward} · 手机「成长」看你的终身战绩', { title: q.title, reward: usd(q.reward) }) : t('任务完成「{title}」+{reward}', { title: q.title, reward: usd(q.reward) }), last ? 6 : 3)
+    const toastDone = () => this.toast(last ? t('帝国建成！「{title}」+{reward} · 手机「成长」看你的终身战绩', { title: q.title, reward: usd(q.reward) }) : t('任务完成「{title}」+{reward}', { title: q.title, reward: usd(q.reward) }), last ? 6 : 3)
+    // 有结尾过场：播完再弹完成提示；下一环的 intro 排在其后（StoryCard 按顺序排队）
+    if (!this.onOutro?.(q, toastDone)) toastDone()
     this.ctx.events.emit('questDone', { id: q.id, reward: q.reward })
     this.end('win')
     const next = q.next ? this.byId(q.next) : null
@@ -373,7 +390,7 @@ export class Quests {
       if (p && Math.hypot(px - p.x, pz - p.z) < 4) { this.begin(g); return }
     }
     const q = this.active
-    if (q.timeLimit) { this.timer -= dt; if (this.timer <= 0) { this.fail(t('超时')); return } }
+    if (q.timeLimit && this.introFor !== q) { this.timer -= dt; if (this.timer <= 0) { this.fail(t('超时')); return } }
     const s = this.current; if (!s) return
     const key = (k: string) => `${this.step}:${k}`
     this.eventTimer -= dt

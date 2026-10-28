@@ -1,5 +1,7 @@
 # REA City — 新加坡市中心生活模拟（Three.js）
 
+<img src="https://rea.alextang.dev/assets/promo/banner.webp" alt="REA City">
+
 浏览器里跑的开放世界：以 **1:1 真实比例**还原新加坡市中心约 4.8 × 2.8 km 的切片——滨海湾、莱佛士坊、牛车水、丹戎巴葛、中峇鲁、红山。路网、建筑足迹与高度、红绿灯、路灯、巴士站、MRT 出口、小贩中心都来自公开数据（OpenStreetMap、LTA DataMall、URA、HDB、NEA），离线烘焙成分块数据后流式加载。
 
 玩法是**生活模拟 + 四种身份**：吃饭睡觉、上班打工、开车坐地铁，昼夜更替、雷雨天气、靠左行驶、交通罚单与警察追捕。默认身份是**黑帮成员**（唯一能开枪的身份），也可以在建角色界面选金领、白领、蓝领。
@@ -46,6 +48,7 @@ node --test scripts/test/*.test.ts   # 单元测试（碰撞、分块编解码�
 | `bright=0.7–1.6` | 画面亮度倍率（默认 1，乘到曝光上；夜里嫌暗可以调高，例如 `?bright=1.2`）。手机设置页的「亮度」滑杆（70–160%）是同一个设置 |
 | `air=0` | 不加载滨海南机场（填海岛、堤道、航空插件都不出现；排查或对比开销用） |
 | `invertPitch=1` | 飞行俯仰反转（默认 W = 推杆、机头向下） |
+| `story=0` | 关闭漫画剧情过场（剧情图在 `public/assets/story/`，缺图时也会自动跳过） |
 | `racedbg=1` | 赛车 AI 调试：每帧记录 AI 决策文字（`__game.plug.race.state().ai[i].dbg`） |
 
 ## 部署（Cloudflare Workers 静态资源）
@@ -56,6 +59,8 @@ node --test scripts/test/*.test.ts   # 单元测试（碰撞、分块编解码�
 npx wrangler login     # 首次：浏览器登录 Cloudflare
 npm run deploy:cf      # 构建 + 上传；自定义域 rea.alextang.dev 由 routes.custom_domain 自动建 DNS 与证书
 ```
+
+**部署前先跑 `npm run promo:build`**：宣传图与剧情过场图不入库（见下方「宣传素材」），只随 `dist/` 上传；本地没有 `public/assets/promo/`、`public/assets/story/` 时线上就会缺 OG 图、标题背景与剧情图（游戏会自动降级，但分享卡片会没图）。
 
 限制（免费版）：每个版本最多 20,000 个文件、单文件不超过 25 MiB，目前 dist 约 250 个文件、最大 3.7 MB。账号与云存档的后端设计（同一 Worker + D1）和各云平台费用对比见 `docs/ACCOUNTS.md`。
 
@@ -206,6 +211,8 @@ npm run deploy:cf      # 构建 + 上传；自定义域 rea.alextang.dev 由 rou
 
 外墙细节贴图：`npm run facade:build` 从 ambientCG（CC0）下载 4 种照片扫描材质（缓存在 `data/assets-eval/ambientcg/`），处理成亮度细节 + 法线拼成 `public/assets/facade/detail.webp`（需系统 `unzip`、`cwebp`）。只在 fx=high 加载，`?facdetail=0` 关闭。
 
+宣传素材：`npm run promo:build`（需系统 `cwebp`，用 Playwright 无头 Chromium 在 canvas 上合成）。源图是用 [どこでもロケハン](https://tools.oyasumi-gamedev.com/rokehan/) 把真实新加坡街区渲染成的黑白漫画线稿 + 网点 PNG：`public/assets/promo/src/skyline_dusk.png`、`skyline_night.png`（滨海湾远景）、`chinatown.png`、`raffles.png`，以及剧情过场图 `public/assets/story/*.png`。脚本输出 `public/assets/promo/` 下的 `banner.webp`（README 头图 1600×500）、`og.png`（分享卡片 1200×630）、`cover.png`（itch 封面 630×500）、`title-bg.webp`（开始 / 加载画面背景，≤ 400 KB），并把 `story/*.png` 转成同名 `.webp`（宽 1600，已是最新则跳过）；源图缺失只提示并跳过。该工具条款禁止再分发原始导出文件，所以源图和合成结果都 **gitignore、不入库**，只随部署上传；合成时会重新写上「© OpenStreetMap contributors · © OpenMapTiles · Terrain Tiles」署名（原图右下角的署名常被裁掉）。开始画面缺 `title-bg.webp` 时保持原来的纯色遮罩。源图的拍摄地点、机位和重拍脚本（`node scripts/story-art/shots.mjs scripts/story-art/shots.json`）见 [docs/STORY-ART.md](docs/STORY-ART.md)。
+
 道具模型：`npm run props:build` 把 threejsassets.com 免费模型（Draco GLB，放在 `data/assets-eval/threejsassets/`，需登录下载）解压合并成 `public/assets/props/props.glb`（运行时不需要 Draco 解码器）。
 
 ## 代码结构
@@ -272,6 +279,7 @@ launcher/make-app.sh launcher/icon-mac-1024.png /Applications
 - 角色模型：Quaternius — Ultimate Modular Men / Women，CC0 1.0（原文见 `public/assets/characters/LICENSE-quaternius.txt`）。
 - 行道树模型：threejsassets.com — Shade Tree / Metropolis Street Tree 01，Free Commercial License（不得单独再分发模型文件）。
 - 机场模型：threejsassets.com — Airfield — Small Airport Kit 免费部分（塔台、Cessna、机库、灯具、标牌等），Free Commercial License（不得单独再分发模型文件）。
+- 街景线稿（宣传图、开始画面背景、剧情过场图）由 どこでもロケハン（tools.oyasumi-gamedev.com/rokehan）生成，地图数据 © OpenStreetMap contributors、远景地形 © OpenMapTiles、海拔 Terrain Tiles；按其条款不再分发原始导出文件（`public/assets/promo/`、`public/assets/story/` 已 gitignore，只随线上部署）。
 - 外墙细节贴图：ambientCG — PaintedPlaster017、Concrete012、Plaster007、Tiles038，CC0（`npm run facade:build` 生成 `public/assets/facade/detail.webp`，随仓库提交）。
 - **公开仓库不含上面两套 threejsassets 模型**（`public/assets/props/`、`public/assets/airfield/` 已 gitignore）。克隆后直接运行时会自动退回程序化行道树、机场占位与程序化 Cessna，控制台只有 `[props]` / `[airfield]` / `[aircraft]` 降级 warning。要用真模型：到 threejsassets.com 登录下载对应免费模型放进 `data/assets-eval/threejsassets/`，再跑 `scripts/props/build.ts` 与 `npm run airfield:build`。
 - 其余几何（建筑、车辆、地标、其余道具）、音效（WebAudio 合成）与代码均为本项目原创。

@@ -17,6 +17,10 @@ export class Hud {
   private hintEl = $('hint')
   private toastEl = $('toast')
   private overlay = $('overlay')
+  /** 开始 / 加载画面的街景背景（assets/promo/title-bg.webp，不入库）：探测能加载才启用，缺图保持纯色 */
+  private titleBg = false
+  private titleBgOn = true // 页面初始的遮罩就是开始/加载画面
+  constructor() { this.probeTitleBg() }
   private clockEl = $('clock')
   private clockText = ''
   private lawText = ''
@@ -188,7 +192,19 @@ export class Hud {
     $('ov-keys').style.display = showKeys ? '' : 'none'
     $('ov-go').textContent = go
     $('ov-go').style.display = go ? '' : 'none'
+    // 只有开始 / 加载画面（cls 为空）铺背景；WASTED / BUSTED / 通关等失败与结算画面保持原样
+    this.titleBgOn = cls === ''
+    this.overlay.classList.toggle('bg', this.titleBg && this.titleBgOn)
     this.overlay.classList.remove('hidden')
+  }
+  private probeTitleBg() {
+    const img = new Image()
+    img.onload = () => {
+      this.titleBg = true
+      this.overlay.style.setProperty('--title-bg', `url("${img.src}")`)
+      this.overlay.classList.toggle('bg', this.titleBgOn)
+    }
+    img.src = 'assets/promo/title-bg.webp'
   }
   hideOverlay() { this.overlay.classList.add('hidden') }
   /** 覆盖层底部署名（数据来源）；空串隐藏 */

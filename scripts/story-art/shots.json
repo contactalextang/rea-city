@@ -1,0 +1,251 @@
+[
+{
+"id": "ob_gang_2",
+"dest": "story/ob_gang_2.png",
+"place": "芽笼 Geylang Rd 路口",
+"lat": 1.3127,
+"lng": 103.884,
+"cam": "ix0",
+"tod": "dusk"
+},
+{
+"id": "ob_gold_1",
+"dest": "story/ob_gold_1.png",
+"place": "莱佛士坊 CBD 仰视",
+"lat": 1.284,
+"lng": 103.8515,
+"cam": "centerLow",
+"tod": "day"
+},
+{
+"id": "ob_gold_2",
+"dest": "story/ob_gold_2.png",
+"place": "莱佛士坊 俯视",
+"lat": 1.284,
+"lng": 103.8515,
+"cam": "centerHigh",
+"tod": "dusk"
+},
+{
+"id": "ob_white_1",
+"dest": "story/ob_white_1.png",
+"place": "丹戎巴葛 地铁站一带",
+"lat": 1.2764,
+"lng": 103.8457,
+"cam": "center",
+"tod": "day"
+},
+{
+"id": "ob_white_2",
+"dest": "story/ob_white_2.png",
+"place": "丹戎巴葛 路口",
+"lat": 1.2764,
+"lng": 103.8457,
+"cam": "ix0",
+"tod": "dusk"
+},
+{
+"id": "ob_blue_1",
+"dest": "story/ob_blue_1.png",
+"place": "宏茂桥 组屋区",
+"lat": 1.3693,
+"lng": 103.8496,
+"cam": "center",
+"tod": "day"
+},
+{
+"id": "ob_blue_2",
+"dest": "story/ob_blue_2.png",
+"place": "宏茂桥 夜",
+"lat": 1.3693,
+"lng": 103.8496,
+"cam": "centerHigh",
+"tod": "night"
+},
+{
+"id": "emp_gang_1",
+"dest": "story/emp_gang_1.png",
+"place": "芽笼 店屋街",
+"lat": 1.3115,
+"lng": 103.8745,
+"cam": "ix0",
+"tod": "day"
+},
+{
+"id": "emp_gang_2",
+"dest": "story/emp_gang_2.png",
+"place": "双溪加株 工业区",
+"lat": 1.4135,
+"lng": 103.7545,
+"cam": "ix0",
+"tod": "dusk"
+},
+{
+"id": "emp_gang_3",
+"dest": "story/emp_gang_3.png",
+"place": "牛车水 夜",
+"lat": 1.2826,
+"lng": 103.8431,
+"cam": "centerLow",
+"tod": "night"
+},
+{
+"id": "emp_gang_4",
+"dest": "story/emp_gang_4.png",
+"place": "芽笼 远景",
+"lat": 1.3127,
+"lng": 103.884,
+"cam": "wide",
+"tod": "night"
+},
+{
+"id": "emp_blue_1",
+"dest": "story/emp_blue_1.png",
+"place": "旧机场路 小贩中心",
+"lat": 1.308,
+"lng": 103.8855,
+"cam": "ix0",
+"tod": "day"
+},
+{
+"id": "emp_blue_2",
+"dest": "story/emp_blue_2.png",
+"place": "大巴窑",
+"lat": 1.3327,
+"lng": 103.8478,
+"cam": "ix0",
+"tod": "day"
+},
+{
+"id": "emp_blue_3",
+"dest": "story/emp_blue_3.png",
+"place": "榜鹅 新组屋",
+"lat": 1.4043,
+"lng": 103.9024,
+"cam": "centerLow",
+"tod": "dusk"
+},
+{
+"id": "emp_blue_4",
+"dest": "story/emp_blue_4.png",
+"place": "宏茂桥 远景",
+"lat": 1.3693,
+"lng": 103.8496,
+"cam": "wide",
+"tod": "dusk"
+},
+{
+"id": "emp_white_1",
+"dest": "story/emp_white_1.png",
+"place": "纬壹科技城 one-north",
+"lat": 1.2995,
+"lng": 103.7875,
+"cam": "centerLow",
+"tod": "day"
+},
+{
+"id": "emp_white_2",
+"dest": "story/emp_white_2.png",
+"place": "纬壹 夜",
+"lat": 1.2995,
+"lng": 103.7875,
+"cam": "ix0",
+"tod": "night"
+},
+{
+"id": "emp_white_3",
+"dest": "story/emp_white_3.png",
+"place": "里峇峇利 River Valley 公寓",
+"lat": 1.294,
+"lng": 103.837,
+"cam": "centerLow",
+"tod": "dusk"
+},
+{
+"id": "emp_white_4",
+"dest": "story/emp_white_4.png",
+"place": "滨海湾 夜景",
+"lat": 1.284,
+"lng": 103.8565,
+"cam": "wide",
+"tod": "night"
+},
+{
+"id": "emp_gold_1",
+"dest": "story/emp_gold_1.png",
+"place": "乌节路",
+"lat": 1.304,
+"lng": 103.832,
+"cam": "ix0",
+"tod": "day"
+},
+{
+"id": "emp_gold_2",
+"dest": "story/emp_gold_2.png",
+"place": "莱佛士坊 远景",
+"lat": 1.284,
+"lng": 103.8515,
+"cam": "wide",
+"tod": "day"
+},
+{
+"id": "emp_gold_3",
+"dest": "story/emp_gold_3.png",
+"place": "海湾舫 Bayfront 夜",
+"lat": 1.282,
+"lng": 103.86,
+"cam": "ix0",
+"tod": "dusk"
+},
+{
+"id": "emp_gold_4",
+"dest": "story/emp_gold_4.png",
+"place": "滨海湾 黄昏",
+"lat": 1.285,
+"lng": 103.8545,
+"cam": "wide",
+"tod": "dusk"
+},
+{
+"id": "promo_skyline_dusk",
+"dest": "promo/src/skyline_dusk.png",
+"place": "滨海湾天际线 黄昏",
+"lat": 1.285,
+"lng": 103.8545,
+"cam": "wide",
+"tod": "dusk",
+"long": 4800,
+"size": 600
+},
+{
+"id": "promo_skyline_night",
+"dest": "promo/src/skyline_night.png",
+"place": "滨海湾天际线 夜",
+"lat": 1.285,
+"lng": 103.8545,
+"cam": "wide",
+"tod": "night",
+"long": 4800,
+"size": 600
+},
+{
+"id": "promo_chinatown",
+"dest": "promo/src/chinatown.png",
+"place": "牛车水 平视",
+"lat": 1.2842,
+"lng": 103.8436,
+"cam": "centerLow",
+"tod": "day",
+"long": 4800
+},
+{
+"id": "promo_raffles",
+"dest": "promo/src/raffles.png",
+"place": "莱佛士坊 仰视",
+"lat": 1.284,
+"lng": 103.8515,
+"cam": "centerLow",
+"tod": "day",
+"long": 4800
+}
+]

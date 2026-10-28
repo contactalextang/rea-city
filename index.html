@@ -13,6 +13,19 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="REA City" />
+  <!-- 分享卡片（og.png 由 npm run promo:build 合成，不入库，随 dist 部署） -->
+  <meta name="description" content="REA City：在真实新加坡街区里打工、开店、投资、飙车的开放世界生活模拟网页游戏。A Singapore life sim in your browser." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="REA City" />
+  <meta property="og:title" content="REA City · 新加坡现实生活模拟" />
+  <meta property="og:description" content="在真实新加坡街区（牛车水 / 莱佛士坊 / 滨海湾）里打工、开店、投资、开车开飞机的开放世界生活模拟，浏览器即开即玩。A Singapore life sim." />
+  <meta property="og:image" content="https://rea.alextang.dev/assets/promo/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:url" content="https://rea.alextang.dev/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="REA City · 新加坡现实生活模拟" />
+  <meta name="twitter:image" content="https://rea.alextang.dev/assets/promo/og.png" />
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b1020; font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif; }
     #app { position: fixed; inset: 0; }
@@ -63,6 +76,11 @@
     .toast.show { opacity: 1; }
     .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: rgba(5,8,20,.82); color: #fff; pointer-events: auto; transition: opacity .3s; }
     .overlay.hidden { opacity: 0; pointer-events: none; }
+    /* 开始 / 加载画面背景：街景线稿（assets/promo/title-bg.webp，Hud 探测到能加载才设 --title-bg 并加 .bg；失败画面等不加） */
+    .overlay.bg { background: linear-gradient(180deg, rgba(5,8,20,.55) 0%, rgba(5,8,20,.72) 45%, rgba(5,8,20,.88) 100%), var(--title-bg) center 60% / cover no-repeat, #0b1020; }
+    .overlay.bg h1 { text-shadow: 0 2px 0 #000, 0 0 18px rgba(0,0,0,.8); }
+    .overlay.bg .keys { background: rgba(5,8,20,.6); }
+    .overlay.bg::after { content: "© OpenStreetMap contributors · © OpenMapTiles · Terrain Tiles"; position: absolute; right: max(10px, env(safe-area-inset-right)); bottom: env(safe-area-inset-bottom, 0px); font-size: 10px; line-height: 12px; opacity: .5; pointer-events: none; }
     /* 语言切换（开局遮罩 / 建角色时显示，见 Game.setLang） */
     .lang-sw { position: fixed; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 70; display: flex; gap: 4px; pointer-events: auto; }
     .lang-sw button { font: inherit; font-size: 13px; padding: 4px 10px; color: #fff; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.35); border-radius: 6px; cursor: pointer; }
@@ -159,6 +177,39 @@
     .ride-fade .rd i { width: 8px; height: 8px; border-radius: 50%; background: #7ee787; opacity: .25; animation: rideDot 1.2s infinite; }
     .ride-fade .rd i:nth-child(2) { animation-delay: .2s; } .ride-fade .rd i:nth-child(3) { animation-delay: .4s; }
     @keyframes rideDot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+    /* P16 漫画剧情过场卡（src/ui/StoryCard.ts）：黑白漫画格，一格一屏；高于 HUD / 面板 / 活动，低于叫车黑屏 */
+    .story { position: fixed; inset: 0; z-index: 55; display: none; flex-direction: column; align-items: center; justify-content: center; background-color: #0d0d0d; background-image: radial-gradient(rgba(255,255,255,.07) 1px, transparent 1.4px); background-size: 7px 7px; color: #111; user-select: none; -webkit-user-select: none; cursor: pointer; padding: 16px; box-sizing: border-box; }
+    .story.show { display: flex; }
+    .story .sc-page { opacity: 0; }
+    .story .sc-page.in { animation: scIn .35s ease-out forwards; }
+    @keyframes scIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+    .story .sc-frame { position: relative; width: min(92vw, calc((100vh - 110px) * 1.5)); aspect-ratio: 3 / 2; box-sizing: border-box; background: #fff; border: 5px solid #000; outline: 8px solid #f4f1ea; box-shadow: 0 0 0 11px #000, 0 18px 50px rgba(0,0,0,.7); transform: rotate(var(--tilt, 0deg)); overflow: hidden; }
+    .story .sc-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1) contrast(1.08); }
+    .story .sc-cap { position: absolute; left: -2px; top: -2px; max-width: 58%; background: #fff; border: 3px solid #000; padding: 8px 14px; font-family: "Songti SC", "STSong", "Noto Serif SC", Georgia, serif; font-weight: 900; font-size: clamp(13px, 1.75vw, 21px); line-height: 1.45; box-shadow: 4px 4px 0 #000; }
+    .story .sc-bub { position: absolute; max-width: 40%; background: #fff; border: 3px solid #000; border-radius: 22px; padding: 9px 15px; font-weight: 800; font-size: clamp(13px, 1.6vw, 20px); line-height: 1.4; box-shadow: 3px 3px 0 rgba(0,0,0,.85); }
+    .story .sc-bub.l { left: 5%; top: calc(26% + var(--row, 0) * 22%); }
+    .story .sc-bub.l.nocap { top: calc(7% + var(--row, 0) * 22%); }
+    .story .sc-bub.r { right: 5%; bottom: calc(12% + var(--row, 0) * 22%); }
+    .story .sc-bub::after { content: ''; position: absolute; width: 18px; height: 18px; background: #fff; border-right: 3px solid #000; border-bottom: 3px solid #000; }
+    .story .sc-bub.l::after { left: 26px; bottom: -11px; transform: skewX(28deg) rotate(45deg); }
+    .story .sc-bub.r::after { right: 26px; top: -11px; transform: skewX(-28deg) rotate(225deg); }
+    .story .sc-who { position: absolute; top: -13px; left: 14px; background: #000; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 2px 8px; border-radius: 3px; white-space: nowrap; }
+    .story .sc-frame.text { background: #050505; color: #fff; display: flex; align-items: center; justify-content: center; }
+    .story .sc-tbox { max-width: 82%; text-align: left; }
+    .story .sc-tcap { font-family: "Songti SC", "STSong", "Noto Serif SC", Georgia, serif; font-weight: 900; font-size: clamp(20px, 3vw, 36px); line-height: 1.5; margin-bottom: 18px; }
+    .story .sc-tline { font-size: clamp(14px, 1.8vw, 20px); line-height: 1.6; margin-top: 8px; }
+    .story .sc-twho { display: inline-block; background: #fff; color: #000; font-size: .75em; font-weight: 800; padding: 1px 7px; margin-right: 10px; border-radius: 3px; }
+    .story .sc-ttxt { opacity: .92; }
+    .story .sc-foot { margin-top: 26px; display: flex; gap: 18px; align-items: center; color: #f4f1ea; font-size: 13px; letter-spacing: 1px; opacity: .8; }
+    .story .sc-num { font-weight: 800; font-family: Menlo, monospace; }
+    .story .sc-osm { position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); font-size: 10px; color: #f4f1ea; opacity: .55; pointer-events: none; }
+    @media (orientation: portrait) {
+      .story .sc-frame { width: 88vw; aspect-ratio: 3 / 4; max-height: calc(100vh - 130px); }
+      .story .sc-cap { max-width: 78%; font-size: 14px; padding: 6px 10px; }
+      .story .sc-bub { max-width: 66%; font-size: 14px; padding: 7px 12px; }
+      .story .sc-bub.l { top: calc(24% + var(--row, 0) * 20%); }
+      .story .sc-tcap { font-size: 22px; }
+    }
     .phone .app .stat { font-size: 12px; opacity: .85; margin-bottom: 4px; line-height: 1.5; }
     .phone .app .sect { font-size: 12px; font-weight: 700; opacity: .7; letter-spacing: 1px; margin: 12px 0 6px; }
     .phone .app .empty { font-size: 13px; opacity: .7; padding: 18px 8px; text-align: center; border: 1px dashed rgba(255,255,255,.25); border-radius: 8px; margin-top: 8px; }

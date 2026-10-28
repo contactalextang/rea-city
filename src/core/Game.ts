@@ -55,6 +55,8 @@ import { CharacterLibrary } from '../characters/CharacterLibrary'
 import type { GamePlugin } from '../activities/Plugin'
 import { installActivities } from '../activities'
 import { identitySpec } from '../characters/presets'
+import { StoryCard } from '../ui/StoryCard'
+import { STORY_INTRO, STORY_OUTRO, type ComicPanel } from '../data/storyComics'
 import { Creator, loadCreatorResult, saveCreatorResult, type CreatorResult } from '../ui/Creator'
 import { quote as rideQuote, canRide, routeDistance, grabSurge, RIDE_LABEL, type RideKind, type RideQuote } from '../systems/Ride'
 /** 场馆短名：中文名是「中文 English」取第一段；英文名本身就是完整英文，不切 */
@@ -111,6 +113,9 @@ export class Game {
   private signalLights: SignalLights | null = null
   jobs!: Jobs
   quests!: Quests
+  /** P16 漫画剧情过场卡（?story=0 关闭）；播放时复用 panel 状态暂停世界 */
+  storyCard!: StoryCard
+  private storyPaused = false
   /** Phase 8：资产（车/房/升级）、产业、钱包（净资产）、成长（等级/成就/统计） */
   assets!: Assets
   business!: Business
@@ -326,6 +331,20 @@ export class Game {
     this.interactions.jobs = this.jobs
     this.quests = new Quests(this.ctx)
     this.quests.toast = (t, sec) => this.hud.toast(t, sec)
+    this.storyCard = new StoryCard({
+      canShow: () => (this.state === 'play' || this.state === 'panel') && !this.creatorUi && !!document.getElementById('overlay')?.classList.contains('hidden'),
+      onOpen: () => {
+        if (this.state === 'play') { this.state = 'panel'; this.storyPaused = true }
+        this.phone.set(false)
+      },
+      onClose: () => {
+        if (this.storyPaused && this.state === 'panel' && !this.panels.open) { this.state = 'play'; this.unlockHintAt = this.time }
+        this.storyPaused = false
+        this.input.endFrame()   // 翻页用的点击 / 按键不再传给世界
+      },
+    }, q.get('story') !== '0')
+    this.quests.onIntro = (qd, done) => this.storyCard.enqueue(STORY_INTRO[qd.id], done)
+    this.quests.onOutro = (qd, done) => this.storyCard.enqueue(STORY_OUTRO[qd.id], done)
     // Phase 8 子系统：资产 / 产业（P8.2 / P8.3 填实）→ 钱包 → 成长
     this.assets = new Assets(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), spawner: this.spawner, level: () => this.progress.level, closePanel: () => this.closePanel(), refresh: () => { const c = this.interactions.current; if (c && this.panels.open) this.interactions.open(c) } })
     this.business = new Business(this.ctx, { toast: (t, sec) => this.hud.toast(t, sec), save: () => this.saveGame(false), level: () => this.progress.level, hasBloomberg: () => this.assets.owns('upg_bloomberg'), refresh: () => { const c = this.interactions.current; if (c && this.panels.open) this.interactions.open(c) } })
@@ -505,6 +524,7 @@ export class Game {
       this.last = now
       this.langSw.style.display = this.state === 'intro' || this.state === 'creator' ? '' : 'none'
       if (!this.ready) { this.fitViewport(); return }   // 世界加载中：只显示覆盖层
+      this.storyCard.pump()   // 排队的剧情过场：play / panel 且覆盖层已隐藏时开播
       const hudEl = document.getElementById('hud')
       const uiOpen = !!this.creatorUi?.isOpen || this.state === 'activity' || this.state === 'arena'
       this.touchUi?.update({
@@ -893,7 +913,8 @@ export class Game {
           if (this.bustTimer > lawTuning(this.ctx).bustTime) this.enterState('busted')
         } else this.bustTimer = Math.max(0, this.bustTimer - dt * 0.5)
       } else this.bustTimer = 0
-      if (this.quests.allDone && !this.progress.storyShown) {
+      if (this.storyCard.busy) { /* 剧情过场播完再弹通关 / 帝国落成覆盖层 */ }
+      else if (this.quests.allDone && !this.progress.storyShown) {
         this.progress.storyShown = true; this.saveDue = true; this.state = 'won'; this.stateTimer = 0
         this.hud.showOverlay(t('故事线完成 · 帝国目标已解锁'), t('{role}线故事任务全部完成 · 账户 ${money} · 打开手机「生意」经营你的产业帝国', { role: this.role.title, money: this.player.money.toLocaleString() }), 'gold', false, t('按任意键继续'))
       } else if (this.state === 'play' && !this.progress.empireShown && this.quests.empireDone()) {
@@ -1703,6 +1724,8 @@ export class Game {
       get shop() { return self.assets.debug },
       get biz() { return self.business.debugApi() },
       save() { return self.saveGame(false) },
+      /** P16 剧情过场：isOpen / busy / skip() / play(panels) */
+      get storyCard() { const sc = self.storyCard; return { get isOpen() { return sc.isOpen }, get busy() { return sc.busy }, skip() { sc.skip() }, play(panels: ComicPanel[]) { return sc.play(panels) } } },
       /** P10 插件测试钩子：__game.plug.casino / race / club / arena */
       get plug() { const o: Record<string, unknown> = {}; for (const pl of self.plugins) o[pl.id] = pl.debug?.() ?? pl; return o },
       load() { return self.loadGame() },

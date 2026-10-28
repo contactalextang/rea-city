@@ -28,6 +28,7 @@
     "airfield:build": "node scripts/airfield/build.ts",
     "lut:build": "node scripts/lut/build.ts",
     "facade:build": "node scripts/facade-tex/build.ts",
+    "promo:build": "node scripts/promo/build.ts",
     "deploy:cf": "npm run build && wrangler deploy",
     "i18n:check": "node scripts/i18n-check.ts"
   },

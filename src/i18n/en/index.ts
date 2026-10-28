@@ -6,5 +6,6 @@ import social from './social'
 import arena from './arena'
 import casino from './casino'
 import aviation from './aviation'
+import story from './story'
 
-export const EN: Record<string, string> = { ...ui, ...systems, ...data, ...social, ...arena, ...casino, ...aviation }
+export const EN: Record<string, string> = { ...ui, ...systems, ...data, ...social, ...arena, ...casino, ...aviation, ...story }
