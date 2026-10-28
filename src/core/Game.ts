@@ -1253,6 +1253,12 @@ export class Game {
     return { actions, reason: block ?? (poor ? t('余额不足') : null), quotes }
   }
 
+  /** 某个 POI 门口的 Taxi / Grab 按钮与禁用原因（插件用，如飞行应用的航站楼 / 机库）；POI 不存在 → null */
+  poiRideActions(poiId: string) {
+    const dest = this.rideDest(poiId)
+    return dest ? this.rideActions(dest) : null
+  }
+
   /**
    * 叫车直达：检查 → 扣车费（transport:taxi / transport:grab）→ 在车里先下车（车留原地）→ 黑屏
    * → 跳时 + 传送到门口 → 等区块加载（≤ 3 s）→ 淡出。返回是否成功叫到车。

@@ -125,6 +125,7 @@
 - 遗留（AIR.7 / 以后）：自动降落接地点偏远（x≈1714，跑道 900–2100 内）；座舱内饰简陋；手机端无俯仰反转开关、无拍照/投放专用触屏键；套件机库偏重（+5 万 tris，可简化）、机库门号都是「3」；杨树/铁丝网未用；路灯杆与雨棚无碰撞；手机大地图机场层未截图；行人会走上堤道；堤道 J 路口偶有车排队；支线挂起状态不进存档（读档后帝国线从头轮询，buy 步骤需重做）；高空 CBD 三角面高，手机端可考虑保持半径 2
 
 ## 后续
+- [x] 机场叫车（计划 ~/.claude/plans/vast-enchanting-parasol.md）：手机「飞行」的机场卡原来只有导航，现拆成「航站楼 / 机库」两行，各带导航 + Taxi / Grab（Game.poiRideActions 复用 rideActions / rideTo，禁用原因照旧）；tsc / i18n / test 51/51 通过，浏览器未实测
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶
 - [x] P12 射击 / 赛车 10 级难度阶梯（计划 ~/.claude/plans/soft-scribbling-garden.md）：src/data/tiers.ts；竞技场 botParams(t) 锚点插值 + dmgMul/utility，天梯按 ELO 定中心级别；赛车 RACE_TIERS（水平加成 + 橡皮筋参数）；各自 tier/tierMax 进存档，在最高级别获胜解锁下一级；奖金/XP ×TIER_REWARD；成就 race_legend/arena_legend
 - [ ] 后续可选：步行道图/天桥可走、桥梁抬高、五脚基、OneMap 补 HDB 层数

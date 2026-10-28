@@ -332,13 +332,18 @@ export function installAviation(game: Game) {
     const rentItem: AppItem = rental
       ? { title: t('租机'), desc: t('你的租机在 {n} 号停机位（今天内有效）', { n: (rentInfo?.stand ?? 0) + 1 }), tone: 'owned' }
       : { title: t('租机'), desc: t('机库租一架 Cessna：{p}/天 · 坠毁自付 {i}', { p: usd(RENT_PRICE), i: usd(RENT_INSURANCE) }), status: rentLk ?? t('到机库门口租，或直接接单（自动租一架）'), tone: rentLk ? 'locked' : undefined }
+    /** 航站楼 / 机库一行：导航 + Taxi / Grab 叫车直达门口 */
+    const airRow = (poiId: string, fallback: string, desc: string, navLabel: string): AppItem => {
+      const ride = game.poiRideActions(poiId)
+      return { title: game.pois.byId(poiId)?.name ?? fallback, desc, status: ride?.reason ?? undefined, actions: [{ label: navLabel, onClick: () => game.navTo(poiId) }, ...(ride?.actions ?? [])] }
+    }
     return {
       lines: [
         t('滨海南机场 · 机库距你 {d}', { d: dist >= 1000 ? `${(dist / 1000).toFixed(1)} km` : `${Math.round(dist)} m` }),
         t('起飞 {f} · 落地 {l} · 空中航程 {km} km · 飞行工作 {n} 单', { f: st.flights, l: st.landings, km: st.flightKm.toFixed(1), n: st.airJobs }),
       ],
       sections: [
-        { title: t('机场'), items: [{ title: game.pois.byId(AIRPORT_POI)?.name ?? t('机场'), desc: t('24 小时开放 · 机库：租机 / 取机 / 维修 / 接单'), actions: [{ label: t('导航到机库'), onClick: () => game.navTo(HANGAR_POI) }, { label: t('导航到航站楼'), onClick: () => game.navTo(AIRPORT_POI) }] }] },
+        { title: t('机场'), items: [airRow(AIRPORT_POI, t('航站楼'), t('24 小时开放'), t('导航到航站楼')), airRow(HANGAR_POI, t('机库'), t('租机 / 取机 / 维修 / 接单'), t('导航到机库'))] },
         { title: t('飞行工作'), items: [jobItem] },
         { title: t('我的飞机'), items: planes },
         { title: t('租机'), items: [rentItem] },
