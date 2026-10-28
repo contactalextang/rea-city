@@ -1,0 +1,8 @@
+ambientCG — CC0 1.0 Universal（https://docs.ambientcg.com/license/）
+公有领域，可商用、可再分发，无需署名。
+
+使用的材质（1K-PNG，经 scripts/facade-tex/build.ts 处理为亮度细节 + 法线，拼成 detail.webp）：
+  层 0：PaintedPlaster017 — https://ambientcg.com/view?id=PaintedPlaster017
+  层 1：Concrete012 — https://ambientcg.com/view?id=Concrete012
+  层 2：Plaster007 — https://ambientcg.com/view?id=Plaster007
+  层 3：Tiles038 — https://ambientcg.com/view?id=Tiles038

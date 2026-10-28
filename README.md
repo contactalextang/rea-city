@@ -39,6 +39,7 @@ node --test scripts/test/*.test.ts   # 单元测试（碰撞、分块编解码�
 | `props=proc` | 行道树改回程序化圆锥树（默认用 threejsassets 低模阔叶树，低配可用此项省约 30 万三角面） |
 | `fx=high\|low\|off` | 画质：high 默认（pmndrs/postprocessing 管线：AgX + N8AO + 泛光 + 调色/颗粒/暗角/色差；物理天空 + 高度雾 + 三级联阴影 CSM 约 350 m；电影化：丁达尔光束、太阳鬼影、胶片 LUT、手持晃动、开车速度 FOV 与边缘速度模糊）；low 关 AO/天空/CSM/电影化、半分辨率泛光、高分屏后期封顶 1.25 倍；off 直出（仍保留 AgX 与环境光）。街景细节（P14）：high/low 用程序化外墙（凹窗、室内映射夜窗、HDB 走廊/店屋五脚基/玻璃幕墙风格）、沥青/地砖/路缘着色器、Standard 道具与树叶透光，玩家周围 3×3 块加女儿墙/檐口/檐篷柱廊/屋顶设备/空调外机/楼前铺装；off 退回平涂窗格。手机设置页「画质」可切换 |
 | `detail=0` | 关闭 P14.2 建筑几何细节件（对比开销用） |
+| `facdetail=0` | 关闭 P14.6 近处外墙照片扫描细节（fx=high 才有；前后对比用） |
 | `cine=0` | 关闭 high 档的电影化效果（光束/鬼影/LUT/手持/速度 FOV/速度模糊），便于对比与排查；控制台 `__game.fx.cine` 可单项调强度 |
 | `lang=zh\|en` | 界面语言（默认跟浏览器语言；开局右上角或手机设置「语言 / Language」可切换，切换后页面重载、存档保留）。新增界面文字一律写 `t('中文')` 并在 `src/i18n/en/` 补英文，`npm run i18n:check` 检查 |
 | `timeSpeed=N` | 游戏时钟倍速 |
@@ -203,6 +204,8 @@ npm run deploy:cf      # 构建 + 上传；自定义域 rea.alextang.dev 由 rou
 
 机场模型：`npm run airfield:build` 把 threejsassets「Airfield — Small Airport Kit」的 22 个免费 GLB（放在 `data/assets-eval/threejsassets/airfield/`，需登录下载）打包成 `public/assets/airfield/airfield.glb`（meshopt 压缩，约 1.2 MB；`--inspect` 打印各模型尺寸）。
 
+外墙细节贴图：`npm run facade:build` 从 ambientCG（CC0）下载 4 种照片扫描材质（缓存在 `data/assets-eval/ambientcg/`），处理成亮度细节 + 法线拼成 `public/assets/facade/detail.webp`（需系统 `unzip`、`cwebp`）。只在 fx=high 加载，`?facdetail=0` 关闭。
+
 道具模型：`npm run props:build` 把 threejsassets.com 免费模型（Draco GLB，放在 `data/assets-eval/threejsassets/`，需登录下载）解压合并成 `public/assets/props/props.glb`（运行时不需要 Draco 解码器）。
 
 ## 代码结构
@@ -269,5 +272,6 @@ launcher/make-app.sh launcher/icon-mac-1024.png /Applications
 - 角色模型：Quaternius — Ultimate Modular Men / Women，CC0 1.0（原文见 `public/assets/characters/LICENSE-quaternius.txt`）。
 - 行道树模型：threejsassets.com — Shade Tree / Metropolis Street Tree 01，Free Commercial License（不得单独再分发模型文件）。
 - 机场模型：threejsassets.com — Airfield — Small Airport Kit 免费部分（塔台、Cessna、机库、灯具、标牌等），Free Commercial License（不得单独再分发模型文件）。
+- 外墙细节贴图：ambientCG — PaintedPlaster017、Concrete012、Plaster007、Tiles038，CC0（`npm run facade:build` 生成 `public/assets/facade/detail.webp`，随仓库提交）。
 - **公开仓库不含上面两套 threejsassets 模型**（`public/assets/props/`、`public/assets/airfield/` 已 gitignore）。克隆后直接运行时会自动退回程序化行道树、机场占位与程序化 Cessna，控制台只有 `[props]` / `[airfield]` / `[aircraft]` 降级 warning。要用真模型：到 threejsassets.com 登录下载对应免费模型放进 `data/assets-eval/threejsassets/`，再跑 `scripts/props/build.ts` 与 `npm run airfield:build`。
 - 其余几何（建筑、车辆、地标、其余道具）、音效（WebAudio 合成）与代码均为本项目原创。

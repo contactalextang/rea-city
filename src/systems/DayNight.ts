@@ -8,6 +8,7 @@ import { LOOK } from '../core/LookUniforms'
 import { agx, agxInverse } from '../core/AgX'
 import { NightLights } from './NightLights'
 import { FACADE } from '../world/FacadeShader'
+import { setFacadeDetail } from '../world/FacadeDetail'
 import { ATMO, ATMO_DEBUG, ATMO_OPTS, CsmShadows, SkyDome, installAtmosphereChunks } from './Atmosphere'
 
 /**
@@ -339,6 +340,8 @@ export class DayNight {
     for (const w of this.windows) w.emissiveIntensity = 1.5 * this.lights   // HDR：>1 才会被泛光阈值抓到
     // 程序化外墙（FacadeShader 读 emissive.r 作夜灯强度）只在 fx=high/low 用；fx=off 回退 Lambert 窗格贴图
     FACADE.on = this.settings.fx !== 'off'
+    // P14.6 照片扫描细节只在 fx=high（首次进 high 才下载贴图；运行时切档即时生效）
+    setFacadeDetail(this.settings.fx === 'high', this.renderer)
     LOOK.uSignGlow.value = this.lights
     if (this.haloMat) { this.haloMat.uniforms.uOpacity.value = this.lights; this.halo!.visible = this.lights > 0.01 }
     if (this.poolMat) {

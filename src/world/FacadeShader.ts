@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { FACADE_DETAIL } from './FacadeDetail'
 
 /**
  * P14.1 程序化外墙（fx=high / low；fx=off 走 BuildingMesh.makeWallMaterial 的 Lambert 底线）。
@@ -60,11 +61,19 @@ export const FACADE_DIMS = {
   /** 店屋五脚基拱廊柱宽（开间两侧各一根） */
   arcadeCol: 0.38,
 } as const
+/**
+ * P14.6 照片扫描细节（FacadeDetail，仅 fx=high）：scale = 各层一张贴图对应的墙面米数（层序 0 涂料抹灰 / 1 混凝土 / 2 店屋老抹灰 / 3 方砖），
+ * albedo / rough / normal = 亮度比、粗糙度、法线的叠加强度；near / far = 距离淡出（米）
+ */
+const DET = { scale: [2.0, 2.5, 2.0, 1.1], albedo: 1.4, rough: 0.35, normal: 1.0, near: 25, far: 60 } as const
 /** 数字 → GLSL 浮点字面量 */
 const gf = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : String(v))
 const D = FACADE_DIMS
 
 const FACADE_PARS = /* glsl */`
+uniform sampler2DArray uFacDetailTex;
+uniform float uFacDetailOn;
+const float FAC_DET_SCALE[ 4 ] = float[ 4 ]( ${DET.scale.map(gf).join(', ')} );
 varying vec4 vFacWall;
 varying vec4 vFacBld;
 varying vec3 vFacPos;
@@ -151,11 +160,13 @@ vec3 facRoom( vec2 g, vec2 win, vec3 ray, float floorY, float roomH, float D, fl
 
 /** 主体：按风格计算外墙反照率/粗糙度/金属度/自发光/凹凸高度（米）。fw = (沿墙, 竖直) 每像素米数 */
 const FACADE_EVAL = /* glsl */`
-void facadeEval( vec3 baseCol, vec2 fw, float night, out vec3 alb, out float rough, out float metal, out vec3 emit, out float hgt, out float lodOut ) {
+void facadeEval( vec3 baseCol, vec2 fw, float night, out vec3 alb, out float rough, out float metal, out vec3 emit, out float hgt, out float lodOut, out float detM, out float detLayer ) {
 	float s = vFacWall.x, W = vFacWall.y, runSeed = vFacWall.z, closedLoop = vFacWall.w;
 	float seed = vFacBld.x, cls = floor( vFacBld.y + 0.5 ), H = vFacBld.z, tone = vFacBld.w;
 	float y = vFacPos.y;
 	alb = baseCol; rough = 0.88; metal = 0.0; emit = vec3( 0.0 ); hgt = 0.0; lodOut = 1.0;
+	// P14.6 照片扫描细节：detM = 墙体实心部分权重（窗洞 / 拱廊开口 / 幕墙为 0），detLayer = FacadeDetail 层号
+	detM = 1.0; detLayer = 1.0;
 
 	// —— 屋顶：混凝土 + 低频污迹 ——
 	if ( W < 0.01 ) {
@@ -163,6 +174,7 @@ void facadeEval( vec3 baseCol, vec2 fw, float night, out vec3 alb, out float rou
 		alb = baseCol * ( 0.8 + 0.3 * n );
 		rough = 0.93;
 		if ( cls == 2.0 ) {
+			detM = 0.5;
 			// 店屋：赤陶瓦屋面（瓦垄条纹，方向取世界 x/z 中较近的一条，粗略即可）
 			float tl = 0.8 + 0.2 * smoothstep( 0.3, 0.7, fract( ( vFacPos.x + vFacPos.z ) * 3.0 ) );
 			alb = facLin( vec3( 0.66, 0.36, 0.24 ) ) * ( 0.8 + 0.35 * n ) * mix( tl, 0.9, clamp( fw.x * 3.0, 0.0, 1.0 ) );
@@ -176,6 +188,10 @@ void facadeEval( vec3 baseCol, vec2 fw, float night, out vec3 alb, out float rou
 	bool corridor = isHdb && runSeed < ${gf(D.corrP)} && W > ${gf(D.corrMinW)};
 	// 普通楼：带形窗 / 方窗
 	bool ribbon = !isHdb && !isShop && !isGlass && fract( seed * 3.17 ) < ${gf(D.ribbonP)};
+	// 细节层：HDB 涂料抹灰 / 店屋老抹灰 / 普通楼按种子分方砖、混凝土、涂料；玻璃塔不贴
+	float dh = fract( seed * 11.3 );
+	detLayer = isHdb ? 0.0 : isShop ? 2.0 : dh < 0.3 ? 3.0 : dh < 0.55 ? 1.0 : 0.0;
+	detM = isGlass ? 0.0 : 1.0;
 
 	// —— 风格参数 ——
 	float floorT = isHdb ? ${gf(D.floorHdb)} : isShop ? ${gf(D.floorShop)} : isGlass ? ${gf(D.floorGlass)} + 0.5 * seed : ${gf(D.floorGeneric)} + 0.35 * seed;
@@ -347,6 +363,7 @@ void facadeEval( vec3 baseCol, vec2 fw, float night, out vec3 alb, out float rou
 		float beam = facBand( y, ${gf(D.shopBeam0)}, ${gf(D.shopBase)}, fw.y );
 		c = mix( c, c * 0.85, beam ); hgt += 0.05 * beam;
 		hgt -= 0.25 * open;
+		detM *= 1.0 - open;
 		// 拱内：视差到店面平面
 		float D = 2.4;
 		vec2 b = vec2( xm + ray.x / ray.z * D, y + ray.y / ray.z * D );
@@ -452,6 +469,7 @@ void facadeEval( vec3 baseCol, vec2 fw, float night, out vec3 alb, out float rou
 		gRough = mix( 0.85, gRough, inGlass );
 		gMetal *= inGlass;
 		c = mix( c, glassC, inWin );
+		detM *= 1.0 - inWin;
 		rough = mix( rough, gRough, inWin );
 		metal = mix( metal, gMetal, inWin );
 		emit += ge * inWin * night;
@@ -508,6 +526,9 @@ export function makeFacadeMaterial(): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, emissive: 0xffffff, emissiveIntensity: 0 })
   m.name = 'facade'
   m.onBeforeCompile = (sh) => {
+    // 共享引用：FacadeDetail 换贴图 / 切开关时所有外墙同步生效
+    sh.uniforms.uFacDetailTex = FACADE_DETAIL.uFacDetailTex
+    sh.uniforms.uFacDetailOn = FACADE_DETAIL.uFacDetailOn
     const need = (src: string, s: string) => { if (!src.includes(s)) throw new Error('[Facade] three 着色器已变化，找不到：' + s) }
     for (const a of ['#include <common>', '#include <begin_vertex>']) need(sh.vertexShader, a)
     for (const a of ['#include <common>', '#include <color_fragment>', '#include <roughnessmap_fragment>', '#include <metalnessmap_fragment>', '#include <normal_fragment_maps>', '#include <emissivemap_fragment>']) need(sh.fragmentShader, a)
@@ -531,8 +552,31 @@ vFacNrm = normalize( mat3( modelMatrix ) * objectNormal );`)
 	float facNight = emissive.r;
 	// 每像素米数：用世界坐标导数（连续，不受立面接缝处 s 跳变影响）
 	vec2 facFw = vec2( length( fwidth( vFacPos.xz ) ), fwidth( vFacPos.y ) );
-	vec3 facAlb; vec3 facEmit; float facRough; float facMetal; float facH; float facLod;
-	facadeEval( diffuseColor.rgb, facFw, facNight, facAlb, facRough, facMetal, facEmit, facH, facLod );
+	vec3 facAlb; vec3 facEmit; float facRough; float facMetal; float facH; float facLod; float facDetM; float facDetLayer;
+	facadeEval( diffuseColor.rgb, facFw, facNight, facAlb, facRough, facMetal, facEmit, facH, facLod, facDetM, facDetLayer );
+	// P14.6 照片扫描细节：uFacDetailOn 是统一分支（low/off 整段跳过）；导数在分支外求，采样用 textureGrad（立面接缝处 s 跳变不影响 mip）
+	float facDetK = 0.0; vec2 facDetN = vec2( 0.0 );
+	vec3 facDetT = vec3( 1.0, 0.0, 0.0 ), facDetB = vec3( 0.0, 1.0, 0.0 );
+	if ( uFacDetailOn > 0.5 ) {
+		bool facRoof = vFacWall.y < 0.01;
+		vec3 nw = normalize( vFacNrm );
+		// 切线 = s 增长方向（BuildingMesh 法线 (-uz,0,ux) → 边方向 (ux,0,uz)）；贴图 v 取 −y / −z，图像上方 = 世界 +y / +z
+		facDetT = facRoof ? vec3( 1.0, 0.0, 0.0 ) : vec3( nw.z, 0.0, - nw.x );
+		facDetB = facRoof ? vec3( 0.0, 0.0, 1.0 ) : vec3( 0.0, 1.0, 0.0 );
+		vec3 dpx = dFdx( vFacPos ), dpy = dFdy( vFacPos );
+		facDetK = facDetM * ( facRoof ? 1.0 : 1.0 - facLod ) * ( 1.0 - smoothstep( ${gf(DET.near)}, ${gf(DET.far)}, length( vFacPos - cameraPosition ) ) );
+		if ( facDetK > 0.0 ) {
+			float sc = 1.0 / FAC_DET_SCALE[ int( facDetLayer + 0.5 ) ];
+			vec2 uv = ( facRoof ? vec2( vFacPos.x, - vFacPos.z ) : vec2( vFacWall.x, - vFacPos.y ) ) * sc + vFacBld.x * vec2( 7.13, 3.71 );
+			vec2 gx = vec2( dot( dpx, facDetT ), - dot( dpx, facDetB ) ) * sc;
+			vec2 gy = vec2( dot( dpy, facDetT ), - dot( dpy, facDetB ) ) * sc;
+			vec3 det = textureGrad( uFacDetailTex, vec3( uv, facDetLayer ), gx, gy ).rgb;
+			float a = 2.0 * det.r - 1.0;
+			facAlb *= max( 1.0 + a * ${gf(DET.albedo)} * facDetK, 0.0 );
+			facRough = clamp( facRough - a * ${gf(DET.rough)} * facDetK, 0.04, 1.0 );
+			facDetN = ( det.gb * 2.0 - 1.0 ) * ${gf(DET.normal)} * facDetK;
+		}
+	}
 	diffuseColor.rgb = facAlb;`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n\troughnessFactor = facRough;')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n\tmetalnessFactor = facMetal;')
@@ -545,6 +589,10 @@ vFacNrm = normalize( mat3( modelMatrix ) * objectNormal );`)
 		float det = dot( dpx, r1 );
 		vec3 grad = sign( det ) * ( dhx * r1 + dhy * r2 );
 		normal = normalize( abs( det ) * normal - grad * 0.3 );
+	}
+	if ( facDetK > 0.0 ) {
+		// 细节法线（切线空间 xy）→ 视空间叠加
+		normal = normalize( normal + facDetN.x * normalize( mat3( viewMatrix ) * facDetT ) + facDetN.y * normalize( mat3( viewMatrix ) * facDetB ) );
 	}`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance = facEmit;')
   }

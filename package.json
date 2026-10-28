@@ -27,6 +27,7 @@
     "props:build": "node scripts/props/build.ts",
     "airfield:build": "node scripts/airfield/build.ts",
     "lut:build": "node scripts/lut/build.ts",
+    "facade:build": "node scripts/facade-tex/build.ts",
     "deploy:cf": "npm run build && wrangler deploy",
     "i18n:check": "node scripts/i18n-check.ts"
   },
