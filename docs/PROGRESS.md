@@ -124,6 +124,18 @@
 - [x] AIR.V 终验：四身份 + 方格城开局 0 报错（方格城无航空插件）；fx=low+chars=box（黑帮）/ fx=off（白领）/ fx=high+lang=en（金领）各：机库→空中 120 m→自动进近 09 完美接地（vy −1.09，跑道）0 报错；npm run check / test 35/35 / i18n / econ:sim PASS / ride:sim 25398/0；支线挂起帝国线 → 完成后恢复原步骤 Playwright 验证
 - 遗留（AIR.7 / 以后）：自动降落接地点偏远（x≈1714，跑道 900–2100 内）；座舱内饰简陋；手机端无俯仰反转开关、无拍照/投放专用触屏键；套件机库偏重（+5 万 tris，可简化）、机库门号都是「3」；杨树/铁丝网未用；路灯杆与雨棚无碰撞；手机大地图机场层未截图；行人会走上堤道；堤道 J 路口偶有车排队；支线挂起状态不进存档（读档后帝国线从头轮询，buy 步骤需重做）；高空 CBD 三角面高，手机端可考虑保持半径 2
 
+## Phase QA — AI 试玩员（计划 ~/.claude/plans/piped-dazzling-rivest.md）
+> 起因：分析 HiSTEVE 1.0（arXiv:2610.31162，Minecraft 分层 VLA 智能体）。模型训练搬不过来，搬它的 harness：参数化原子模板（适用 / 完成 / 失败 / 预算）+ 规划器每次只挑适用子任务 + 先提议后确认的完成检测 + 成功 / 失败 / 中断三分恢复 + 四类记忆。
+> 约定：只动 scripts/agent/ 与 scripts/test/agent-schemas.test.ts，不改 src；移动只按 WASD/Shift/Space，交互按 E/F/Tab/Esc，面板与手机按钮用鼠标点 DOM；读状态与路网走 `__game`（只读）；非原生输入（时钟快进）记为「辅助」进报告。
+- [x] QA.1 schemas.ts（Obs 观测、10 个原子模板（含 exitCar）、规则规划器 nextSubtask / planTravel / workJob，覆盖 goto/eat/sleep/clockIn/rentTaxi/invest/earn/job）+ 单测 12 项
+- [x] QA.2 executor.ts：步行 8 向组合键相对相机 + 松键跨两帧重锁朝向；步行无向 Dijkstra（起终点落在所在路段两端，长路段 277 m 不再从远处节点起步）+ 40 m 内 ±0.7 m 走廊抄近路；驾驶有向路网 + 纯追踪 A/D 死区 + W/Space 控速；卡住逐级脱困；一次性动作防重入（开工按钮再点即「下班」）；面板 Esc 关
+- [x] QA.3 harness.ts / report.ts / play.ts：`npm run agent:play -- --role=gang|gold|white|blue|all`（需 npm run dev；640×360 无头 60 fps）；完成要连续两次观测成立；同步骤失败 / 中断 5 次判卡死并截图；原地打转检测；四类记忆（working / episodic / procedural.json 跨运行 / world POI 与卡住点）；报告 data/agent-runs/<时间>/<身份>/report.md，与 last-<身份>.json 对比回退
+- [x] QA.V 四身份 story 线无人值守全部通关（2026-10-28 终验，均 0 页面报错）：黑帮 ✓ 228 s、金领 ✓ 112 s、白领 ✓ 270 s（往返坐地铁、0 辅助）、蓝领 ✓ 1802 s（从开局步行 711 m 到的士站、0 辅助，首单 4.33 km 车资 $9.40；卡住 1）。回归中修掉：到站瞬间步骤晚几百 ms 推进被误判原地打转（现需重复累计 > 8 s）；过 12 点打卡改回家睡觉，不再快进近 20 h 累到昏倒
+- [x] QA.4 蓝领驾驶加固：红灯 / 抢不过的黄灯在停止线（边长 − 路口半径）前 2 m 停；行人避让（车头 14 m、横向 2.4 m，4 m 内停；倒车先看车尾）；前车检测沿对方车身取 5 点（公交 12 m 长、路口横穿）；跟车排队 12 s 才右侧绕行；报废即判失败 → 按 F 下车 → 回最近的士站重租（今天租过则等过午夜，不跳到早上——快进照扣精力会昏倒）；行程预算按实际路线长度放宽；工作目标变了立即重规划；日志记录 HUD 提示（罚单 / 撞人 / 报废原因）。结果：不再被捕（此前全部因「撞人了！警方出动」），能上客、能按天重租；仍败在单车道车流里擦碰报废 + 下车后人被夹在报废车与有盖走廊柱子间（固定点约 -1045,125，F33 出发必经的 536 m 弯路 edge 215/216）
+- **试玩员发现的游戏问题**：① 招手乘客离玩家 > `DESPAWN_DIST` 205 m 就被回收（单行道 / 绕路时乘客「走了」，一轮连走 6 位）→ **已修** `src/entities/Pedestrians.ts:153`（hail 状态不按距离回收，收工 unhail 后照常回收）；② 有盖走廊（linkway）横跨马路时立柱落在车行道上（约 -1045,125 等，车 / 人卡死、的士撞报废；龙门架 / 地铁口 / 天桥楼梯都有 `clear.intrudes` 检查，唯独 linkway 立柱漏了）→ **已修** `src/world/PropMeshes.ts` case 6（压车行道的立柱不放、不建碰撞体，顶棚照跨）；③ 未修（设计取舍，待定）：的士招手阶段乘客在 3 m 外时 F 键只提示「靠近再按 F」，玩家下不了车，只能手机收工（src/systems/Jobs.ts:455）
+- [x] QA.5 蓝领跑通：驾驶终点改为「目标最近车道边的起点 → 沿该边开到投影点」（原取最近节点会开过头停在门口 8 m 外，到达不结算）；送客 ≤ 7.5 m 才停等结算；接客停在 9 m 内还够不着 → 贴边靠向乘客（exact，招手乘客不挡自己）；去门口办事时车上 → 开到 12 m 内 → 手机收工 → 下车 → 步行；自己的家 home_<role>（之前蓝领跑去黑帮家门口只能「买下此处」）；精力 < 15 先回家睡；红灯排队不绕行；绕行时日志记挡路车；dev 热更新整页刷新报「本次运行作废」不崩溃。送客停在门口 7.5–15 m（双向路停到对向车道）→ 直接靠向门口最近车道点。`--start=taxi_F33` 蓝领 ✓ 887 s；开局完整 ✓ 1802 s
+- 遗留 / 第二步：帝国线（ownBiz/buy/level/bizIncome/netWorth 子任务）未做，`--goal=empire` 暂拒绝；Claude 视觉规划器做开放目标试玩；NPC 日程借程序性记忆另立项
+
 ## 后续
 - [x] 机场叫车（计划 ~/.claude/plans/vast-enchanting-parasol.md）：手机「飞行」的机场卡原来只有导航，现拆成「航站楼 / 机库」两行，各带导航 + Taxi / Grab（Game.poiRideActions 复用 rideActions / rideTo，禁用原因照旧）；tsc / i18n / test 51/51 通过，浏览器未实测
 - [x] 外部道具模型（计划 ~/.claude/plans/ethereal-imagining-glade.md）：行道树默认换 threejsassets shade-tree（`?props=proc` 改回程序化）；待定是否推广到巴士站/长椅/垃圾桶

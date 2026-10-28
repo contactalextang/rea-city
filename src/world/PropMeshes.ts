@@ -279,8 +279,11 @@ export class PropMeshes {
           for (let k = 0; k < n; k++) {
             const lz = -len / 2 + step * k
             for (const lx of [-1.1, 1.1]) {
+              // 走廊横跨马路时立柱会落在车行道上（车 / 人卡死、的士撞报废）：压车行道的立柱不放，顶棚照样跨过去
+              const [px, pz] = local(x, z, yaw, lx, lz)
+              if (this.clear.intrudes(px, pz, 0.14)) { st.dropped++; continue }
               push('post', x, z, yaw, 1, 2.75, 1, -1, lx, lz)
-              const [px, pz] = local(x, z, yaw, lx, lz); aabb(px, pz, 0.14, 2.75)
+              aabb(px, pz, 0.14, 2.75)
             }
           }
           break

@@ -150,7 +150,8 @@ export class Pedestrians {
     for (const p of this.peds) {
       if (!p.active) continue
       const dPlayer = Math.hypot(p.x - px, p.z - pz)
-      if (dPlayer > DESPAWN_DIST) { this.despawn(p); continue }
+      // 招手的乘客不按距离回收：的士常因单行道 / 绕路先开远，超过 DESPAWN_DIST 乘客就凭空消失（收工时 unhail 恢复成普通行人再照常回收）
+      if (dPlayer > DESPAWN_DIST && p.state !== 'hail') { this.despawn(p); continue }
 
       if (p.state === 'walk') {
         if (!p.edge) { const n = ctx.graph.nearestLane(p.x, p.z); p.edge = n.edge; p.t = n.t }
