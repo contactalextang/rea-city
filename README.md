@@ -267,6 +267,7 @@ launcher/make-app.sh launcher/icon-mac-1024.png /Applications
 - 地图数据 © OpenStreetMap contributors，[ODbL 1.0](https://www.openstreetmap.org/copyright)。
 - Contains information from the Land Transport Authority (LTA DataMall), Urban Redevelopment Authority (URA), Housing & Development Board (HDB) and National Environment Agency (NEA), accessed from data.gov.sg / LTA DataMall, made available under the [Singapore Open Data Licence v1.0](https://data.gov.sg/open-data-licence)。本项目与上述机构无关，亦不代表其背书。
 - 角色模型：Quaternius — Ultimate Modular Men / Women，CC0 1.0（原文见 `public/assets/characters/LICENSE-quaternius.txt`）。
-- 行道树模型：threejsassets.com — Shade Tree / Metropolis Street Tree 01，Free Commercial License（不得单独再分发模型文件，见 `public/assets/props/LICENSE-threejsassets.txt`）。
-- 机场模型：threejsassets.com — Airfield — Small Airport Kit 免费部分（塔台、Cessna、机库、灯具、标牌等），Free Commercial License（不得单独再分发模型文件，见 `public/assets/airfield/LICENSE-threejsassets.txt`；仓库若公开须排除 `public/assets/props/` 与 `public/assets/airfield/`）。
+- 行道树模型：threejsassets.com — Shade Tree / Metropolis Street Tree 01，Free Commercial License（不得单独再分发模型文件）。
+- 机场模型：threejsassets.com — Airfield — Small Airport Kit 免费部分（塔台、Cessna、机库、灯具、标牌等），Free Commercial License（不得单独再分发模型文件）。
+- **公开仓库不含上面两套 threejsassets 模型**（`public/assets/props/`、`public/assets/airfield/` 已 gitignore）。克隆后直接运行时会自动退回程序化行道树、机场占位与程序化 Cessna，控制台只有 `[props]` / `[airfield]` / `[aircraft]` 降级 warning。要用真模型：到 threejsassets.com 登录下载对应免费模型放进 `data/assets-eval/threejsassets/`，再跑 `scripts/props/build.ts` 与 `npm run airfield:build`。
 - 其余几何（建筑、车辆、地标、其余道具）、音效（WebAudio 合成）与代码均为本项目原创。

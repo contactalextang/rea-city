@@ -4,3 +4,5 @@ dist/
 .DS_Store
 /data/
 .claude/worktrees/
+/public/assets/props/
+/public/assets/airfield/
