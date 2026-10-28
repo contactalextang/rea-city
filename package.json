@@ -29,7 +29,7 @@
     "lut:build": "node scripts/lut/build.ts",
     "facade:build": "node scripts/facade-tex/build.ts",
     "promo:build": "node scripts/promo/build.ts",
-    "deploy:cf": "npm run build && wrangler deploy",
+    "deploy:cf": "npm run build && rm -rf dist/assets/promo/src && rm -f dist/assets/story/*.png && wrangler deploy",
     "i18n:check": "node scripts/i18n-check.ts"
   },
   "keywords": [],

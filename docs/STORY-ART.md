@@ -3,7 +3,7 @@
 剧情过场（`src/ui/StoryCard.ts`、剧本 `src/data/storyComics.ts`）和宣传图（`npm run promo:build`）用到的街景线稿，都是用「どこでもロケハン」（<https://tools.oyasumi-gamedev.com/rokehan/>，作者 @sharp_maker）从 OpenStreetMap 渲染出来的漫画线稿和网点。
 
 ## 许可
-- 导出图可以用在作品里（商用、非商用都行），**但不能再分发或出售原始导出文件**。所以 `public/assets/story/`、`public/assets/promo/` 都在 `.gitignore` 里，不进公开仓库，只随 `dist/` 部署到线上。
+- 导出图可以用在作品里（商用、非商用都行），**但不能再分发或出售原始导出文件**。所以 `public/assets/story/`、`public/assets/promo/` 都在 `.gitignore` 里，不进公开仓库，只随 `dist/` 部署到线上；`npm run deploy:cf` 上传前会删掉 `dist/` 里的原始 PNG（`story/*.png`、`promo/src/`），线上只有 webp 和合成后的宣传图。
 - 凡是用到图的地方都要署名「© OpenStreetMap contributors」，含远景地形的再加「© OpenMapTiles」。原图右下角已经嵌了署名；合成图裁切后要重新写上。
 - 新克隆的仓库里没有这些图：过场会降级成纯文字分格，标题画面没有背景图，其他功能不受影响。
 
